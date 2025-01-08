@@ -7,6 +7,8 @@
 report_sim(
   mod_est,
   mod_sim = NULL,
+  method = c("standard", "inner-outer"),
+  vars_inner = NULL,
   n_sim = 100,
   point_est_fun = c("median", "mean"),
   widths = c(0.5, 0.95),
@@ -20,6 +22,13 @@ assessed. An object of class \code{bage_mod}.}
 
 \item{mod_sim}{The model used to generate the simulated
 data. If no value is supplied, \code{mod_est} is used.}
+
+\item{method}{Estimation method used for \code{mod_est}.
+See \code{\link[=fit]{fit()}}.}
+
+\item{vars_inner}{Variables used in inner model
+with \code{"inner-outer"}estimation method.
+See \code{\link[=fit]{fit()}}.}
 
 \item{n_sim}{Number of sets of simulated data to use.
 Default is 100.}
@@ -40,40 +49,20 @@ processing. If \code{n_core} is \code{1} (the default),
 no parallel processing is done.}
 }
 \value{
-When \code{report_type} is \code{"short"}, a tibble with the following columns:
-\itemize{
-\item \code{component}. Part of model. See Details.
-\code{"par"} is the rate, probability, or mean
-parameter from the likelihood.
-\item \code{vals_sim}. Simulated value for parameter, averaged
-across all simulations and cells.
-\item \code{error_point_est}. Point estimate minus simulation-true
-value, averaged across all simulations and cells.
-\item \code{cover}. Actual proportion of simulation-true values
-that fall within each type of interval, averaged across all
-simulations and cells.
-}
-
-When \code{report_type} is \code{"long"}, a tibble with the following columns:
-\itemize{
-\item \code{component}. Part of model. See \code{\link[=components]{components()}}.
-\code{"par"} is the rate, probability,
-or mean parameter from the likelihood.
-\item \code{term}. Category within \code{component}.
-\item \code{level}. Category within \code{term}.
-\item \code{vals_sim}. Simulated values for parameter,
-stored in an \link[rvec:rvec]{rvec}.
-\item \code{error_point_est}. Point estimates minus simulation-true
-values, stored in an \link[rvec:rvec]{rvec}.
-\item \code{cover}. Actual proportions of simulation-true values
-falling within each type of interval, stored in
-an \link[rvec:rvec]{rvec}.
-}
+A named list with a tibble called \code{"components"} and a
+tibble called \code{"augment"}.
 }
 \description{
 Use simulated data to assess the performance of
 an estimation model.
 }
+\section{Warning}{
+
+
+The interface for \code{report_sim()} is still under development
+and may change in future.
+}
+
 \examples{
 ## results random, so set seed
 set.seed(0)

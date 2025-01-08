@@ -1,56 +1,3 @@
-## HAS_TESTS
-#' Standardize Forecasted 'components' Values
-#'
-#' Standardization consists of adding the quantity
-#' (standardized_val_final_est_period - unstandardized_val_final_est_period)
-#' to all forecasted values - within each combination of the 'by' variables.
-#'
-#' @param mod Object of class 'bage_mod'
-#' @param comp_forecast Unstandardized forecast of 'components'
-#' @param comp_est_st Standardized estimates of 'components'
-#' @param comp_est_unst Unstandardized estimates of 'components'
-#' @param labels_forecast Time labels for forecasted periods
-#'
-#' @returns A tibble
-#' 
-#' @noRd
-align_forecast <- function(mod,
-                                 comp_forecast,
-                                 comp_est_st,
-                                 comp_est_unst,
-                                 labels_forecast) {
-  ## obtain values for 'term' and 'level' for final period of estimates
-  term_level_effect <- make_term_level_final_time_effect(mod)
-  term_level_svd <- make_term_level_final_time_svd(mod)
-  term_level <- vctrs::vec_rbind(term_level_effect, term_level_svd)
-  ## create mapping between levels for final period of estimates and levels for forecasts
-  mapping_effect <- make_mapping_final_time_effect(mod = mod, labels_forecast = labels_forecast)
-  mapping_svd <- make_mapping_final_time_svd(mod = mod, labels_forecast = labels_forecast)
-  mapping <- vctrs::vec_rbind(mapping_effect, mapping_svd)
-  ## obtain values of .fitted for time-varying quantities for final period of estimates
-  tail_unst <- merge(comp_est_unst, term_level, by = c("term", "level"), sort = FALSE)
-  tail_st <- merge(comp_est_st, term_level, by = c("term", "level"), sort = FALSE)
-  names(tail_unst)[match(".fitted", names(tail_unst))] <- "nonstandardized"
-  names(tail_st)[match(".fitted", names(tail_st))] <- "standardized"
-  ## calculate difference between standardized and non-standardized .fitted in final period
-  diff <- merge(tail_unst, tail_st, by = c("term", "level", "component"), sort = FALSE)
-  diff$diff <- diff$standardized - diff$nonstandardized
-  names(diff)[match("level", names(diff))] <- "level_final"
-  ## attach differences to forecasts
-  ans <- merge(comp_forecast, mapping, by = "level", sort = FALSE)
-  ans <- merge(ans, diff, by = c("term", "component", "level_final"), sort = FALSE)
-  ## revise forecasts
-  ans$.fitted <- ans$.fitted + ans$diff
-  ans <- ans[c("term", "component", "level", ".fitted")]
-  ord <- order(match(ans[[1L]], comp_forecast[[1L]]),
-               match(ans[[2L]], comp_forecast[[2L]]),
-               match(ans[[3L]], comp_forecast[[3L]]))
-  ans <- ans[ord, ]
-  ans <- tibble::tibble(ans)
-  ## return
-  ans
-}
-    
 
 ## HAS_TESTS
 #' Forecast an AR Process
@@ -79,12 +26,13 @@ forecast_ar <- function(ar_est,
   tmp <- rep(ar_est[[1L]], times = n_along_forecast + n_coef)
   s_head <- seq_len(n_coef)
   s_tail <- seq(to = n_along_est, length.out = n_coef)
+  coef_rev <- rev(coef)
   for (i_by in seq_len(n_by)) {
     i_tail <- matrix_along_by_est[s_tail, i_by] + 1L ## matrix uses 0-based index
     tmp[s_head] <- ar_est[i_tail]
     for (j in seq_len(n_along_forecast)) {
       s_ar <- seq(from = j, to = j + n_coef - 1L)
-      mean <- sum(coef * tmp[s_ar])
+      mean <- sum(coef_rev * tmp[s_ar])
       tmp[[j + n_coef]] <- rvec::rnorm_rvec(n = 1L, mean = mean, sd = sd)
     }
     i_ans <- matrix_along_by_forecast[, i_by] + 1L
@@ -119,16 +67,16 @@ forecast_ar_svd <- function(prior,
                             var_sexgender,
                             components,
                             labels_forecast) {
-  matrix_along_by_est <- make_matrix_along_by_effectfree_svd(prior = prior,
-                                                             dimnames_term = dimnames_term,
-                                                             var_time = var_time,
-                                                             var_age = var_age,
-                                                             var_sexgender = var_sexgender)
-  matrix_along_by_forecast <- make_matrix_along_by_effectfree_svd(prior = prior,
-                                                                  dimnames_term = dimnames_forecast,
-                                                                  var_time = var_time,
-                                                                  var_age = var_age,
-                                                                  var_sexgender = var_sexgender)
+  matrix_along_by_est <- make_matrix_along_by_effectfree(prior = prior,
+                                                         dimnames_term = dimnames_term,
+                                                         var_time = var_time,
+                                                         var_age = var_age,
+                                                         var_sexgender = var_sexgender)
+  matrix_along_by_forecast <- make_matrix_along_by_effectfree(prior = prior,
+                                                              dimnames_term = dimnames_forecast,
+                                                              var_time = var_time,
+                                                              var_age = var_age,
+                                                              var_sexgender = var_sexgender)
   nm <- dimnames_to_nm(dimnames_term)
   is_svd <- with(components, term == nm & component == "svd")
   is_coef <- with(components, term == nm & component == "hyper" & startsWith(level, "coef"))
@@ -182,7 +130,6 @@ forecast_components <- function(mod,
 ## HAS_TESTS
 #' Forecast Line or Lines
 #'
-#' @param intercept Intercepts of line(s). An rvec.
 #' @param slope Slope of line(s). An rvec.
 #' @param sd Standard devation of errors. An rvec.
 #' @param matrix_along_by_est Matrix mapping
@@ -193,8 +140,7 @@ forecast_components <- function(mod,
 #' @returns An rvec
 #'
 #' @noRd
-forecast_lin <- function(intercept,
-                         slope,
+forecast_lin <- function(slope,
                          sd,
                          matrix_along_by_est,
                          matrix_along_by_forecast) {
@@ -202,7 +148,8 @@ forecast_lin <- function(intercept,
   n_along_forecast <- nrow(matrix_along_by_forecast)
   n_by <- ncol(matrix_along_by_est)
   s <- seq.int(from = n_along_est + 1L, length.out = n_along_forecast)
-  ans <- rep(intercept[[1L]], times = n_along_forecast * n_by)
+  ans <- rvec::new_rvec(length = n_along_forecast * n_by, n_draw = rvec::n_draw(sd))
+  intercept <- -0.5 * (n_along_est + 1) * slope
   for (i_by in seq_len(n_by)) {
     i_ans <- matrix_along_by_forecast[, i_by] + 1L
     ans[i_ans] <- rvec::rnorm_rvec(n = n_along_forecast,
@@ -216,7 +163,6 @@ forecast_lin <- function(intercept,
 ## HAS_TESTS
 #' Forecast Trend Component of Line or Lines
 #'
-#' @param intercept Intercepts of line(s). An rvec.
 #' @param slope Slope of line(s). An rvec.
 #' @param matrix_along_by_est Matrix mapping
 #' along and by dimensions to position in estimates
@@ -226,14 +172,14 @@ forecast_lin <- function(intercept,
 #' @returns An rvec
 #'
 #' @noRd
-forecast_lin_trend <- function(intercept,
-                               slope,
+forecast_lin_trend <- function(slope,
                                matrix_along_by_est,
                                matrix_along_by_forecast) {
   n_along_est <- nrow(matrix_along_by_est)
   n_along_forecast <- nrow(matrix_along_by_forecast)
   n_by <- ncol(matrix_along_by_est)
   s <- seq.int(from = n_along_est + 1L, length.out = n_along_forecast)
+  intercept <- -0.5 * (n_along_est + 1) * slope
   ans <- rep(intercept[[1L]], times = n_along_forecast * n_by)
   for (i_by in seq_len(n_by)) {
     i_ans <- matrix_along_by_forecast[, i_by] + 1L
@@ -302,17 +248,19 @@ forecast_rw_svd <- function(prior,
                             var_sexgender,
                             components,
                             labels_forecast) {
+  matrix_along_by_est <- make_matrix_along_by_effectfree_inner(prior = prior,
+                                                               dimnames_term = dimnames_term,
+                                                               var_time = var_time,
+                                                               var_age = var_age,
+                                                               var_sexgender = var_sexgender,
+                                                               append_zero = FALSE)
+  matrix_along_by_forecast <- make_matrix_along_by_effectfree_inner(prior = prior,
+                                                                    dimnames_term = dimnames_forecast,
+                                                                    var_time = var_time,
+                                                                    var_age = var_age,
+                                                                    var_sexgender = var_sexgender,
+                                                                    append_zero = FALSE)
   nm <- dimnames_to_nm(dimnames_term)
-  matrix_along_by_est <- make_matrix_along_by_effectfree_svd(prior = prior,
-                                                             dimnames_term = dimnames_term,
-                                                             var_time = var_time,
-                                                             var_age = var_age,
-                                                             var_sexgender = var_sexgender)
-  matrix_along_by_forecast <- make_matrix_along_by_effectfree_svd(prior = prior,
-                                                                  dimnames_term = dimnames_forecast,
-                                                                  var_time = var_time,
-                                                                  var_age = var_age,
-                                                                  var_sexgender = var_sexgender)
   is_svd <- with(components, term == nm & component == "svd")
   is_sd <- with(components, term == nm & component == "hyper" & level == "sd")
   svd <- components$.fitted[is_svd]
@@ -387,17 +335,19 @@ forecast_rw2_svd <- function(prior,
                              var_sexgender,
                              components,
                              labels_forecast) {
+  matrix_along_by_est <- make_matrix_along_by_effectfree_inner(prior = prior,
+                                                               dimnames_term = dimnames_term,
+                                                               var_time = var_time,
+                                                               var_age = var_age,
+                                                               var_sexgender = var_sexgender,
+                                                               append_zero = FALSE)
+  matrix_along_by_forecast <- make_matrix_along_by_effectfree_inner(prior = prior,
+                                                                    dimnames_term = dimnames_forecast,
+                                                                    var_time = var_time,
+                                                                    var_age = var_age,
+                                                                    var_sexgender = var_sexgender,
+                                                                    append_zero = FALSE)
   nm <- dimnames_to_nm(dimnames_term)
-  matrix_along_by_est <- make_matrix_along_by_effectfree_svd(prior = prior,
-                                                             dimnames_term = dimnames_term,
-                                                             var_time = var_time,
-                                                             var_age = var_age,
-                                                             var_sexgender = var_sexgender)
-  matrix_along_by_forecast <- make_matrix_along_by_effectfree_svd(prior = prior,
-                                                                  dimnames_term = dimnames_forecast,
-                                                                  var_time = var_time,
-                                                                  var_age = var_age,
-                                                                  var_sexgender = var_sexgender)
   is_svd <- with(components, term == nm & component == "svd")
   is_sd <- with(components, term == nm & component == "hyper" & level == "sd")
   svd <- components$.fitted[is_svd]
@@ -497,7 +447,7 @@ forecast_seasvary <- function(n_seas,
 #' @returns A tibble.
 #'
 #' @noRd
-make_data_forecast <- function(mod, labels_forecast) {
+make_data_forecast_labels <- function(mod, labels_forecast) {
   formula <- mod$formula
   data <- mod$data
   var_time <- mod$var_time
@@ -507,7 +457,46 @@ make_data_forecast <- function(mod, labels_forecast) {
   ans <- vctrs::vec_expand_grid(!!!ans)
   ans <- vctrs::vec_rbind(data, ans)
   i_original <- seq_len(nrow(data))
-  ans <- ans[-i_original, ]
+  ans <- ans[-i_original, , drop = FALSE]
+  ans
+}
+
+
+## HAS_TESTS
+#' Construct 'data_forecast' from 'newdata' Argument to 'forecast'
+#'
+#' Checks for overlap with historical data.
+#'
+#' @param mod Object of class 'bage_mod'
+#' @param newdata Data frame with data for the forecast period
+#'
+#' @returns A character vector
+#'
+#' @noRd
+make_data_forecast_newdata <- function(mod, newdata) {
+  check_is_dataframe(x = newdata, nm_x = "newdata")
+  formula <- mod$formula
+  data <- mod$data
+  var_time <- mod$var_time
+  nms_model <- all.vars(formula[-2L])
+  nms_newdata <- names(newdata)
+  not_in_newdata <- !(nms_model %in% nms_newdata)
+  n_not_in_newdata <- sum(not_in_newdata)
+  if (n_not_in_newdata > 0L)
+    cli::cli_abort(paste("Variable{?s} in model but not in {.arg newdata}:",
+                         "{.val {nms_model[not_in_newdata]}}."))
+  labels_new <- unique(newdata[[var_time]])
+  labels_est <- unique(data[[var_time]])
+  duplicates <- intersect(labels_new, labels_est)
+  n_dup <- length(duplicates)
+  if (n_dup > 0L)
+    cli::cli_abort(c("Time periods in {.arg newdata} and {.arg data} overlap.",
+                     i = "Time periods in {.arg newdata}: {.val {labels_new}}.",
+                     i = "Time periods in {.arg data}: {.val {labels_est}}.",
+                     i = "Overlap: {.val {duplicates}}."))
+  ans <- vctrs::vec_rbind(data, newdata)
+  i_original <- seq_len(nrow(data))
+  ans <- ans[-i_original, , drop = FALSE]
   ans
 }
 
@@ -708,5 +697,4 @@ make_term_level_final_time_svd <- function(mod) {
   }
   vctrs::vec_rbind(!!!ans)
 }
-
 

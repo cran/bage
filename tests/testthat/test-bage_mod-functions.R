@@ -13,6 +13,19 @@ test_that("'set_datamod_outcome_rr3' works with Poisson", {
   expect_identical(ans$datamod_outcome, new_bage_datamod_outcome_rr3())
 })
 
+test_that("'set_datamod_outcome_rr3' works with Poisson - outcome has NA", {
+  data <- expand.grid(age = 0:2, time = 2000:2001, sex = 1:2)
+  data$popn <- seq_len(nrow(data))
+  data$deaths <- sample(c(0, 3, 9, 12), size = nrow(data), replace = TRUE)
+  data$deaths[1] <- NA
+  formula <- deaths ~ age:sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  ans <- set_datamod_outcome_rr3(mod)
+  expect_identical(ans$datamod_outcome, new_bage_datamod_outcome_rr3())
+})
+
 test_that("'set_datamod_outcome_rr3' works with binomial", {
   data <- expand.grid(age = 0:2, time = 2000:2001, sex = 1:2)
   data$popn <- seq_len(nrow(data)) + 12
@@ -91,29 +104,28 @@ test_that("'set_disp' works with normal", {
 ## 'set_n_draw' ---------------------------------------------------------------
 
 test_that("'set_n_draw' works with valid inputs", {
-    data <- expand.grid(age = 0:2, time = 2000:2001, sex = 1:2)
-    data$popn <- seq_len(nrow(data))
-    data$deaths <- rev(seq_len(nrow(data)))
-    formula <- deaths ~ age:sex + time
-    mod <- mod_pois(formula = formula,
-                    data = data,
-                    exposure = popn)
-    mod <- fit(mod)
-    mod <- set_n_draw(mod, n_draw = 10)
-    ans_obtained <- mod$n_draw
-    ans_expected <- 10L
-    expect_identical(ans_obtained, ans_expected)
-    expect_identical(ncol(mod$draws_effectfree), 10L)
-    expect_identical(ncol(mod$draws_hyper), 10L)
-    expect_identical(ncol(mod$draws_hyperrand), 10L)
-    expect_identical(length(mod$draws_disp), 10L)
+  data <- expand.grid(age = 0:2, time = 2000:2001, sex = 1:2)
+  data$popn <- seq_len(nrow(data))
+  data$deaths <- rev(seq_len(nrow(data)))
+  formula <- deaths ~ age:sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_n_draw(mod, n_draw = 10L)
+  expect_identical(mod$n_draw, 10L)
+  mod <- fit(mod)
+  mod <- set_n_draw(mod, n_draw = 5)
+  expect_identical(mod$n_draw, 5L)
+  expect_true(is_fitted(mod))
+  expect_message(set_n_draw(mod, n_draw = 10),
+                 "New value")
 })
 
 
 ## 'set_prior' ----------------------------------------------------------------
 
 test_that("'set_prior' works with valid inputs", {
-    data <- expand.grid(age = 0:2, time = 2000:2001, sex = 1:2)
+    data <- expand.grid(age = 0:3, time = 2000:2004, sex = 1:2)
     data$popn <- seq_len(nrow(data))
     data$deaths <- rev(seq_len(nrow(data)))
     formula <- deaths ~ age*sex + time
@@ -121,7 +133,7 @@ test_that("'set_prior' works with valid inputs", {
                     data = data,
                     exposure = popn)
     mod_rw <- set_prior(mod, age ~ RW2())
-    expect_s3_class(mod_rw$priors[["age"]], "bage_prior_rw2")
+    expect_s3_class(mod_rw$priors[["age"]], "bage_prior_rw2random")
     mod_rw <- set_prior(mod, age:sex ~ NFix())
     expect_s3_class(mod_rw$priors[["age:sex"]], "bage_prior_normfixed")
 })
@@ -171,10 +183,8 @@ test_that("'set_prior' unfits a fitted model", {
                     data = data,
                     exposure = popn)
     mod <- fit(mod)
-    expect_false(is.null(mod$est))
     mod <- set_prior(mod, time ~ RW())
-    expect_true(is.null(mod$est))
-    expect_true("est" %in% names(mod))
+    expect_false(is_fitted(mod))
 })
 
 test_that("'set_prior' works with when order of components of interaction changed", {
@@ -203,7 +213,7 @@ test_that("'set_var_age' works with valid inputs - no existing age var", {
     expect_identical(mod$var_age, NULL)
     mod <- set_var_age(mod, name = "oldness")
     expect_identical(mod$var_age, "oldness")
-    expect_s3_class(mod$priors[["oldness"]], "bage_prior_rw")
+    expect_s3_class(mod$priors[["oldness"]], "bage_prior_rwrandom")
 })
 
 test_that("'set_var_age' works with valid inputs - has existing age var", {
@@ -215,12 +225,12 @@ test_that("'set_var_age' works with valid inputs - has existing age var", {
                     data = data,
                     exposure = popn)
     expect_identical(mod$var_age, "age")
-    expect_s3_class(mod$priors[["age"]], "bage_prior_rw")
+    expect_s3_class(mod$priors[["age"]], "bage_prior_rwrandom")
     expect_s3_class(mod$priors[["oldness"]], "bage_prior_norm")
     mod <- set_var_age(mod, name = "oldness")
     expect_identical(mod$var_age, "oldness")
     expect_s3_class(mod$priors[["age"]], "bage_prior_norm")
-    expect_s3_class(mod$priors[["oldness"]], "bage_prior_rw")
+    expect_s3_class(mod$priors[["oldness"]], "bage_prior_rwrandom")
 })
 
 
@@ -270,7 +280,7 @@ test_that("'set_var_time' works with valid inputs", {
     expect_identical(mod$var_time, NULL)
     mod <- set_var_time(mod, name = "timex")
     expect_identical(mod$var_time, "timex")
-    expect_s3_class(mod$priors[["timex"]], "bage_prior_rw")
+    expect_s3_class(mod$priors[["timex"]], "bage_prior_rwrandom")
 })
 
 
@@ -287,7 +297,7 @@ test_that("'set_var_inner' works with valid inputs - no existing var", {
     expect_identical(mod$var_age, NULL)
     mod <- set_var_inner(mod, name = "oldness", var = "age")
     expect_identical(mod$var_age, "oldness")
-    expect_s3_class(mod$priors[["oldness"]], "bage_prior_rw")
+    expect_s3_class(mod$priors[["oldness"]], "bage_prior_rwrandom")
 })
 
 test_that("'set_var_inner' works with valid inputs - has existing var", {
@@ -299,12 +309,12 @@ test_that("'set_var_inner' works with valid inputs - has existing var", {
                     data = data,
                     exposure = popn)
     expect_identical(mod$var_age, "age")
-    expect_s3_class(mod$priors[["age"]], "bage_prior_rw")
+    expect_s3_class(mod$priors[["age"]], "bage_prior_rwrandom")
     expect_s3_class(mod$priors[["oldness"]], "bage_prior_norm")
     mod <- set_var_inner(mod, name = "oldness", var = "age")
     expect_identical(mod$var_age, "oldness")
     expect_s3_class(mod$priors[["age"]], "bage_prior_norm")
-    expect_s3_class(mod$priors[["oldness"]], "bage_prior_rw")
+    expect_s3_class(mod$priors[["oldness"]], "bage_prior_rwrandom")
 })
 
 test_that("'set_var_inner' gives correct errors with invalid inputs", {
@@ -329,16 +339,26 @@ test_that("'set_n_draw' works with valid inputs", {
     data$popn <- seq_len(nrow(data))
     data$deaths <- rev(seq_len(nrow(data)))
     formula <- deaths ~ age:sex + time
-    mod <- mod_pois(formula = formula,
+    mod_unfit <- mod_pois(formula = formula,
                     data = data,
                     exposure = popn)
-    mod_fit_unfit <- unfit(fit(mod))
-    expect_identical(mod$est, mod_fit_unfit$est)
-    expect_identical(mod$is_fixed, mod_fit_unfit$is_fixed)
-    expect_identical(mod$R_prec, mod_fit_unfit$R_prec)
-    expect_identical(mod$scaled_eigen, mod_fit_unfit$scaled_eigen)
-    expect_identical(mod$draws_effectfree, mod_fit_unfit$draws_effectfree)
-    expect_identical(mod$draws_hyper, mod_fit_unfit$draws_hyper)
-    expect_identical(mod$draws_hyperrand, mod_fit_unfit$draws_hyperrand)
-    expect_identical(mod$draws_disp, mod_fit_unfit$draws_disp)
+    mod_fit <- fit(mod_unfit)
+    mod_fit_unfit <- unfit(mod_unfit)
+    nms <- c("draws_effectfree",
+             "draws_hyper",
+             "draws_hyperrandfree",
+             "draws_disp",
+             "point_effectfree",
+             "point_hyper",
+             "point_hyperrandfree",
+             "point_disp",
+             "computations",
+             "oldpar")
+    expect_true(all(nms %in% names(mod_unfit)))
+    expect_true(all(nms %in% names(mod_fit)))
+    expect_true(all(nms %in% names(mod_fit_unfit)))
+    for (nm in nms)
+      expect_false(isTRUE(all.equal(mod_fit[[nm]], mod_unfit[[nm]])))
+    for (nm in nms)
+      expect_true(isTRUE(all.equal(mod_fit_unfit[[nm]], mod_unfit[[nm]])))
 })

@@ -4,18 +4,25 @@
 \alias{Lin}
 \title{Linear Prior with Independent Normal Errors}
 \usage{
-Lin(s = 1, sd = 1, along = NULL)
+Lin(s = 1, mean_slope = 0, sd_slope = 1, along = NULL, con = c("none", "by"))
 }
 \arguments{
 \item{s}{Scale for the prior for the errors.
-Default is \code{1}.}
+Default is \code{1}. Can be \code{0}.}
 
-\item{sd}{Standard deviation in prior for slope
+\item{mean_slope}{Mean in prior for slope
+of line. Default is 0.}
+
+\item{sd_slope}{Standard deviation in prior for slope
 of line. Default is 1.}
 
 \item{along}{Name of the variable to be used
-as the "along" variable. Only used with
+as the 'along' variable. Only used with
 interactions.}
+
+\item{con}{Constraints on parameters.
+Current choices are \code{"none"} and \code{"by"}.
+Default is \code{"none"}. See below for details.}
 }
 \value{
 An object of class \code{"bage_prior_lin"}.
@@ -28,13 +35,14 @@ or interaction. Typically used with time.
 \details{
 If \code{Lin()} is used with an interaction,
 then separate lines are constructed along
-the "along" variable, within each combination
-of the "by" variables.
+the 'along' variable, within each combination
+of the 'by' variables.
 
 Argument \code{s} controls the size of the errors.
 Smaller values tend to give smoother estimates.
+\code{s} can be zero.
 
-Argument \code{sd} controls the size of the slopes of
+Argument \code{sd_slope} controls the size of the slopes of
 the lines. Larger values can give more steeply
 sloped lines.
 }
@@ -57,22 +65,48 @@ where
 \itemize{
 \item \eqn{\pmb{\beta}} is the main effect or interaction;
 \item \eqn{j} denotes position within the main effect;
-\item \eqn{v} denotes position within the "along" variable of the interaction; and
-\item \eqn{u} denotes position within the "by" variable(s) of the interaction.
+\item \eqn{v} denotes position within the 'along' variable of the interaction; and
+\item \eqn{u} denotes position within the 'by' variable(s) of the interaction.
 }
 
 The slopes have priors
-\deqn{\eta \sim \text{N}(0, \text{sd}^2)}
+\deqn{\eta \sim \text{N}(\mathtt{mean_slope}, \mathtt{sd_slope}^2)}
 and
-\deqn{\eta_u \sim \text{N}(0, \text{sd}^2).}
+\deqn{\eta_u \sim \text{N}(\mathtt{mean_slope}, \mathtt{sd_slope}^2).}
 
 Parameter \eqn{\tau} has a half-normal prior
-\deqn{\tau \sim \text{N}^+(0, \text{s}^2).}
+\deqn{\tau \sim \text{N}^+(0, \mathtt{s}^2).}
+}
+
+\section{Constraints}{
+
+
+With some combinations of terms and priors, the values of
+the intercept, main effects, and interactions are
+are only weakly identified.
+For instance, it may be possible to increase the value of the
+intercept and reduce the value of the remaining terms in
+the model with no effect on predicted rates and only a tiny
+effect on prior probabilities. This weak identifiability is
+typically harmless. However, in some applications, such as
+forecasting, or when trying to obtain interpretable values
+for main effects and interactions, it can be helpful to increase
+identifiability through the use of constraints.
+
+Current options for constraints are:
+\itemize{
+\item \code{"none"} No constraints. The default.
+\item \code{"by"} Only used in interaction terms that include 'along' and
+'by' dimensions. Within each value of the 'along'
+dimension, terms across each 'by' dimension are constrained
+to sum to 0.
+}
 }
 
 \examples{
 Lin()
-Lin(s = 0.5, sd = 2)
+Lin(s = 0.5, sd_slope = 2)
+Lin(s = 0)
 Lin(along = "cohort")
 }
 \seealso{

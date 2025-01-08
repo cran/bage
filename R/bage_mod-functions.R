@@ -43,10 +43,10 @@
 #'   model for rates, probabilities, or means
 #'
 #' @examples
-#' ## 'injuries' variable in 'injuries' dataset
+#' ## 'injuries' variable in 'nzl_injuries' dataset
 #' ## has been randomly rounded to base 3
 #' mod <- mod_pois(injuries ~ age:sex + ethnicity + year,
-#'                 data = injuries,
+#'                 data = nzl_injuries,
 #'                 exposure = popn) |>
 #'   set_datamod_outcome_rr3() |>
 #'   fit()
@@ -60,7 +60,7 @@ set_datamod_outcome_rr3 <- function(mod) {
                      i = "RR3 data model can only be used with {.val {valid_distn}} distributions."))
   ## check that values for outcome all divisible by 3
   outcome <- mod$outcome
-  is_base3 <- (outcome %% 3L) == 0L
+  is_base3 <- is.na(outcome) | ((outcome %% 3L) == 0L)
   n_not_base3 <- sum(!is_base3)
   if (n_not_base3 > 0L)
     cli::cli_abort("Outcome variable has {cli::qty(n_not_base3)} value{?s} not divisible by 3.")
@@ -109,7 +109,7 @@ set_datamod_outcome_rr3 <- function(mod) {
 #' 
 #' @examples
 #' mod <- mod_pois(injuries ~ age:sex + ethnicity + year,
-#'                 data = injuries,
+#'                 data = nzl_injuries,
 #'                 exposure = popn)
 #' mod
 #' mod |> set_disp(mean = 0.1)
@@ -140,10 +140,11 @@ set_disp <- function(mod, mean) {
 #' the tails of distributions, or for
 #' publication-quality graphics and summaries.
 #'
-#' The value of `n_draw` does not affect
-#' model fitting: it only affects posterior
-#' summaries.
-#'
+#' If the new value for `n_draw` is greater than
+#' the old value, and the model has already been fitted,
+#' then the model is [unfitted][unfit()], and
+#' function [fit()] may need to be called again.
+#' 
 #' @inheritParams set_datamod_outcome_rr3
 #' @param n_draw Number of draws.
 #'
@@ -157,10 +158,12 @@ set_disp <- function(mod, mean) {
 #' model
 #' - [set_prior()] Specify prior for a term
 #' - [set_disp()] Specify prior for dispersion
+#' - [fit()] Fit a model
+#' - [unfit()] Reset a model
 #'
 #' @examples
 #' mod <- mod_pois(injuries ~ age:sex + ethnicity + year,
-#'                 data = injuries,
+#'                 data = nzl_injuries,
 #'                 exposure = popn)
 #' mod
 #'
@@ -169,28 +172,32 @@ set_disp <- function(mod, mean) {
 #' @export
 set_n_draw <- function(mod, n_draw = 1000L) {
   check_bage_mod(x = mod, nm_x = "mod")
-  check_n(n = n_draw,
-          nm_n = "n_draw",
-          min = 0L,
-          max = NULL,
-          null_ok = FALSE)
+  poputils::check_n(n = n_draw,
+                    nm_n = "n_draw",
+                    min = 0L,
+                    max = NULL,
+                    divisible_by = NULL)
   n_draw <- as.integer(n_draw)
   n_draw_old <- mod$n_draw
   mod$n_draw <- n_draw
   if (is_fitted(mod)) {
-    if (n_draw > n_draw_old)
-      mod <- make_stored_draws(mod)
+    if (n_draw > n_draw_old) {
+      cli::cli_alert(paste("New value for {.arg n_draw} ({.val {n_draw}}) greater than",
+                           "old value ({.val {n_draw_old}}), so unfitting model."))
+      mod <- unfit(mod)
+    }
     if (n_draw < n_draw_old) {
       s <- seq_len(n_draw)
       mod$draws_effectfree <- mod$draws_effectfree[, s, drop = FALSE] 
       mod$draws_hyper <- mod$draws_hyper[, s, drop = FALSE]
-      mod$draws_hyperrand <- mod$draws_hyperrand[, s, drop = FALSE]
+      mod$draws_hyperrandfree <- mod$draws_hyperrandfree[, s, drop = FALSE]
       if (has_disp(mod))
         mod$draws_disp <- mod$draws_disp[s]
     }
   }
   mod
 }
+
 
 
 ## 'set_prior' ----------------------------------------------------------------
@@ -219,7 +226,7 @@ set_n_draw <- function(mod, n_draw = 1000L) {
 #'
 #' @examples
 #' mod <- mod_pois(injuries ~ age + year,
-#'                 data = injuries,
+#'                 data = nzl_injuries,
 #'                 exposure = popn)
 #' mod
 #' mod |> set_prior(age ~ RW2())
@@ -229,7 +236,6 @@ set_prior <- function(mod, formula) {
   check_bage_mod(x = mod, nm_x = "mod")
   check_format_prior_formula(formula)
   nms_terms <- names(mod$priors)
-  matrices_effect_outcome <- mod$matrices_effect_outcome
   dimnames_terms <- mod$dimnames_terms
   var_time <- mod$var_time
   var_age <- mod$var_age
@@ -254,7 +260,6 @@ set_prior <- function(mod, formula) {
                      i = prior$message))
   dimnames_term <- dimnames_terms[[i]]
   is_prior_ok_for_term(prior = prior,
-                       nm = nm_response,
                        dimnames_term = dimnames_term,
                        var_time = var_time,
                        var_age = var_age,
@@ -305,7 +310,7 @@ set_prior <- function(mod, formula) {
 #' 
 #' @examples
 #' ## rename 'age' variable to something unusual
-#' injuries2 <- injuries
+#' injuries2 <- nzl_injuries
 #' injuries2$age_last_birthday <- injuries2$age
 #'
 #' ## mod_pois does not recognize age variable
@@ -367,7 +372,7 @@ set_var_age <- function(mod, name) {
 #' 
 #' @examples
 #' ## rename 'sex' variable to something unexpected
-#' injuries2 <- injuries
+#' injuries2 <- nzl_injuries
 #' injuries2$biological_sex <- injuries2$sex
 #'
 #' ## mod_pois does not recognize sex variable
@@ -428,7 +433,7 @@ set_var_sexgender <- function(mod, name) {
 #'
 #' @examples
 #' ## rename time variable to something unusual
-#' injuries2 <- injuries
+#' injuries2 <- nzl_injuries
 #' injuries2$calendar_year <- injuries2$year
 #'
 #' ## mod_pois does not recognize time variable
@@ -470,7 +475,7 @@ set_var_time <- function(mod, name) {
 #' @examples
 #' ## create a model, which starts out unfitted
 #' mod <- mod_pois(injuries ~ age + sex + year,
-#'                 data = injuries,
+#'                 data = nzl_injuries,
 #'                 exposure = popn)
 #' is_fitted(mod)
 #'
@@ -483,18 +488,19 @@ set_var_time <- function(mod, name) {
 #' is_fitted(mod)
 #' @export
 unfit <- function(mod) {
-    mod["est"] <- list(NULL)
-    mod["is_fixed"] <- list(NULL)
-    mod["R_prec"] <- list(NULL)
-    mod["scaled_eigen"] <- list(NULL)
-    mod["draws_effectfree"] <- list(NULL)
-    mod["draws_hyper"] <- list(NULL)
-    mod["draws_hyperrand"] <- list(NULL)
-    mod["draws_disp"] <- list(NULL)
-    mod
+  check_bage_mod(x = mod, nm_x = "mod")
+  mod["draws_effectfree"] <- list(NULL)
+  mod["draws_hyper"] <- list(NULL)
+  mod["draws_hyperrandfree"] <- list(NULL)
+  mod["draws_disp"] <- list(NULL)
+  mod["point_effectfree"] <- list(NULL)
+  mod["point_hyper"] <- list(NULL)
+  mod["point_hyperrandfree"] <- list(NULL)
+  mod["point_disp"] <- list(NULL)
+  mod["computations"] <- list(NULL)
+  mod["oldpar"] <- list(NULL)
+  mod
 }
-
-
 
 
 ## Helper functions -----------------------------------------------------------
@@ -524,11 +530,12 @@ set_var_inner <- function(mod, name, var) {
   ## extract values
   formula <- mod$formula
   priors <- mod$priors
+  dimnames_terms <- mod$dimnames_terms
   name_old <- mod[[attr_name]]
   names_oth <- lapply(attr_names_oth, function(nm) mod[[nm]])
   has_name_old <- !is.null(name_old)
   names_priors <- names(priors)
-  matrices_effect_outcome <- mod$matrices_effect_outcome
+  lengths_effects <- make_lengths_effect(dimnames_terms)
   ## check 'name'
   check_string(x = name, nm_x = "name")
   check_formula_has_variable(name = name, formula = formula)
@@ -547,13 +554,13 @@ set_var_inner <- function(mod, name, var) {
   ## reset priors
   var_age <- mod[["var_age"]]
   var_time <- mod[["var_time"]]
-  length_effect <- ncol(matrices_effect_outcome[[name]])
+  length_effect <- lengths_effects[[name]]
   priors[[name]] <- default_prior(nm_term = name,
                                   var_age = var_age,
                                   var_time = var_time,
                                   length_effect = length_effect)
   if (has_name_old) {
-    length_effect_old <- ncol(matrices_effect_outcome[[name_old]])
+    length_effect_old <- lengths_effects[[name_old]]
     priors[[name_old]] <- default_prior(nm_term = name_old,
                                         var_age = var_age, 
                                         var_time = var_time,

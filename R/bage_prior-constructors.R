@@ -10,10 +10,10 @@
 #' Typically used with time effects or with
 #' interactions that involve time.
 #'
-#' If `AR()` is used with an interaction,
+#' If `AR()` is used with an interaction, then
 #' separate AR processes are constructed along
-#' the "along" variable, within each combination of the
-#' "by" variables.
+#' the 'along' variable, within each combination of the
+#' 'by' variables.
 #'
 #' By default, the autoregressive processes
 #' have order 2. Alternative choices can be
@@ -26,50 +26,72 @@
 #'
 #' When `AR()` is used with a main effect,
 #'
-#' \deqn{\beta_j = \phi_1 \beta_{j-1} + \cdots + \phi_n \beta_{j-n} + \epsilon_j}
+#' \deqn{\beta_j = \phi_1 \beta_{j-1} + \cdots + \phi_{\mathtt{n\_coef}} \beta_{j-\mathtt{n\_coef}} + \epsilon_j}
 #' \deqn{\epsilon_j \sim \text{N}(0, \omega^2),}
 #'
 #' and when it is used with an interaction,
 #'
-#' \deqn{\beta_{u,v} = \phi_1 \beta_{u,v-1} + \cdots + \phi_n \beta_{u,v-n} + \epsilon_{u,v}}
+#' \deqn{\beta_{u,v} = \phi_1 \beta_{u,v-1} + \cdots + \phi_{\mathtt{n\_coef}} \beta_{u,v-\mathtt{n\_coef}} + \epsilon_{u,v}}
 #' \deqn{\epsilon_{u,v} \sim \text{N}(0, \omega^2),}
 #' 
 #' where
 #' - \eqn{\pmb{\beta}} is the main effect or interaction;
 #' - \eqn{j} denotes position within the main effect;
-#' - \eqn{v} denotes position within the "along" variable of the interaction;
-#' - \eqn{u} denotes position within the "by" variable(s) of the interaction; and
-#' - \eqn{n} is `n_coef`.
+#' - \eqn{v} denotes position within the 'along' variable of the interaction; and
+#' - \eqn{u} denotes position within the 'by' variable(s) of the interaction.
 #'
 #' Internally, `AR()` derives a value for \eqn{\omega} that
 #' gives every element of \eqn{\beta} a marginal
 #' variance of \eqn{\tau^2}. Parameter \eqn{\tau}
 #' has a half-normal prior
 #'
-#' \deqn{\tau \sim \text{N}^+(0, \text{s}^2),}
+#' \deqn{\tau \sim \text{N}^+(0, \mathtt{s}^2).}
 #'
-#' where `s` is provided by the user.
-#' 
-#' The autocorrelation coefficients \eqn{\phi_1, \cdots, \phi_n}
-#' are restricted to values between -1 and 1 that jointly
-#' lead to a stationary model. The quantity
-#' \eqn{r = \sqrt{\phi_1^2 + \cdots + \phi_n^2}} has the
-#' boundary-avoiding prior
+#' The correlation coefficients \eqn{\phi_1, \cdots, \phi_{\mathtt{n\_coef}}}
+#' each have prior
 #'
-#' \deqn{r \sim \text{Beta}(2, 2).}
+#' \deqn{\phi_k \sim \text{Beta}(\mathtt{shape1}, \mathtt{shape2}).}
+#'
+#' @section Constraints:
+#'
+#' With some combinations of terms and priors, the values of
+#' the intercept, main effects, and interactions are
+#' are only weakly identified.
+#' For instance, it may be possible to increase the value of the
+#' intercept and reduce the value of the remaining terms in
+#' the model with no effect on predicted rates and only a tiny
+#' effect on prior probabilities. This weak identifiability is
+#' typically harmless. However, in some applications, such as
+#' forecasting, or when trying to obtain interpretable values
+#' for main effects and interactions, it can be helpful to increase
+#' identifiability through the use of constraints.
+#'
+#' Current options for constraints are:
+#'
+#' - `"none"` No constraints. The default.
+#' - `"by"` Only used in interaction terms that include 'along' and
+#'   'by' dimensions. Within each value of the 'along'
+#'   dimension, terms across each 'by' dimension are constrained
+#'   to sum to 0.
 #' 
 #' @param n_coef Number of lagged terms in the
 #' model, ie the order of the model. Default is `2`.
 #' @param s Scale for the prior for the innovations.
 #' Default is `1`.
+#' @param shape1,shape2 Parameters for beta-distribution prior
+#' for coefficients. Defaults are `5` and `5`.
 #' @param along Name of the variable to be used
-#' as the "along" variable. Only used with
+#' as the 'along' variable. Only used with
 #' interactions.
+#' @param con Constraints on parameters.
+#' Current choices are `"none"` and `"by"`.
+#' Default is `"none"`. See below for details.
 #'
 #' @returns An object of class `"bage_prior_ar"`.
 #'
 #' @seealso
-#' - [AR1()] Special case of `AR()`
+#' - [AR1()] Special case of `AR()`. Can be more
+#'   numerically stable than higher-order models.
 #' - [Lin_AR()], [Lin_AR1()] Straight line with AR errors
 #' - [priors] Overview of priors implemented in **bage**
 #' - [set_prior()] Specify prior for intercept,
@@ -84,24 +106,35 @@
 #' AR(n_coef = 3, s = 2.4)
 #' AR(along = "cohort")
 #' @export
-AR <- function(n_coef = 2, s = 1, along = NULL) {
-  check_n(n = n_coef,
-          nm_n = "n_coef",
-          min = 1L,
-          max = NULL,
-          null_ok = FALSE)
-  check_scale(s,
-              nm_x = "s",
-              zero_ok = FALSE)
+AR <- function(n_coef = 2,
+               s = 1,
+               shape1 = 5,
+               shape2 = 5,
+               along = NULL,
+               con = c("none", "by")) {
+  poputils::check_n(n = n_coef,
+                    nm_n = "n_coef",
+                    min = 1L,
+                    max = NULL,
+                    divisible_by = NULL)
+  check_scale(s, nm_x = "s", zero_ok = FALSE)
+  check_scale(shape1, nm_x = "shape1", zero_ok = FALSE)
+  check_scale(shape2, nm_x = "shape2", zero_ok = FALSE)
   n_coef <- as.integer(n_coef)
   scale <- as.double(s)
+  shape1 <- as.double(shape1)
+  shape2 <- as.double(shape2)
   if (!is.null(along))
     check_string(x = along, nm_x = "along")
+  con <- match.arg(con)
   new_bage_prior_ar(n_coef = n_coef,
+                    shape1 = shape1,
+                    shape2 = shape2,
                     min = -1,
                     max = 1,
                     scale = scale,
                     along = along,
+                    con = con,
                     nm = "AR")
 }
 
@@ -118,8 +151,8 @@ AR <- function(n_coef = 2, s = 1, along = NULL) {
 #'
 #' If `AR()` is used with an interaction,
 #' separate AR processes are constructed along
-#' the "along" variable, within each combination of the
-#' "by" variables.
+#' the 'along' variable, within each combination of the
+#' 'by' variables.
 #'
 #' Arguments `min` and `max` can be used to specify
 #' the permissible range for autocorrelation.
@@ -142,25 +175,27 @@ AR <- function(n_coef = 2, s = 1, along = NULL) {
 #' where
 #' - \eqn{\pmb{\beta}} is the main effect or interaction;
 #' - \eqn{j} denotes position within the main effect;
-#' - \eqn{v} denotes position within the "along" variable of the interaction; and
-#' - \eqn{u} denotes position within the "by" variable(s) of the interaction.
+#' - \eqn{v} denotes position within the 'along' variable of the interaction; and
+#' - \eqn{u} denotes position within the 'by' variable(s) of the interaction.
 #'
 #' Internally, `AR1()` derives a value for \eqn{\omega} that
 #' gives every element of \eqn{\beta} a marginal
 #' variance of \eqn{\tau^2}. Parameter \eqn{\tau}
 #' has a half-normal prior
-#' \deqn{\tau \sim \text{N}^+(0, \text{s}^2),}
+#' \deqn{\tau \sim \text{N}^+(0, \mathtt{s}^2),}
 #' where `s` is provided by the user.
 #' 
 #' Coefficient \eqn{\phi} is constrained
 #' to lie between `min` and `max`.
 #' Its prior distribution is
 #' 
-#' \deqn{\phi = (\text{max} - \text{min}) \phi' - \text{min}}
+#' \deqn{\phi = (\mathtt{max} - \mathtt{min}) \phi' - \mathtt{min}}
 #' 
 #' where
 #' 
-#' \deqn{\phi' \sim \text{Beta}(2, 2).}
+#' \deqn{\phi' \sim \text{Beta}(\mathtt{shape1}, \mathtt{shape2}).}
+#'
+#' @inheritSection AR Constraints
 #' 
 #' @inheritParams AR
 #' @param min,max Minimum and maximum values
@@ -187,19 +222,33 @@ AR <- function(n_coef = 2, s = 1, along = NULL) {
 #' AR1(min = 0, max = 1, s = 2.4)
 #' AR1(along = "cohort")
 #' @export
-AR1 <- function(min = 0.8, max = 0.98, s = 1, along = NULL) {
-  check_min_max_ar(min = min, max = max)
+AR1 <- function(s = 1,
+                shape1 = 5,
+                shape2 = 5,
+                min = 0.8,
+                max = 0.98,
+                along = NULL,
+                con = c("none", "by")) {
   check_scale(s, nm_x = "s", zero_ok = FALSE)
+  check_scale(shape1, nm_x = "shape1", zero_ok = FALSE)
+  check_scale(shape2, nm_x = "shape2", zero_ok = FALSE)
+  check_min_max_ar(min = min, max = max)
   scale <- as.double(s)
+  shape1 <- as.double(shape1)
+  shape2 <- as.double(shape2)
   min <- as.double(min)
   max <- as.double(max)
   if (!is.null(along))
     check_string(x = along, nm_x = "along")
+  con <- match.arg(con)
   new_bage_prior_ar(n_coef = 1L,
+                    scale = scale,
+                    shape1 = shape1,
+                    shape2 = shape2,
                     min = min,
                     max = max,
-                    scale = scale,
                     along = along,
+                    con = con,
                     nm = "AR1")
 }
 
@@ -240,13 +289,14 @@ Known <- function(values) {
 #'
 #' If `Lin()` is used with an interaction,
 #' then separate lines are constructed along 
-#' the "along" variable, within each combination
-#' of the "by" variables.
+#' the 'along' variable, within each combination
+#' of the 'by' variables.
 #' 
 #' Argument `s` controls the size of the errors.
 #' Smaller values tend to give smoother estimates.
+#' `s` can be zero.
 #'
-#' Argument `sd` controls the size of the slopes of
+#' Argument `sd_slope` controls the size of the slopes of
 #' the lines. Larger values can give more steeply
 #' sloped lines.
 #' 
@@ -267,21 +317,25 @@ Known <- function(values) {
 #' where
 #' - \eqn{\pmb{\beta}} is the main effect or interaction;
 #' - \eqn{j} denotes position within the main effect;
-#' - \eqn{v} denotes position within the "along" variable of the interaction; and
-#' - \eqn{u} denotes position within the "by" variable(s) of the interaction.
+#' - \eqn{v} denotes position within the 'along' variable of the interaction; and
+#' - \eqn{u} denotes position within the 'by' variable(s) of the interaction.
 #' 
 #' The slopes have priors
-#' \deqn{\eta \sim \text{N}(0, \text{sd}^2)}
+#' \deqn{\eta \sim \text{N}(\mathtt{mean_slope}, \mathtt{sd_slope}^2)}
 #' and
-#' \deqn{\eta_u \sim \text{N}(0, \text{sd}^2).}
+#' \deqn{\eta_u \sim \text{N}(\mathtt{mean_slope}, \mathtt{sd_slope}^2).}
 #'
 #' Parameter \eqn{\tau} has a half-normal prior
-#' \deqn{\tau \sim \text{N}^+(0, \text{s}^2).}
+#' \deqn{\tau \sim \text{N}^+(0, \mathtt{s}^2).}
+#'
+#' @inheritSection AR Constraints
 #'
 #' @inheritParams AR
 #' @param s Scale for the prior for the errors.
-#' Default is `1`.
-#' @param sd Standard deviation in prior for slope
+#' Default is `1`. Can be `0`.
+#' @param mean_slope Mean in prior for slope
+#' of line. Default is 0.
+#' @param sd_slope Standard deviation in prior for slope
 #' of line. Default is 1.
 #'
 #' @returns An object of class `"bage_prior_lin"`.
@@ -296,19 +350,35 @@ Known <- function(values) {
 #'
 #' @examples
 #' Lin()
-#' Lin(s = 0.5, sd = 2)
+#' Lin(s = 0.5, sd_slope = 2)
+#' Lin(s = 0)
 #' Lin(along = "cohort")
 #' @export
-Lin <- function(s = 1, sd = 1, along = NULL) {
-  check_scale(s, nm_x = "s", zero_ok = FALSE)
-  check_scale(sd, nm_x = "sd", zero_ok = FALSE)
+Lin <- function(s = 1,
+                mean_slope = 0,
+                sd_slope = 1,
+                along = NULL,
+                con = c("none", "by")) {
+  check_scale(s, nm_x = "s", zero_ok = TRUE)
+  check_number(mean_slope, nm_x = "mean_slope")
+  check_scale(sd_slope, nm_x = "sd_slope", zero_ok = FALSE)
   if (!is.null(along))
     check_string(x = along, nm_x = "along")
+  con <- match.arg(con)
   scale <- as.double(s)
-  sd_slope <- as.double(sd)
-  new_bage_prior_lin(scale = scale,
-                     sd_slope = sd_slope,
-                     along = along)
+  mean_slope <- as.double(mean_slope)
+  sd_slope <- as.double(sd_slope)
+  if (isTRUE(all.equal(scale, 0)))
+    new_bage_prior_linex(mean_slope,
+                         sd_slope = sd_slope,
+                         along = along,
+                         con = con)
+  else
+    new_bage_prior_lin(scale = scale,
+                       mean_slope,
+                       sd_slope = sd_slope,
+                       along = along,
+                       con = con)
 }
 
 
@@ -321,8 +391,8 @@ Lin <- function(s = 1, sd = 1, along = NULL) {
 #'
 #' If `Lin_AR()` is used with an interaction,
 #' separate lines are constructed along 
-#' the "along" variable, within each combination
-#' of the "by" variables.
+#' the 'along' variable, within each combination
+#' of the 'by' variables.
 #'
 #' The order of the autoregressive errors is
 #' controlled by the `n_coef` argument. The
@@ -331,7 +401,7 @@ Lin <- function(s = 1, sd = 1, along = NULL) {
 #' Argument `s` controls the size of the innovations.
 #' Smaller values tend to give smoother estimates.
 #'
-#' Argument `sd` controls the size of the slopes of
+#' Argument `sd_slope` controls the slopes of
 #' the lines. Larger values can give more steeply
 #' sloped lines.
 #' 
@@ -342,7 +412,7 @@ Lin <- function(s = 1, sd = 1, along = NULL) {
 #' \deqn{\beta_1 = \alpha + \epsilon_1}
 #' \deqn{\beta_j = \alpha + (j - 1) \eta + \epsilon_j, \quad j > 1}
 #' \deqn{\alpha \sim \text{N}(0, 1)}
-#' \deqn{\epsilon_j = \phi_1 \epsilon_{j-1} + \cdots + \phi_n \epsilon_{j-n} + \varepsilon_j}
+#' \deqn{\epsilon_j = \phi_1 \epsilon_{j-1} + \cdots + \phi_{\mathtt{n\_coef}} \epsilon_{j-\mathtt{n\_coef}} + \varepsilon_j}
 #' \deqn{\varepsilon_j \sim \text{N}(0, \omega^2),}
 #'
 #' and when it is used with an interaction,
@@ -350,39 +420,39 @@ Lin <- function(s = 1, sd = 1, along = NULL) {
 #' \deqn{\beta_{u,1} = \alpha_u + \epsilon_{u,1}}
 #' \deqn{\beta_{u,v} = \eta (v - 1) + \epsilon_{u,v}, \quad v = 2, \cdots, V}
 #' \deqn{\alpha_u \sim \text{N}(0, 1)}
-#' \deqn{\epsilon_{u,v} = \phi_1 \epsilon_{u,v-1} + \cdots + \phi_n \epsilon_{u,v-n} + \varepsilon_{u,v},}
+#' \deqn{\epsilon_{u,v} = \phi_1 \epsilon_{u,v-1} + \cdots + \phi_{\mathtt{n\_coef}} \epsilon_{u,v-\mathtt{n\_coef}} + \varepsilon_{u,v},}
 #' \deqn{\varepsilon_{u,v} \sim \text{N}(0, \omega^2).}
 #' 
 #' where
 #' - \eqn{\pmb{\beta}} is the main effect or interaction;
 #' - \eqn{j} denotes position within the main effect;
-#' - \eqn{u} denotes position within the "along" variable of the interaction;
-#' - \eqn{u} denotes position within the "by" variable(s) of the interaction; and
-#' - \eqn{n} is `n_coef`.
+#' - \eqn{u} denotes position within the 'along' variable of the interaction; and
+#' - \eqn{u} denotes position within the 'by' variable(s) of the interaction.
 #'
 #' The slopes have priors
-#' \deqn{\eta \sim \text{N}(0, \text{sd}^2)}
+#' \deqn{\eta \sim \text{N}(\mathtt{mean\_slope}, \mathtt{sd\_slope}^2)}
 #' and
-#' \deqn{\eta_u \sim \text{N}(0, \text{sd}^2).}
+#' \deqn{\eta_u \sim \text{N}(\mathtt{mean\_slope}, \mathtt{sd\_slope}^2).}
 #'
 #' Internally, `Lin_AR()` derives a value for \eqn{\omega} that
 #' gives \eqn{\epsilon_j} or \eqn{\epsilon_{u,v}} a marginal
 #' variance of \eqn{\tau^2}. Parameter \eqn{\tau}
 #' has a half-normal prior
-#' \deqn{\tau \sim \text{N}^+(0, \text{s}^2),}
-#' where a value for `s` is provided by the user.
+#' \deqn{\tau \sim \text{N}^+(0, \mathtt{s}^2).}
 #'
-#' The \eqn{\phi_1, \cdots, \phi_k} are restricted to values
-#' between -1 and 1 that jointly lead to a stationary model. The quantity
-#' \eqn{r = \sqrt{\phi_1^2 + \cdots + \phi_k^2}} has
-#' boundary-avoiding prior
+#' The correlation coefficients \eqn{\phi_1, \cdots, \phi_{\mathtt{n\_coef}}}
+#' each have prior
 #'
-#' \deqn{r \sim \text{Beta}(2, 2).}
+#' \deqn{0.5 \phi_k - 0.5 \sim \text{Beta}(\mathtt{shape1}, \mathtt{shape2}).}
+#'
+#' @inheritSection AR Constraints
 #' 
 #' @inheritParams AR
 #' @param s Scale for the innovations in the
 #' AR process. Default is `1`.
-#' @param sd Standard deviation in the prior for
+#' @param mean_slope Mean in prior for slope
+#' of line. Default is 0.
+#' @param sd_slope Standard deviation in the prior for
 #' the slope of the line. Larger values imply
 #' steeper slopes. Default is 1.
 #'
@@ -398,29 +468,45 @@ Lin <- function(s = 1, sd = 1, along = NULL) {
 #'
 #' @examples
 #' Lin_AR()
-#' Lin_AR(n_coef = 3, s = 0.5, sd = 2)
+#' Lin_AR(n_coef = 3, s = 0.5, sd_slope = 2)
 #' @export
-Lin_AR <- function(n_coef = 2, s = 1, sd = 1, along = NULL) {
-  check_n(n = n_coef,
-          nm_n = "n_coef",
-          min = 1L,
-          max = NULL,
-          null_ok = FALSE)
-  check_scale(s,
-              nm_x = "s",
-              zero_ok = FALSE)
-  check_scale(sd, nm_x = "sd", zero_ok = FALSE)
+Lin_AR <- function(n_coef = 2,
+                   s = 1,
+                   shape1 = 5,
+                   shape2 = 5,
+                   mean_slope = 0,
+                   sd_slope = 1,
+                   along = NULL,
+                   con = c("none", "by")) {
+  poputils::check_n(n = n_coef,
+                    nm_n = "n_coef",
+                    min = 1L,
+                    max = NULL,
+                    divisible_by = NULL)
+  check_scale(s, nm_x = "s", zero_ok = FALSE)
+  check_scale(shape1, nm_x = "shape1", zero_ok = FALSE)
+  check_scale(shape2, nm_x = "shape2", zero_ok = FALSE)
+  check_number(mean_slope, nm_x = "mean_slope")
+  check_scale(sd_slope, nm_x = "sd_slope", zero_ok = FALSE)
   if (!is.null(along))
     check_string(along, nm_x = "along")
+  con <- match.arg(con)
   n_coef <- as.integer(n_coef)
   scale <- as.double(s)
-  sd_slope <- as.double(sd)
+  shape1 <- as.double(shape1)
+  shape2 <- as.double(shape2)
+  mean_slope <- as.double(mean_slope)
+  sd_slope <- as.double(sd_slope)
   new_bage_prior_linar(n_coef = n_coef,
-                       scale = scale,
+                       shape1 = shape1,
+                       shape2 = shape2,
+                       mean_slope = mean_slope,
                        sd_slope = sd_slope,
                        min = -1,
                        max = 1,
+                       scale = scale,
                        along = along,
+                       con = con,
                        nm = "Lin_AR")
 }
 
@@ -432,10 +518,10 @@ Lin_AR <- function(n_coef = 2, s = 1, sd = 1, along = NULL) {
 #' errors to model a main effect
 #' or interaction. Typically used with time.
 #'
-#' If `Lin_AR()` is used with an interaction,
+#' If `Lin_AR1()` is used with an interaction,
 #' separate lines are constructed along 
-#' the "along" variable, within each combination
-#' of the "by" variables.
+#' the 'along' variable, within each combination
+#' of the 'by' variables.
 #'
 #' Arguments `min` and `max` can be used to specify
 #' the permissible range for autocorrelation.
@@ -443,7 +529,7 @@ Lin_AR <- function(n_coef = 2, s = 1, sd = 1, along = NULL) {
 #' Argument `s` controls the size of the innovations.
 #' Smaller values tend to give smoother estimates.
 #'
-#' Argument `sd` controls the size of the slopes of
+#' Argument `sd_slope` controls the slopes of
 #' the lines. Larger values can give more steeply
 #' sloped lines.
 #'
@@ -451,44 +537,47 @@ Lin_AR <- function(n_coef = 2, s = 1, sd = 1, along = NULL) {
 #'
 #' When `Lin_AR1()` is being used with a main effect,
 #'
-#' \deqn{\beta_j = \eta q_j + \epsilon_j}
-#' \deqn{\epsilon_j = \phi \epsilon_{j-1} + \varepsilon_j,}
-#' \deqn{\varepsilon_j \sim \text{N}(0, \omega^2).}
+#' \deqn{\beta_1 = \alpha + \epsilon_1}
+#' \deqn{\beta_j = \alpha + (j - 1) \eta + \epsilon_j, \quad j > 1}
+#' \deqn{\alpha \sim \text{N}(0, 1)}
+#' \deqn{\epsilon_j = \phi \epsilon_{j-1} + \varepsilon_j}
+#' \deqn{\varepsilon \sim \text{N}(0, \omega^2),}
 #'
-#' and when it is being used with an interaction,
+#' and when it is used with an interaction,
 #'
-#' \deqn{\beta_{u,v} = \eta_j q_{u,v} + \epsilon_{u,v}}
-#' \deqn{\epsilon_{u,v} = \phi + \varepsilon_{u,v},}
+#' \deqn{\beta_{u,1} = \alpha_u + \epsilon_{u,1}}
+#' \deqn{\beta_{u,v} = \eta (v - 1) + \epsilon_{u,v}, \quad v = 2, \cdots, V}
+#' \deqn{\alpha_u \sim \text{N}(0, 1)}
+#' \deqn{\epsilon_{u,v} = \phi \epsilon_{u,v-1} + \varepsilon_{u,v},}
 #' \deqn{\varepsilon_{u,v} \sim \text{N}(0, \omega^2).}
 #' 
 #' where
 #' - \eqn{\pmb{\beta}} is the main effect or interaction;
 #' - \eqn{j} denotes position within the main effect;
-#' - \eqn{u} denotes position within the "along" variable of the interaction;
-#' - \eqn{u} denotes position within the "by" variable(s) of the interaction;
-#' - \eqn{q = - (J+1)/(J-1) + 2j/(J-1);} and
-#' - \eqn{q_v = - (V+1)/(V-1) + 2v/(V-1)}.
+#' - \eqn{u} denotes position within the 'along' variable of the interaction; and
+#' - \eqn{u} denotes position within the 'by' variable(s) of the interaction.
 #'
 #' The slopes have priors
-#' \deqn{\eta \sim \text{N}(0, \text{sd}^2)}
+#' \deqn{\eta \sim \text{N}(\mathtt{mean\_slope}, \mathtt{sd\_slope}^2)}
 #' and
-#' \deqn{\eta_u \sim \text{N}(0, \text{sd}^2).}
-#' Larger values for `sd` permit steeper slopes.
+#' \deqn{\eta_u \sim \text{N}(\mathtt{mean\_slope}, \mathtt{sd\_slope}^2).}
 #'
 #' Internally, `Lin_AR1()` derives a value for \eqn{\omega} that
 #' gives \eqn{\epsilon_j} or \eqn{\epsilon_{u,v}} a marginal
 #' variance of \eqn{\tau^2}. Parameter \eqn{\tau}
 #' has a half-normal prior
-#' \deqn{\tau \sim \text{N}^+(0, \text{s}^2),}
+#' \deqn{\tau \sim \text{N}^+(0, \mathtt{s}^2),}
 #' where a value for `s` is provided by the user.
 #'
 #' Coefficient \eqn{\phi} is constrained
 #' to lie between `min` and `max`.
 #' Its prior distribution is
-#' \deqn{\phi = (\text{max} - \text{min}) \phi' - \text{min}}
+#' \deqn{\phi = (\mathtt{max} - \mathtt{min}) \phi' - \mathtt{min}}
 #' where
-#' \deqn{\phi' \sim \text{Beta}(2, 2).}
+#' \deqn{\phi' \sim \text{Beta}(\mathtt{shape1}, \mathtt{shape2}).}
 #' 
+#' @inheritSection AR Constraints
+#'
 #' @inheritParams Lin_AR
 #' @param min,max Minimum and maximum values
 #' for autocorrelation coefficient.
@@ -510,26 +599,43 @@ Lin_AR <- function(n_coef = 2, s = 1, sd = 1, along = NULL) {
 #'
 #' @examples
 #' Lin_AR1()
-#' Lin_AR1(min = 0, s = 0.5, sd = 2)
+#' Lin_AR1(min = 0, s = 0.5, sd_slope = 2)
 #' @export
-Lin_AR1 <- function(min = 0.8, max = 0.98, s = 1, sd = 1, along = NULL) {
+Lin_AR1 <- function(s = 1,
+                    shape1 = 5,
+                    shape2 = 5,
+                    min = 0.8,
+                    max = 0.98,
+                    mean_slope = 0,
+                    sd_slope = 1,
+                    along = NULL,
+                    con = c("none", "by")) {
   check_min_max_ar(min = min, max = max)
-  check_scale(s,
-              nm_x = "s",
-              zero_ok = FALSE)
-  check_scale(sd, nm_x = "sd", zero_ok = FALSE)
+  check_scale(s, nm_x = "s", zero_ok = FALSE)
+  check_scale(shape1, nm_x = "shape1", zero_ok = FALSE)
+  check_scale(shape2, nm_x = "shape2", zero_ok = FALSE)
+  check_number(mean_slope, nm_x = "mean_slope")
+  check_scale(sd_slope, nm_x = "sd_slope", zero_ok = FALSE)
   if (!is.null(along))
     check_string(x = along, nm_x = "along")
+  con <- match.arg(con)
   scale <- as.double(s)
-  sd_slope <- as.double(sd)
+  shape1 <- as.double(shape1)
+  shape2 <- as.double(shape2)
   min <- as.double(min)
   max <- as.double(max)
+  mean_slope <- as.double(mean_slope)
+  sd_slope <- as.double(sd_slope)
   new_bage_prior_linar(n_coef = 1L,
                        scale = scale,
-                       sd_slope = sd_slope,
+                       shape1 = shape1,
+                       shape2 = shape2,
                        min = min,
                        max = max,
+                       mean_slope = mean_slope,
+                       sd_slope = sd_slope,
                        along = along,
+                       con = con,
                        nm = "Lin_AR1")
 }
 
@@ -554,7 +660,7 @@ Lin_AR1 <- function(min = 0.8, max = 0.98, s = 1, sd = 1, along = NULL) {
 #' 
 #' Parameter \eqn{\tau}
 #' has a half-normal prior
-#' \deqn{\tau \sim \text{N}^+(0, \text{s}^2),}
+#' \deqn{\tau \sim \text{N}^+(0, \mathtt{s}^2),}
 #' where `s` is provided by the user.
 #'
 #' @param s Scale for the standard deviation.
@@ -624,53 +730,64 @@ NFix <- function(sd = 1) {
 ## HAS_TESTS
 #' Random Walk Prior
 #'
-#' Use a random walk to model
+#' Use a random walk as a model for
 #' a main effect, or use multiple random walks
-#' to model an interaction.
-#' Typically used with age or time effects or with
-#' interactions that involve age or time.
+#' as a model for an interaction.
+#' Typically used with terms that involve age or time.
 #'
-#' If `RW()` is used with an interaction,
-#' separate random walks are constructed along
-#' the "along" variable, within each combination of the
-#' "by" variables.
+#' If `RW2()` is used with an interaction,
+#' a separate random walk is constructed
+#' within each combination of the
+#' 'by' variables.
 #'
 #' Argument `s` controls the size of innovations.
-#' Smaller values for `s` tend to give smoother series.
+#' Smaller values for `s` tend to produce smoother series.
+#'
+#' Argument `sd` controls variance in
+#' initial values. Setting `sd` to `0` fixes initial
+#' values at 0.
 #' 
 #' @section Mathematical details:
 #'
 #' When `RW()` is used with a main effect,
 #'
-#' \deqn{\beta_j = \beta_{j-1} + \epsilon_j}
-#' \deqn{\epsilon_j \sim \text{N}(0, \tau^2),}
+#' \deqn{\beta_1 \sim \text{N}(0, \mathtt{sd}^2)}
+#' \deqn{\beta_j \sim \text{N}(\beta_{j-1}, \tau^2), \quad j > 1}
 #'
 #' and when it is used with an interaction,
 #'
-#' \deqn{\beta_{u,v} = \beta_{u,v-1} + \epsilon_{u,v}}
-#' \deqn{\epsilon_{u,v} \sim \text{N}(0, \tau^2),}
+#' \deqn{\beta_{u,1} \sim \text{N}(0, \mathtt{sd}^2)}
+#' \deqn{\beta_{u,v} \sim \text{N}(\beta_{u,v-1}, \tau^2), \quad v > 1}
 #' 
 #' where
 #' - \eqn{\pmb{\beta}} is the main effect or interaction;
 #' - \eqn{j} denotes position within the main effect;
-#' - \eqn{v} denotes position within the "along" variable of the interaction; and
-#' - \eqn{u} denotes position within the "by" variable(s) of the interaction.
+#' - \eqn{v} denotes position within the 'along' variable of the interaction; and
+#' - \eqn{u} denotes position within the 'by' variable(s) of the interaction.
 #'
 #' Parameter \eqn{\tau}
 #' has a half-normal prior
-#' \deqn{\tau \sim \text{N}^+(0, \text{s}^2),}
+#' \deqn{\tau \sim \text{N}^+(0, \mathtt{s}^2),}
 #' where `s` is provided by the user.
 #'
+#' @inheritSection AR Constraints
+#' 
 #' @inheritParams AR
+#' @param sd Standard deviation
+#' of initial value. Default is `1`.
+#' Can be `0`.
 #'
-#' @returns An object of class `"bage_prior_rw"`.
+#'
+#' @returns An object of class `"bage_prior_rwrandom"`
+#' or `"bage_prior_rwzero"`.
 #'
 #' @seealso
+#' - [RW_Seas()] Random walk with seasonal effect
 #' - [RW2()] Second-order random walk
 #' - [AR()] Autoregressive with order k
 #' - [AR1()] Autoregressive with order 1
 #' - [Sp()] Smoothing via splines
-#' - [SVD()] Smoothing of age via singular value decomposition
+#' - [SVD()] Smoothing over age using singular value decomposition
 #' - [priors] Overview of priors implemented in **bage**
 #' - [set_prior()] Specify prior for intercept,
 #'   main effect, or interaction
@@ -678,196 +795,259 @@ NFix <- function(sd = 1) {
 #' @examples
 #' RW()
 #' RW(s = 0.5)
+#' RW(sd = 0)
 #' RW(along = "cohort")
 #' @export
-RW <- function(s = 1, along = NULL) {
+RW <- function(s = 1,
+               sd = 1,
+               along = NULL,
+               con = c("none", "by")) {
   check_scale(s, nm_x = "s", zero_ok = FALSE)
+  check_scale(sd, nm_x = "sd", zero_ok = TRUE)
   scale <- as.double(s)
+  sd <- as.double(sd)
   if (!is.null(along))
     check_string(along, nm_x = "along")
-  new_bage_prior_rw(scale = scale,
-                    along = along)
+  con <- match.arg(con)
+  if (sd > 0)
+    new_bage_prior_rwrandom(scale = scale,
+                            sd = sd,
+                            along = along,
+                            con = con)
+  else
+    new_bage_prior_rwzero(scale = scale,
+                          along = along,
+                          con = con)
 }
 
 
 ## HAS_TESTS
 #' Random Walk Prior with Seasonal Effect
 #'
-#' Use a random walk with seasonal effects to model
+#' Use a random walk with seasonal effects as a model for
 #' a main effect, or use multiple random walks,
 #' each with their own seasonal effects,
-#' to model an interaction.
-#' Typically used with main effects or interactions
-#' that involve time.
+#' as a model for an interaction.
+#' Typically used with terms that involve time.
 #'
 #' If `RW_Seas()` is used with an interaction,
-#' separate series are used for
-#' the "along" variable within
-#' each combination of the
-#' "by" variables.
+#' a separate series is constructed
+#' within each combination of the
+#' 'by' variables.
 #'
 #' Argument `s` controls the size of innovations in the random walk.
-#' Smaller values for `s` tend to give smoother series.
+#' Smaller values for `s` tend to produce smoother series.
 #'
-#' Argument `n_seas` controls the number of `seasons`. 
+#' Argument `sd` controls variance in
+#' initial values of the random walk. `sd` can be `0`.
+#'
+#' Argument `n_seas` controls the number of seasons. 
 #' When using quarterly data, for instance,
-#' `n_seas` should be `4`, and when using
-#' monthly data, `n_seas` should be `12`.
+#' `n_seas` should be `4`.
 #'
 #' By default, the magnitude of seasonal effects
-#' can change over time. However, setting `s_seas`
-#' to `0` produces seasonal effects that are fixed,
-#' eg where "January" effect is the same every year,
-#'  the "Feburary" effect is the same every year, and so on.
+#' is fixed. However, setting `s_seas` to a value
+#' greater than zero produces seasonal effects
+#' that evolve over time.
 #'
 #' @section Mathematical details:
 #'
 #' When `RW_Seas()` is used with a main effect,
 #'
-#' \deqn{\beta_j = \alpha_j + \lambda_j}
-#' \deqn{\alpha_j \sim \text{N}(\alpha_{j-1}, \tau^2)}
-#' \deqn{\lambda_j \sim \text{N}(\lambda_{j-n}, \omega^2),}
+#' \deqn{\beta_j = \alpha_j + \lambda_j, \quad j = 1, \cdots, J}
+#' \deqn{\alpha_1 \sim \text{N}(0, \mathtt{sd}^2)}
+#' \deqn{\alpha_j \sim \text{N}(\alpha_{j-1}, \tau^2), \quad j = 2, \cdots, J}
+#' \deqn{\lambda_j \sim \text{N}(0, \mathtt{sd\_seas}^2), \quad j = 1, \cdots, \mathtt{n\_seas} - 1}
+#' \deqn{\lambda_j = -\sum_{s=1}^{\mathtt{n\_seas} - 1} \lambda_{j - s}, \quad j = \mathtt{n\_seas}, 2 \mathtt{n\_seas}, \cdots}
+#' \deqn{\lambda_j \sim \text{N}(\lambda_{j-\mathtt{n\_seas}}, \omega^2), \quad \text{otherwise},}
 #'
 #' and when it is used with an interaction,
 #'
-#' \deqn{\beta_{u,v} = \alpha_{u,v} + \lambda_{u,v}}
-#' \deqn{\alpha_{u,v} \sim \text{N}(\alpha_{u,v-1}, \tau^2),}
-#' \deqn{\lambda_{u,v} \sim \text{N}(\lambda_{u,v-n}, \omega^2)}
+#' \deqn{\beta_{u,v} = \alpha_{u,v} + \lambda_{u,v}, \quad v = 1, \cdots, V}
+#' \deqn{\alpha_{u,1} \sim \text{N}(0, \mathtt{sd}^2)}
+#' \deqn{\alpha_{u,v} \sim \text{N}(\alpha_{u,v-1}, \tau^2), \quad v = 2, \cdots, V}
+#' \deqn{\lambda_{u,v} \sim \text{N}(0, \mathtt{sd\_seas}^2), \quad v = 1, \cdots, \mathtt{n\_seas} - 1}
+#' \deqn{\lambda_{u,v} = -\sum_{s=1}^{\mathtt{n\_seas} - 1} \lambda_{u,v - s}, \quad v = \mathtt{n\_seas}, 2 \mathtt{n\_seas}, \cdots}
+#' \deqn{\lambda_{u,v} \sim \text{N}(\lambda_{u,v-\mathtt{n\_seas}}, \omega^2), \quad \text{otherwise},}
 #' 
 #' where
 #' - \eqn{\pmb{\beta}} is the main effect or interaction;
 #' - \eqn{\alpha_j} or \eqn{\alpha_{u,v}} is an element of the random walk;
 #' - \eqn{\lambda_j} or \eqn{\lambda_{u,v}} is an element of the seasonal effect;
 #' - \eqn{j} denotes position within the main effect;
-#' - \eqn{v} denotes position within the "along" variable of the interaction;
-#' - \eqn{u} denotes position within the "by" variable(s) of the interaction; and
-#' - \eqn{n} is `n_seas`.
+#' - \eqn{v} denotes position within the 'along' variable of the interaction; and
+#' - \eqn{u} denotes position within the 'by' variable(s) of the interaction.
 #'
 #' Parameter \eqn{\omega} has a half-normal prior
-#' \deqn{\omega \sim \text{N}^+(0, \text{s\_seas}^2),}
-#' where `s_seas` is provided by the user. If
-#' `s_seas` is set to 0, then \eqn{\omega} is 0,
-#' and the seasonal effects are fixed over time.
+#' \deqn{\omega \sim \text{N}^+(0, \mathtt{s\_seas}^2).}
+#' If `s_seas` is set to 0, then \eqn{\omega} is 0,
+#' and seasonal effects are time-invariant.
 #'
 #' Parameter \eqn{\tau} has a half-normal prior
-#' \deqn{\tau \sim \text{N}^+(0, \text{s}^2),}
-#' where `s` is provided by the user.
+#' \deqn{\tau \sim \text{N}^+(0, \mathtt{s}^2).}
+#'
+#' @inheritSection AR Constraints
 #' 
 #' @inheritParams AR
-#' 
 #' @param n_seas Number of seasons
 #' @param s Scale for prior for innovations in
-#' the random walk. Default is `1`.
-#' @param s_seas Scale for prior for innovations
-#' in the seasonal effect. Default is `1`.
+#' random walk. Default is `1`.
+#' @param sd Standard deviation
+#' of initial value. Default is `1`.
 #' Can be `0`.
+#' @param s_seas Scale for innovations
+#' in seasonal effects. Default is `0`.
+#' @param sd_seas Standard deviation for
+#' initial values of seasonal effects.
+#' Default is `1`.
 #'
-#' @returns Object of class `"bage_prior_rwseasvary"`
-#' or `"bage_prior_rwseasfix"`.
+#' @returns Object of class
+#' `"bage_prior_rwrandomseasvary"`,
+#' `"bage_prior_rwrandomseasfix"`,
+#' `"bage_prior_rwzeroseasvary"`, or
+#' `"bage_prior_rwzeroseasfix"`.
 #'
 #' @seealso
 #' - [RW()] Random walk without seasonal effect
-#' - [RW2_Seas()] Second-order random walk, with seasonal effect
+#' - [RW2_Seas()] Second-order random walk with seasonal effect
 #' - [priors] Overview of priors implemented in **bage**
 #' - [set_prior()] Specify prior for intercept,
 #'   main effect, or interaction
 #'
 #' @examples
-#' RW_Seas(n_seas = 4)             ## seasonal effects evolve
-#' RW_Seas(n_seas = 4, s_seas = 0) ## seasonal effects fixed
+#' RW_Seas(n_seas = 4)               ## seasonal effects fixed
+#' RW_Seas(n_seas = 4, s_seas = 0.5) ## seasonal effects evolve
+#' RW_Seas(n_seas = 4, sd = 0)       ## first term in random walk fixed at 0
 #' @export
-RW_Seas <- function(n_seas, s = 1, s_seas = 1, along = NULL) {
-  check_n(n = n_seas,
-          nm_n = "n_seas",
-          min = 2L,
-          max = NULL,
-          null_ok = FALSE)
+RW_Seas <- function(n_seas,
+                    s = 1,
+                    sd = 1,
+                    s_seas = 0,
+                    sd_seas = 1,
+                    along = NULL,
+                    con = c("none", "by")) {
+  poputils::check_n(n = n_seas,
+                    nm_n = "n_seas",
+                    min = 2L,
+                    max = NULL,
+                    divisible_by = NULL)
   check_scale(s, nm_x = "s", zero_ok = FALSE)
+  check_scale(sd, nm_x = "sd", zero_ok = TRUE)
   check_scale(s_seas, nm_x = "s_seas", zero_ok = TRUE)
+  check_scale(sd_seas, nm_x = "sd_seas", zero_ok = FALSE)
   n_seas <- as.integer(n_seas)
   scale <- as.double(s)
+  sd <- as.double(sd)
   scale_seas = as.double(s_seas)
+  sd_seas <- as.double(sd_seas)
   if (!is.null(along))
     check_string(along, nm_x = "along")
-  if (scale_seas > 0)
-    new_bage_prior_rwseasvary(n_seas = n_seas,
-                              scale = scale,
-                              scale_seas = scale_seas,
-                              along = along)
-  else
-    new_bage_prior_rwseasfix(n_seas = n_seas,
-                             scale = scale,
-                             along = along)
+  con <- match.arg(con)
+  if (scale_seas > 0) {
+    if (sd > 0)
+      new_bage_prior_rwrandomseasvary(n_seas = n_seas,
+                                      scale_seas = scale_seas,
+                                      sd_seas = sd_seas,
+                                      scale = scale,
+                                      sd = sd,
+                                      along = along,
+                                      con = con)
+    else
+      new_bage_prior_rwzeroseasvary(n_seas = n_seas,
+                                    scale_seas = scale_seas,
+                                    sd_seas = sd_seas,
+                                    scale = scale,
+                                    along = along,
+                                    con = con)
+  }
+  else {
+    if (sd > 0)
+      new_bage_prior_rwrandomseasfix(n_seas = n_seas,
+                                     sd_seas = sd_seas,
+                                     scale = scale,
+                                     sd = sd,
+                                     along = along,
+                                     con = con)
+    else
+      new_bage_prior_rwzeroseasfix(n_seas = n_seas,
+                                   sd_seas = sd_seas,
+                                   scale = scale,
+                                   along = along,
+                                   con = con)
+  }
 }
 
 
 ## HAS_TESTS
 #' Second-Order Random Walk Prior
 #'
-#' Use a second-oder random walk to model
+#' Use a second-order random walk as a model for
 #' a main effect, or use multiple second-order random walks
-#' to model an interaction.
-#' A second-order random walk is effectively
+#' as a model for an interaction.
+#' A second-order random walk is
 #' a random walk with drift where the
 #' drift term varies. It is typically
-#' used with main effects or interactions
-#' that involve time, where there are sustained
+#' used with terms that involve age or time,
+#' where there are sustained
 #' trends upward or downward.
 #'
 #' If `RW2()` is used with an interaction,
-#' separate series are used for
-#' the "along" variable within
-#' each combination of the
-#' "by" variables.
+#' a separate random walk is constructed
+#' within each combination of the
+#' 'by' variables.
 #'
-#' Argument `s` controls the size of innovations in the random walk.
+#' Argument `s` controls the size of innovations.
 #' Smaller values for `s` tend to give smoother series.
 #'
-#' Argument `n_seas` controls the number of `seasons`. 
-#' When using quarterly data, for instance,
-#' `n_seas` should be `4`, and when using
-#' monthly data, `n_seas` should be `12`.
+#' Argument `sd` controls variance in
+#' initial values. Setting `sd` to `0` fixes
+#' initial values at `0`.
 #'
-#' By default, the magnitude of seasonal effects
-#' can change over time. However, setting `s_seas`
-#' to `0` produces seasonal effects that are fixed,
-#' eg where "January" effect is the same every year,
-#'  the "Feburary" effect is the same every year, and so on.
-#'
+#' Argument `sd_slope` controls variance in the
+#' initial slope.
 #'
 #' @section Mathematical details:
 #'
-#' When `RW()` is used with a main effect,
+#' When `RW2()` is used with a main effect,
 #'
-#' \deqn{\beta_j = 2 \beta_{j-1} - \beta_{j-2} + \epsilon_j}
-#' \deqn{\epsilon_j \sim \text{N}(0, \tau^2),}
+#' \deqn{\beta_1 \sim \text{N}(0, \mathtt{sd}^2)}
+#' \deqn{\beta_2 \sim \text{N}(\beta_1, \mathtt{sd\_slope}^2)} 
+#' \deqn{\beta_j \sim \text{N}(2 \beta_{j-1} - \beta_{j-2}, \tau^2), \quad j = 2, \cdots, J}
 #'
 #' and when it is used with an interaction,
 #'
-#' \deqn{\beta_{u,v} = 2\beta_{u,v-1} - \beta_{u,v-2} + \epsilon_{u,v}}
-#' \deqn{\epsilon_{u,v} \sim \text{N}(0, \tau^2),}
+#' \deqn{\beta_{u,1} \sim \text{N}(0, \mathtt{sd}^2)} 
+#' \deqn{\beta_{u,2} \sim \text{N}(\beta_{u,1}, \mathtt{sd\_slope}^2)} 
+#' \deqn{\beta_{u,v} \sim \text{N}(2\beta_{u,v-1} - \beta_{u,v-2}, \tau^2), \quad v = 3, \cdots, V}
 #' 
 #' where
 #' - \eqn{\pmb{\beta}} is the main effect or interaction;
 #' - \eqn{j} denotes position within the main effect;
-#' - \eqn{v} denotes position within the "along" variable of the interaction; and
-#' - \eqn{u} denotes position within the "by" variable(s) of the interaction.
+#' - \eqn{v} denotes position within the 'along' variable of the interaction; and
+#' - \eqn{u} denotes position within the 'by' variable(s) of the interaction.
 #'
 #' Parameter \eqn{\tau}
 #' has a half-normal prior
-#' \deqn{\tau \sim \text{N}^+(0, \text{s}^2),}
-#' where `s` is provided by the user.
+#' \deqn{\tau \sim \text{N}^+(0, \mathtt{s}^2)}.
 #'
+#' @inheritSection AR Constraints
+#' 
 #' @inheritParams AR
+#' @param sd Standard deviation
+#' of initial value. Default is `1`. Can be `0`.
+#' @param sd_slope Standard deviation
+#' of initial slope. Default is `1`.
 #'
-#' @returns An object of class `"bage_prior_rw2"`.
+#' @returns An object of class `"bage_prior_rw2random"`
+#' or `"bage_prior_rw2zero"`.
 #'
 #' @seealso
 #' - [RW()] Random walk
+#' - [RW2_Seas()] Second order random walk with seasonal effect
 #' - [AR()] Autoregressive with order k
 #' - [AR1()] Autoregressive with order 1
 #' - [Sp()] Smoothing via splines
-#' - [SVD()] Smoothing of age via singular value decomposition
+#' - [SVD()] Smoothing over age via singular value decomposition
 #' - [priors] Overview of priors implemented in **bage**
 #' - [set_prior()] Specify prior for intercept,
 #'   main effect, or interaction
@@ -876,13 +1056,117 @@ RW_Seas <- function(n_seas, s = 1, s_seas = 1, along = NULL) {
 #' RW2()
 #' RW2(s = 0.5)
 #' @export
-RW2 <- function(s = 1, along = NULL) {
+RW2 <- function(s = 1,
+                sd = 1,
+                sd_slope = 1,
+                along = NULL,
+                con = c("none", "by")) {
   check_scale(s, nm_x = "s", zero_ok = FALSE)
+  check_scale(sd, nm_x = "sd", zero_ok = TRUE)
+  check_scale(sd_slope, nm_x = "sd_slope", zero_ok = FALSE)
   if (!is.null(along))
     check_string(along, nm_x = "along")
+  con <- match.arg(con)
   scale <- as.double(s)
-  new_bage_prior_rw2(scale = scale,
-                     along = along)
+  sd <- as.double(sd)
+  sd_slope <- as.double(sd_slope)
+  if (sd > 0)
+    new_bage_prior_rw2random(scale = scale,
+                             sd = sd,
+                             sd_slope = sd_slope,
+                             along = along,
+                             con = con)
+  else
+    new_bage_prior_rw2zero(scale = scale,
+                           sd_slope = sd_slope,
+                           along = along,
+                           con = con)
+}
+
+
+## HAS_TESTS
+#' Second-Order Random Walk Prior with 'Infant' Indicator
+#'
+#' Use a second-order random walk to model variation
+#' over age, with an indicator variable for the first age group.
+#' Designed for use in models of mortality rates.
+#' 
+#' A second-order random walk prior [RW2()]
+#' works well for smoothing
+#' mortality rates over age, except at age 0, where there
+#' is a sudden jump in rates, reflecting the
+#' special risks of infancy. The `RW2_Infant()`
+#' extends the [RW2()] prior by adding an indicator
+#' variable for the first age group.
+#'
+#' If `RW2_Infant()` is used in an interaction,
+#' the 'along' dimension is always age, implying that
+#' there is a separate random walk along age within each
+#' combination of the 'by' variables.
+#'
+#' Argument `s` controls the size of innovations in the random walk.
+#' Smaller values for `s` tend to give smoother series.
+#'
+#' Argument `sd` controls the sl size of innovations in the random walk.
+#' Smaller values for `s` tend to give smoother series.
+#'
+#' @section Mathematical details:
+#'
+#' When `RW2_Infant()` is used with a main effect,
+#'
+#' \deqn{\beta_1 \sim \text{N}(0, 1)}
+#' \deqn{\beta_2 \sim \text{N}(0, \mathtt{sd\_slope}^2)}
+#' \deqn{\beta_3 \sim \text{N}(2 \beta_2, \tau^2)}
+#' \deqn{\beta_j \sim \text{N}(2 \beta_{j-1} - \beta_{j-2}, \tau^2), \quad j = 3, \cdots, J}
+#'
+#' and when it is used with an interaction,
+#'
+#' \deqn{\beta_{u,1} \sim \text{N}(0, 1)}
+#' \deqn{\beta_{u,2} \sim \text{N}(0, \mathtt{sd\_slope}^2)}
+#' \deqn{\beta_{u,3} \sim \text{N}(2 \beta_{u,2}, \tau^2)}
+#' \deqn{\beta_{u,v} \sim \text{N}(2 \beta_{u,v-1} - \beta_{u,v-2}, \tau^2), \quad v = 3, \cdots, V}
+#' 
+#' where
+#' - \eqn{\pmb{\beta}} is a main effect or interaction;
+#' - \eqn{j} denotes position within the main effect;
+#' - \eqn{v} denotes position within the 'along' variable of the interaction; and
+#' - \eqn{u} denotes position within the 'by' variable(s) of the interaction.
+#'
+#' Parameter \eqn{\tau} has a half-normal prior
+#' \deqn{\tau \sim \text{N}^+(0, \mathtt{s}^2)}.
+#'
+#' @inheritSection AR Constraints
+#' 
+#' @inheritParams RW2
+#' 
+#' @param sd_slope Standard deviation
+#' for initial slope of random walk. Default is `1`.
+#'
+#' @returns Object of class `"bage_prior_rw2infant"`.
+#'
+#' @seealso
+#' - [RW2()] Second-order random walk, without infant indicator
+#' - [Sp()] Smoothing via splines
+#' - [SVD()] Smoothing over age via singular value decomposition
+#' - [priors] Overview of priors implemented in **bage**
+#' - [set_prior()] Specify prior for intercept,
+#'   main effect, or interaction
+#'
+#' @examples
+#' RW2_Infant()
+#' RW2_Infant(s = 0.1)
+#' @export
+RW2_Infant <- function(s = 1,
+                       sd_slope = 1,
+                       con = c("none", "by")) {
+  check_scale(s, nm_x = "s", zero_ok = FALSE)
+  check_scale(sd_slope, nm_x = "sd_slope", zero_ok = FALSE)
+  scale <- as.double(s)
+  sd_slope <- as.double(sd_slope)
+  con <- match.arg(con)
+  new_bage_prior_rw2infant(scale = scale,
+                           sd_slope = sd_slope,
+                           con = con)
 }
 
 
@@ -890,131 +1174,169 @@ RW2 <- function(s = 1, along = NULL) {
 #' Second-Order Random Walk Prior with Seasonal Effect
 #'
 #' Use a second-oder random walk with
-#' seasonal effects to model
+#' seasonal effects as a model for
 #' a main effect, or use multiple second-order random walks,
 #' each with their own seasonal effects,
-#' to model an interaction.
-#' A second-order random walk is effectively
-#' a random walk with drift where the
-#' drift term varies. It is typically
-#' used with main effects or interactions
-#' that involve time, where there are sustained
-#' trends upward or downward.
+#' as a model for an interaction.
+#' Typically used with temrs that involve time.
 #'
 #' If `RW2_Seas()` is used with an interaction,
-#' separate series are used for
-#' the "along" variable within
-#' each combination of the
-#' "by" variables.
+#' a separate series is constructed within each
+#' combination of the 'by' variables.
 #'
 #' Argument `s` controls the size of innovations in the random walk.
-#' Smaller values for `s` tend to give smoother series.
+#' Smaller values for `s` tend to produce smoother series.
 #'
-#' Argument `n_seas` controls the number of `seasons`. 
+#' Argument `n_seas` controls the number of seasons. 
 #' When using quarterly data, for instance,
-#' `n_seas` should be `4`, and when using
-#' monthly data, `n_seas` should be `12`.
+#' `n_seas` should be `4`.
 #'
 #' By default, the magnitude of seasonal effects
-#' can change over time. However, setting `s_seas`
-#' to `0` produces seasonal effects that are fixed,
-#' eg where "January" effect is the same every year,
-#'  the "Feburary" effect is the same every year, and so on.
-#'
+#' is fixed. However, setting `s_seas` to a value
+#' greater than zero produces seasonal effects
+#' that evolve over time.
 #'
 #' @section Mathematical details:
 #'
 #' When `RW2_Seas()` is used with a main effect,
 #'
-#' \deqn{\beta_j = \alpha_j + \lambda_j}
-#' \deqn{\alpha_j \sim \text{N}(2 \alpha_{j-1} - \alpha_{j-2}, \tau^2)}
-#' \deqn{\lambda_j \sim \text{N}(\lambda_{j-n}, \omega^2),}
+#' \deqn{\beta_j = \alpha_j + \lambda_j, \quad j = 1, \cdots, J}
+#' \deqn{\alpha_1 \sim \text{N}(0, \mathtt{sd}^2)}
+#' \deqn{\alpha_2 \sim \text{N}(0, \mathtt{sd\_slope}^2)}
+#' \deqn{\alpha_j \sim \text{N}(2 \alpha_{j-1} - \alpha_{j-2}, \tau^2), \quad j = 3, \cdots, J}
+#' \deqn{\lambda_j \sim \text{N}(0, \mathtt{sd\_seas}^2), \quad j = 1, \cdots, \mathtt{n\_seas} - 1}
+#' \deqn{\lambda_j = -\sum_{s=1}^{\mathtt{n\_seas} - 1} \lambda_{j - s}, \quad j = \mathtt{n\_seas}, 2 \mathtt{n\_seas}, \cdots}
+#' \deqn{\lambda_j \sim \text{N}(\lambda_{j-\mathtt{n\_seas}}, \omega^2), \quad \text{otherwise},}
 #'
 #' and when it is used with an interaction,
 #'
-#' \deqn{\beta_{u,v} = \alpha_{u,v} + \lambda_{u,v}}
-#' \deqn{\alpha_{u,v} \sim \text{N}(2 \alpha_{u,v-1} - \alpha_{u,v-2}, \tau^2),}
-#' \deqn{\lambda_{u,v} \sim \text{N}(\lambda_{u,v-n}, \omega^2)}
+#' \deqn{\beta_{u,v} = \alpha_{u,v} + \lambda_{u,v}, \quad v = 1, \cdots, V}
+#' \deqn{\alpha_{u,1} \sim \text{N}(0, \mathtt{sd}^2)}
+#' \deqn{\alpha_{u,2} \sim \text{N}(0, \mathtt{sd\_slope}^2)}
+#' \deqn{\alpha_{u,v} \sim \text{N}(2 \alpha_{u,v-1} - \alpha_{u,v-2}, \tau^2), \quad v = 3, \cdots, V}
+#' \deqn{\lambda_{u,v} \sim \text{N}(0, \mathtt{sd\_seas}^2), \quad v = 1, \cdots, \mathtt{n\_seas} - 1}
+#' \deqn{\lambda_{u,v} = -\sum_{s=1}^{\mathtt{n\_seas} - 1} \lambda_{u,v - s}, \quad v = \mathtt{n\_seas}, 2 \mathtt{n\_seas}, \cdots}
+#' \deqn{\lambda_{u,v} \sim \text{N}(\lambda_{u,v-\mathtt{n\_seas}}, \omega^2), \quad \text{otherwise},}
 #' 
 #' where
 #' - \eqn{\pmb{\beta}} is the main effect or interaction;
 #' - \eqn{\alpha_j} or \eqn{\alpha_{u,v}} is an element of the random walk;
 #' - \eqn{\lambda_j} or \eqn{\lambda_{u,v}} is an element of the seasonal effect;
 #' - \eqn{j} denotes position within the main effect;
-#' - \eqn{v} denotes position within the "along" variable of the interaction;
-#' - \eqn{u} denotes position within the "by" variable(s) of the interaction; and
-#' - \eqn{n} is `n_seas`.
+#' - \eqn{v} denotes position within the 'along' variable of the interaction; and
+#' - \eqn{u} denotes position within the 'by' variable(s) of the interaction.
 #'
 #' Parameter \eqn{\omega} has a half-normal prior
-#' \deqn{\omega \sim \text{N}^+(0, \text{s\_seas}^2),}
-#' where `s_seas` is provided by the user. If
-#' `s_seas` is set to 0, then \eqn{\omega} is 0,
+#' \deqn{\omega \sim \text{N}^+(0, \mathtt{s\_seas}^2)}.
+#' If `s_seas` is set to 0, then \eqn{\omega} is 0,
 #' and the seasonal effects are fixed over time.
 #'
 #' Parameter \eqn{\tau} has a half-normal prior
-#' \deqn{\tau \sim \text{N}^+(0, \text{s}^2),}
-#' where `s` is provided by the user.
+#' \deqn{\tau \sim \text{N}^+(0, \mathtt{s}^2)}.
 #' 
-#' @inheritParams AR
-#' 
-#' @param n_seas Number of seasons
-#' @param s Scale for prior for innovations in
-#' the random walk. Default is `1`.
-#' @param s_seas Scale for prior for innovations
-#' in the seasonal effect. Default is `1`.
-#' Can be `0`.
+#' @inheritSection AR Constraints
 #'
-#' @returns Object of class `"bage_prior_rw2seasvary"`
-#' or `"bage_prior_rw2seasfix"`.
+#' @inheritParams RW_Seas
+#' 
+#' @param sd_slope Standard deviation
+#' for initial slope of random walk. Default is `1`.
+#'
+#' @returns Object of class
+#' `"bage_prior_rw2randomseasvary"`,
+#' `"bage_prior_rw2randomseasfix"`,
+#' `"bage_prior_rw2zeroseasvary"`, or
+#' `"bage_prior_rw2zeroseasfix"`.
 #'
 #' @seealso
-#' - [RW2()] Second-order random walk, without seasonal effect
-#' - [RW_Seas()] Random walk, with seasonal effect
+#' - [RW2()] Second-order random walk without seasonal effect
+#' - [RW_Seas()] Random walk with seasonal effect
 #' - [priors] Overview of priors implemented in **bage**
 #' - [set_prior()] Specify prior for intercept,
 #'   main effect, or interaction
 #'
 #' @examples
-#' RW2_Seas(n_seas = 4)             ## seasonal effects evolve
-#' RW2_Seas(n_seas = 4, s_seas = 0) ## seasonal effects fixed
+#' RW2_Seas(n_seas = 4)               ## seasonal effects fixed
+#' RW2_Seas(n_seas = 4, s_seas = 0.5) ## seasonal effects evolve
+#' RW2_Seas(n_seas = 4, sd = 0)       ## first term in random walk fixed at 0
 #' @export
-RW2_Seas <- function(n_seas, s = 1, s_seas = 1, along = NULL) {
-  check_n(n = n_seas,
-          nm_n = "n_seas",
-          min = 2L,
-          max = NULL,
-          null_ok = FALSE)
+RW2_Seas <- function(n_seas,
+                     s = 1,
+                     sd = 1,
+                     sd_slope = 1,
+                     s_seas = 0,
+                     sd_seas = 1,
+                     along = NULL,
+                     con = c("none", "by")) {
+  poputils::check_n(n = n_seas,
+                    nm_n = "n_seas",
+                    min = 2L,
+                    max = NULL,
+                    divisible_by = NULL)
   check_scale(s, nm_x = "s", zero_ok = FALSE)
+  check_scale(sd, nm_x = "sd", zero_ok = TRUE)
+  check_scale(sd_slope, nm_x = "sd_slope", zero_ok = FALSE)
   check_scale(s_seas, nm_x = "s_seas", zero_ok = TRUE)
+  check_scale(sd_seas, nm_x = "sd_seas", zero_ok = FALSE)
   n_seas <- as.integer(n_seas)
   scale <- as.double(s)
+  sd <- as.double(sd)
+  sd_slope <- as.double(sd_slope)
   scale_seas = as.double(s_seas)
+  sd_seas = as.double(sd_seas)
   if (!is.null(along))
     check_string(along, nm_x = "along")
-  if (scale_seas > 0)
-    new_bage_prior_rw2seasvary(n_seas = n_seas,
-                               scale = scale,
-                               scale_seas = scale_seas,
-                               along = along)
-  else
-    new_bage_prior_rw2seasfix(n_seas = n_seas,
-                              scale = scale,
-                              along = along)
+  con <- match.arg(con)
+  if (scale_seas > 0) {
+    if (sd > 0) 
+      new_bage_prior_rw2randomseasvary(n_seas = n_seas,
+                                       scale_seas = scale_seas,
+                                       sd_seas = sd_seas,
+                                       scale = scale,
+                                       sd = sd,
+                                       sd_slope = sd_slope,
+                                       along = along,
+                                       con = con)
+    else
+      new_bage_prior_rw2zeroseasvary(n_seas = n_seas,
+                                     scale_seas = scale_seas,
+                                     sd_seas = sd_seas,
+                                     scale = scale,
+                                     sd_slope = sd_slope,
+                                     along = along,
+                                     con = con)
+  }
+  else {
+    if (sd > 0) 
+      new_bage_prior_rw2randomseasfix(n_seas = n_seas,
+                                      sd_seas = sd_seas,
+                                      scale = scale,
+                                      sd = sd,
+                                      sd_slope = sd_slope,
+                                      along = along,
+                                      con = con)
+    else
+      new_bage_prior_rw2zeroseasfix(n_seas = n_seas,
+                                    sd_seas = sd_seas,
+                                    scale = scale,
+                                    sd_slope = sd_slope,
+                                    along = along,
+                                    con = con)
+  }    
 }
 
 
 ## HAS_TESTS
 #' P-Spline Prior
 #'
-#' Use a p-spline (penalised spine) to model main
+#' Use a p-spline (penalised spline) to model main
 #' effects or interactions. Typically used with age,
 #' but can be used with any variable where outcomes are
 #' expected to vary smoothly from one element to the next.
 #'
 #' If `Sp()` is used with an interaction,
-#' separate splines are used for the "along" variable within
+#' separate splines are used for the 'along' variable within
 #' each combination of the
-#' "by" variables.
+#' 'by' variables.
 #'
 #' @section Mathematical details:
 #'
@@ -1028,18 +1350,24 @@ RW2_Seas <- function(n_seas, s = 1, s_seas = 1, along = NULL) {
 #'
 #' where
 #' - \eqn{\pmb{\beta}} is the main effect or interaction, with \eqn{J} elements;
-#' - \eqn{\pmb{beta}_u} is a subvector of \eqn{\pmb{\beta}} holding
-#'   values for the  \eqn{u}th combination of the "by" variables;
+#' - \eqn{\pmb{\beta}_u} is a subvector of \eqn{\pmb{\beta}} holding
+#'   values for the  \eqn{u}th combination of the 'by' variables;
 #' - \eqn{J} is the number of elements of \eqn{\pmb{\beta}};
 #' - \eqn{U} is the number of elements of \eqn{\pmb{\beta}_u};
 #' - \eqn{X} is a \eqn{J \times n} or \eqn{V \times n} matrix of
 #'   spline basis functions; and
 #' - \eqn{n} is `n_comp`.
 #'
-#' The elements of \eqn{\pmb{\alpha}} or \eqn{\pmb{alpha}_u} are assumed
+#' The elements of \eqn{\pmb{\alpha}} or \eqn{\pmb{\alpha}_u} are assumed
 #' to follow a [second-order random walk][RW2()].
 #'
+#' @inheritSection AR Constraints
+#' 
 #' @inheritParams AR
+#' @param sd Standard deviation in prior for first
+#' element of random walk.
+#' @param sd_slope Standard deviation in prior
+#' for initial slope of random walk. Default is `1`.
 #' @param n_comp Number of spline basis functions (components)
 #' to use.
 #'
@@ -1052,7 +1380,7 @@ RW2_Seas <- function(n_seas, s = 1, s_seas = 1, along = NULL) {
 #' - [priors] Overview of priors implemented in **bage**
 #' - [set_prior()] Specify prior for intercept,
 #'   main effect, or interaction
-#' - **bage** uses function [splines::bs()] to construct
+#' - [splines::bs()] Function used by **bage** to construct
 #'   spline basis functions
 #'
 #' @references
@@ -1064,21 +1392,35 @@ RW2_Seas <- function(n_seas, s = 1, s_seas = 1, along = NULL) {
 #' Sp()
 #' Sp(n_comp = 10)
 #' @export
-Sp <- function(n_comp = NULL, s = 1, along = NULL) {
-  check_n(n = n_comp,
-          nm_n = "n_comp",
-          min = 4L,
-          max = NULL,
-          null_ok = TRUE)
-  if (!is.null(n_comp))
+Sp <- function(n_comp = NULL,
+               s = 1,
+               sd = 1,
+               sd_slope = 1,
+               along = NULL,
+               con = c("none", "by")) {
+  if (!is.null(n_comp)) {
+    poputils::check_n(n = n_comp,
+                      nm_n = "n_comp",
+                      min = 4L,
+                      max = NULL,
+                      divisible_by = NULL)
     n_comp <- as.integer(n_comp)
+  }
   check_scale(s, nm_x = "s", zero_ok = FALSE)
+  check_scale(sd, nm_x = "sd", zero_ok = FALSE)
+  check_scale(sd_slope, nm_x = "sd_slope", zero_ok = FALSE)
   scale <- as.double(s)
+  sd <- as.double(sd)
+  sd_slope <- as.double(sd_slope)
   if (!is.null(along))
     check_string(x = along, nm_x = "along")
+  con <- match.arg(con)
   new_bage_prior_spline(n_comp = n_comp,
                         scale = scale,
-                        along = along)
+                        sd = sd, 
+                        sd_slope = sd_slope,
+                        along = along,
+                        con = con)
 }
 
 
@@ -1232,12 +1574,13 @@ Sp <- function(n_comp = NULL, s = 1, along = NULL) {
 #'   for all sexes/genders; and
 #' - \eqn{\pmb{g}} is a known vector with \eqn{V} elements, with values
 #'   for all sexes/genders.
-#'
 #' 
 #' @section Scaled SVDs of demographic databases in bage:
 #'
 #' - \code{\link{HMD}} Mortality rates from the
 #' [Human Mortality Database](https://www.mortality.org).
+#' - \code{\link{HFD}} Fertility rates from the
+#' [Human Fertility Database](https://www.humanfertility.org).
 #' - \code{\link{LFP}} Labor forcce participation
 #' rates from the [OECD](https://data-explorer.oecd.org).
 #'
@@ -1274,7 +1617,9 @@ Sp <- function(n_comp = NULL, s = 1, along = NULL) {
 #' SVD(HMD) 
 #' SVD(HMD, n_comp = 3)
 #' @export
-SVD <- function(ssvd, n_comp = NULL, indep = TRUE) {
+SVD <- function(ssvd,
+                n_comp = NULL,
+                indep = TRUE) {
   nm_ssvd <- deparse1(substitute(ssvd))
   check_is_ssvd(x = ssvd, nm_x = "ssvd")
   n_comp <- n_comp_svd(n_comp = n_comp, nm_n_comp = "n_comp", ssvd = ssvd)
@@ -1326,17 +1671,12 @@ SVD <- function(ssvd, n_comp = NULL, indep = TRUE) {
 #' - \eqn{\pmb{\beta}_{u,t}} is a subvector of \eqn{\pmb{\beta}_t} holding
 #'   values for the  \eqn{u}th combination of the non-age, non-time,
 #'   non-sex/gender variables for period \eqn{t};
-#' - \eqn{J} is the number of elements of \eqn{\pmb{\beta}_t};
-#' - \eqn{V} is the number of elements of \eqn{\pmb{\beta}_{u,t}};
-#' - \eqn{n} is `n_coef`;
-#' - \eqn{\pmb{F}} is a known matrix with dimension \eqn{J \times n}
-#'   or \eqn{V \times n};
-#' - \eqn{\pmb{g}} is a known vector with \eqn{J} or \eqn{V}
-#'   elements.
+#' - \eqn{\pmb{F}} is a known matrix; and
+#' - \eqn{\pmb{g}} is a known vector.
 #' 
 #' \eqn{\pmb{F}} and \eqn{\pmb{g}} are constructed from
 #' a large database of age-specific demographic estimates
-#' by performing an SVD and standardizing.
+#' by applying the singular value decomposition, and then standardizing.
 #'
 #' With `SVD_AR()`, the prior for the \eqn{k}th element
 #' of \eqn{\pmb{\alpha}_t} or \eqn{\pmb{\alpha}_{u,t}} is
@@ -1371,17 +1711,31 @@ SVD <- function(ssvd, n_comp = NULL, indep = TRUE) {
 #'
 #' \deqn{\alpha_{k,u,t} = 2 \alpha_{k,u,t-1} - \alpha_{k,u,t-2} + \epsilon_{k,u,t}.}
 #'
-#' For more on the \eqn{\phi} and \eqn{\epsilon}, see [AR()], [AR1()],
+#' For details, see [AR()], [AR1()],
 #' [RW()], and [RW2()].
 #' 
+#' @inheritSection AR Constraints
+#'
 #' @inheritSection SVD Scaled SVDs of demographic databases in bage
+#'
 #'
 #' @inheritParams SVD
 #' @param n_coef Number of AR coefficients in `SVD_RW()`.
 #' @param s Scale for standard deviations terms.
+#' @param sd Standard deviation
+#' of initial value for random walks. Default is `1`.
+#' Can be `0`.
+#' @param sd_slope Standard deviation in prior
+#' for initial slope. Default is `1`.
+#' @param shape1,shape2 Parameters for prior
+#' for coefficients in `SVD_AR()`.
+#' Defaults are `5` and `5`.
 #' @param min,max Minimum and maximum values
-#' for autocorrelation coefficient in `SVD_AR()`.
+#' for autocorrelation coefficient in `SVD_AR1()`.
 #' Defaults are `0.8` and `0.98`.
+#' @param con Constraints on parameters.
+#' Current choices are `"none"` and `"by"`.
+#' Default is `"none"`. See below for details.
 #'
 #' @returns An object of class `"bage_prior_svd_ar"`,
 #' `"bage_prior_svd_rw"`, or `"bage_prior_svd_rw2"`.
@@ -1406,38 +1760,59 @@ SVD <- function(ssvd, n_comp = NULL, indep = TRUE) {
 #' SVD_RW(HMD, n_comp = 3)
 #' SVD_RW2(HMD, indep = FALSE)
 #' @export
-SVD_AR <- function(ssvd, n_comp = NULL, indep = TRUE, n_coef = 2, s = 1) {
+SVD_AR <- function(ssvd,
+                   n_comp = NULL,
+                   indep = TRUE,
+                   n_coef = 2,
+                   s = 1,
+                   shape1 = 5,
+                   shape2 = 5,
+                   con = c("none", "by")) {
   nm_ssvd <- deparse1(substitute(ssvd))
   check_is_ssvd(x = ssvd, nm_x = "ssvd")
   n_comp <- n_comp_svd(n_comp = n_comp,
                        nm_n_comp = "n_comp",
                        ssvd = ssvd)
   check_flag(x = indep, nm_x = "indep")
-  check_n(n = n_coef,
-          nm_n = "n_coef",
-          min = 1L,
-          max = NULL,
-          null_ok = FALSE)
-  check_scale(x = s,
-              nm_x = "s",
-              zero_ok = FALSE)
+  poputils::check_n(n = n_coef,
+                    nm_n = "n_coef",
+                    min = 1L,
+                    max = NULL,
+                    divisible_by = NULL)
+  check_scale(x = s, nm_x = "s", zero_ok = FALSE)
+  check_scale(shape1, nm_x = "shape1", zero_ok = FALSE)
+  check_scale(shape2, nm_x = "shape2", zero_ok = FALSE)
   n_coef <- as.integer(n_coef)
   scale <- as.double(s)
+  shape1 <- as.double(shape1)
+  shape2 <- as.double(shape2)
+  con <- match.arg(con)
   new_bage_prior_svd_ar(ssvd = ssvd,
                         nm_ssvd = nm_ssvd,
                         n_comp = n_comp,
                         indep = indep,
                         n_coef = n_coef,
+                        shape1 = shape1,
+                        shape2 = shape2,
                         min = -1,
                         max = 1,
                         scale = scale,
+                        con = con,
                         nm = "SVD_AR")
 }
 
 ## HAS_TESTS
 #' @rdname SVD_AR
 #' @export
-SVD_AR1 <- function(ssvd, n_comp = NULL, indep = TRUE, min = 0.8, max = 0.98, s = 1) {
+SVD_AR1 <- function(ssvd,
+                    n_comp = NULL,
+                    indep = TRUE,
+                    min = 0.8,
+                    max = 0.98,
+                    s = 1,
+                    shape1 = 5,
+                    shape2 = 5,
+                    con = c("none", "by")) {
   nm_ssvd <- deparse1(substitute(ssvd))
   check_is_ssvd(x = ssvd, nm_x = "ssvd")
   n_comp <- n_comp_svd(n_comp = n_comp,
@@ -1446,23 +1821,36 @@ SVD_AR1 <- function(ssvd, n_comp = NULL, indep = TRUE, min = 0.8, max = 0.98, s 
   check_flag(x = indep, nm_x = "indep")
   check_min_max_ar(min = min, max = max)
   check_scale(s, nm_x = "s", zero_ok = FALSE)
+  check_scale(shape1, nm_x = "shape1", zero_ok = FALSE)
+  check_scale(shape2, nm_x = "shape2", zero_ok = FALSE)
+  con <- match.arg(con)
   min <- as.double(min)
   max <- as.double(max)
   scale <- as.double(s)
+  shape1 <- as.double(shape1)
+  shape2 <- as.double(shape2)
   new_bage_prior_svd_ar(ssvd = ssvd,
                         nm_ssvd = nm_ssvd,
                         n_comp = n_comp,
                         indep = indep,
                         n_coef = 1L,
+                        shape1 = shape1,
+                        shape2 = shape2,
                         min = min,
                         max = max,
                         scale = scale,
+                        con = con,
                         nm = "SVD_AR1")
 }
 
 #' @rdname SVD_AR
 #' @export
-SVD_RW <- function(ssvd, n_comp = NULL, indep = TRUE, s = 1) {
+SVD_RW <- function(ssvd,
+                   n_comp = NULL,
+                   indep = TRUE,
+                   s = 1,
+                   sd = 1,
+                   con = c("none", "by")) {
   nm_ssvd <- deparse1(substitute(ssvd))
   check_is_ssvd(x = ssvd, nm_x = "ssvd")
   n_comp <- n_comp_svd(n_comp = n_comp,
@@ -1470,18 +1858,37 @@ SVD_RW <- function(ssvd, n_comp = NULL, indep = TRUE, s = 1) {
                        ssvd = ssvd)
   check_flag(x = indep, nm_x = "indep")
   check_scale(s, nm_x = "s", zero_ok = FALSE)
+  check_scale(sd, nm_x = "sd", zero_ok = TRUE)
+  con <- match.arg(con)
   scale <- as.double(s)
-  new_bage_prior_svd_rw(ssvd = ssvd,
-                        nm_ssvd = nm_ssvd,
-                        n_comp = n_comp,
-                        indep = indep,
-                        scale = scale)
+  sd <- as.double(sd)
+  if (sd > 0)
+    new_bage_prior_svd_rwrandom(ssvd = ssvd,
+                                nm_ssvd = nm_ssvd,
+                                n_comp = n_comp,
+                                indep = indep,
+                                scale = scale,
+                                sd = sd,
+                                con = con)
+  else
+    new_bage_prior_svd_rwzero(ssvd = ssvd,
+                              nm_ssvd = nm_ssvd,
+                              n_comp = n_comp,
+                              indep = indep,
+                              scale = scale,
+                              con = con)
 }
 
 ## HAS_TESTS
 #' @rdname SVD_AR
 #' @export
-SVD_RW2 <- function(ssvd, n_comp = NULL, indep = TRUE, s = 1) {
+SVD_RW2 <- function(ssvd,
+                    n_comp = NULL,
+                    indep = TRUE,
+                    s = 1,
+                    sd = 1,
+                    sd_slope = 1,
+                    con = c("none", "by")) {
   nm_ssvd <- deparse1(substitute(ssvd))
   check_is_ssvd(x = ssvd, nm_x = "ssvd")
   n_comp <- n_comp_svd(n_comp = n_comp,
@@ -1489,12 +1896,29 @@ SVD_RW2 <- function(ssvd, n_comp = NULL, indep = TRUE, s = 1) {
                        ssvd = ssvd)
   check_flag(x = indep, nm_x = "indep")
   check_scale(s, nm_x = "s", zero_ok = FALSE)
+  check_scale(sd, nm_x = "s", zero_ok = TRUE)
+  check_scale(sd_slope, nm_x = "sd_slope", zero_ok = FALSE)
+  con <- match.arg(con)
   scale <- as.double(s)
-  new_bage_prior_svd_rw2(ssvd = ssvd,
-                         nm_ssvd = nm_ssvd,
-                         n_comp = n_comp,
-                         indep = indep,
-                         scale = scale)
+  sd <- as.double(sd)
+  sd_slope <- as.double(sd_slope)
+  if (sd > 0)
+    new_bage_prior_svd_rw2random(ssvd = ssvd,
+                                 nm_ssvd = nm_ssvd,
+                                 n_comp = n_comp,
+                                 indep = indep,
+                                 scale = scale,
+                                 sd = sd,
+                                 sd_slope = sd_slope,
+                                 con = con)
+  else
+    new_bage_prior_svd_rw2zero(ssvd = ssvd,
+                               nm_ssvd = nm_ssvd,
+                               n_comp = n_comp,
+                               indep = indep,
+                               scale = scale,
+                               sd_slope = sd_slope,
+                               con = con)
 }
 
 
@@ -1518,9 +1942,15 @@ SVD_RW2 <- function(ssvd, n_comp = NULL, indep = TRUE, s = 1) {
 
 
 ## HAS_TESTS
-new_bage_prior_ar <- function(n_coef, scale, min, max, nm, along) {
-  shape1 <- 2.0
-  shape2 <- 2.0
+new_bage_prior_ar <- function(n_coef,
+                              shape1,
+                              shape2,
+                              min,
+                              max,
+                              scale,
+                              nm,
+                              along,
+                              con) {
   ans <- list(i_prior = 1L,
               const = c(shape1 = shape1,
                         shape2 = shape2,
@@ -1534,6 +1964,7 @@ new_bage_prior_ar <- function(n_coef, scale, min, max, nm, along) {
                               max = max,
                               scale = scale,
                               along = along,
+                              con = con,
                               nm = nm))
   class(ans) <- c("bage_prior_ar", "bage_prior")
   ans
@@ -1549,38 +1980,72 @@ new_bage_prior_known <- function(values) {
 }
 
 ## HAS_TESTS
-new_bage_prior_lin <- function(scale, sd_slope, along) {
+new_bage_prior_lin <- function(scale,
+                               mean_slope,
+                               sd_slope,
+                               along,
+                               con) {
     ans <- list(i_prior = 2L,
                 const = c(scale = scale,
+                          mean_slope = mean_slope,
                           sd_slope = sd_slope),
                 specific = list(scale = scale,
+                                mean_slope = mean_slope,
                                 sd_slope = sd_slope,
-                                along = along))
+                                along = along,
+                                con = con))
     class(ans) <- c("bage_prior_lin", "bage_prior")
     ans
 }
 
 ## HAS_TESTS
-new_bage_prior_linar <- function(n_coef, scale, sd_slope, min, max, along, nm) {
-  shape1 <- 2.0
-  shape2 <- 2.0
+new_bage_prior_linar <- function(n_coef,
+                                 mean_slope,
+                                 sd_slope,
+                                 shape1,
+                                 shape2,
+                                 min,
+                                 max,
+                                 scale,
+                                 along,
+                                 con,
+                                 nm) {
   ans <- list(i_prior = 3L,
-              const = c(scale = scale,
+              const = c(mean_slope = mean_slope,
                         sd_slope = sd_slope,
                         shape1 = shape1,
                         shape2 = shape2,
                         min = min,
-                        max = max),
+                        max = max,
+                        scale = scale),
               specific = list(n_coef = n_coef,
-                              scale = scale,
+                              mean_slope = mean_slope,
                               sd_slope = sd_slope,
                               shape1 = shape1,
                               shape2 = shape2,
                               min = min,
                               max = max,
+                              scale = scale,
                               along = along,
+                              con = con,
                               nm = nm))
   class(ans) <- c("bage_prior_linar", "bage_prior")
+  ans
+}
+
+## HAS_TESTS
+new_bage_prior_linex <- function(mean_slope,
+                                 sd_slope,
+                                 along,
+                                 con) {
+  ans <- list(i_prior = 17L,
+              const = c(mean_slope = mean_slope,
+                        sd_slope = sd_slope),
+              specific = list(mean_slope = mean_slope,
+                              sd_slope = sd_slope,
+                              along = along,
+                              con = con))
+  class(ans) <- c("bage_prior_linex", "bage_prior")
   ans
 }
 
@@ -1602,91 +2067,301 @@ new_bage_prior_normfixed <- function(sd) {
     ans
 }
 
+
+
 ## HAS_TESTS
-new_bage_prior_rw <- function(scale, along) {
-    ans <- list(i_prior = 6L,
-                const = c(scale = scale),
+new_bage_prior_rwrandom <- function(scale,
+                                    sd,
+                                    along,
+                                    con) {
+  ans <- list(i_prior = 19L,
+              const = c(scale = scale,
+                        sd = sd),
+              specific = list(scale = scale,
+                              sd = sd,
+                              along = along,
+                              con = con))
+  class(ans) <- c("bage_prior_rwrandom", "bage_prior")
+  ans
+}
+
+## HAS_TESTS
+new_bage_prior_rwrandomseasfix <- function(n_seas,
+                                           sd_seas,
+                                           scale,
+                                           sd,
+                                           along,
+                                           con) {
+  ans <- list(i_prior = 20L,
+              const = c(n_seas = n_seas,       ## put season-related quantities at beginning
+                        sd_seas = sd_seas,
+                        scale = scale,
+                        sd = sd),
+              specific = list(n_seas = n_seas, ## put season-related quantities at beginning
+                              sd_seas = sd_seas,
+                              scale = scale,
+                              sd = sd,
+                              along = along,
+                              con = con))
+  class(ans) <- c("bage_prior_rwrandomseasfix", "bage_prior")
+  ans
+}
+
+## HAS_TESTS
+new_bage_prior_rwrandomseasvary <- function(n_seas,
+                                            scale_seas,
+                                            sd_seas,
+                                            scale,
+                                            sd,
+                                            along,
+                                            con) {
+  ans <- list(i_prior = 21L,
+              const = c(n_seas = n_seas,       ## put season-related quantities at beginning
+                        scale_seas = scale_seas,
+                        sd_seas = sd_seas,
+                        scale = scale,
+                        sd = sd),
+              specific = list(n_seas = n_seas, ## put season-related quantities at beginning
+                              scale_seas = scale_seas,
+                              sd_seas = sd_seas,
+                              scale = scale,
+                              sd = sd,
+                              along = along,
+                              con = con))
+  class(ans) <- c("bage_prior_rwrandomseasvary", "bage_prior")
+  ans
+}
+
+## HAS_TESTS
+new_bage_prior_rwzero <- function(scale,
+                                  along,
+                                  con) {
+  ans <- list(i_prior = 6L,
+              const = c(scale = scale),
+              specific = list(scale = scale,
+                              along = along,
+                              con = con))
+  class(ans) <- c("bage_prior_rwzero", "bage_prior")
+  ans
+}
+
+## HAS_TESTS
+new_bage_prior_rwzeroseasfix <- function(n_seas,
+                                         sd_seas,
+                                         scale,
+                                         along,
+                                         con) {
+  ans <- list(i_prior = 10L,
+              const = c(n_seas = n_seas,       ## put season-related quantities at beginning
+                        sd_seas = sd_seas,
+                        scale = scale),
+              specific = list(n_seas = n_seas, ## put season-related quantities at beginning
+                              sd_seas = sd_seas,
+                              scale = scale,
+                              along = along,
+                              con = con))
+  class(ans) <- c("bage_prior_rwzeroseasfix", "bage_prior")
+  ans
+}
+
+## HAS_TESTS
+new_bage_prior_rwzeroseasvary <- function(n_seas,
+                                          scale_seas,
+                                          sd_seas,
+                                          scale,
+                                          along,
+                                          con) {
+  ans <- list(i_prior = 11L,
+              const = c(n_seas = n_seas,       ## put season-related quantities at beginning
+                        scale_seas = scale_seas,
+                        sd_seas = sd_seas,
+                        scale = scale),
+              specific = list(n_seas = n_seas, ## put season-related quantities at beginning
+                              scale_seas = scale_seas,
+                              sd_seas = sd_seas,
+                              scale = scale,
+                              along = along,
+                              con = con))
+  class(ans) <- c("bage_prior_rwzeroseasvary", "bage_prior")
+  ans
+}
+
+## HAS_TESTS
+new_bage_prior_rw2infant <- function(scale,
+                                     sd_slope,
+                                     con) {
+    ans <- list(i_prior = 18L,
+                const = c(scale = scale,
+                          sd_slope = sd_slope),
                 specific = list(scale = scale,
-                                along = along))
-    class(ans) <- c("bage_prior_rw", "bage_prior")
+                                sd_slope = sd_slope,
+                                along = NULL,
+                                con = con))
+    class(ans) <- c("bage_prior_rw2infant", "bage_prior")
     ans
 }
 
 ## HAS_TESTS
-new_bage_prior_rwseasfix <- function(n_seas, scale, along) {
-    ans <- list(i_prior = 10L,
-                const = c(n_seas = n_seas,       ## put season-related quantities at beginning
-                          scale = scale),
-                specific = list(n_seas = n_seas, ## put season-related quantities at beginning
-                                scale = scale,
-                                along = along))
-    class(ans) <- c("bage_prior_rwseasfix", "bage_prior")
-    ans
+new_bage_prior_rw2random <- function(scale,
+                                     sd,
+                                     sd_slope,
+                                     along,
+                                     con) {
+  ans <- list(i_prior = 22L,
+              const = c(scale = scale,
+                        sd = sd,
+                        sd_slope = sd_slope),
+              specific = list(scale = scale,
+                              sd = sd,
+                              sd_slope = sd_slope,
+                              along = along,
+                              con = con))
+  class(ans) <- c("bage_prior_rw2random", "bage_prior")
+  ans
 }
 
 ## HAS_TESTS
-new_bage_prior_rwseasvary <- function(n_seas, scale_seas, scale, along) {
-    ans <- list(i_prior = 11L,
-                const = c(n_seas = n_seas,       ## put season-related quantities at beginning
-                          scale_seas = scale_seas,  
-                          scale = scale),
-                specific = list(n_seas = n_seas, ## put season-related quantities at beginning
-                                scale_seas = scale_seas,
-                                scale = scale,
-                                along = along))
-    class(ans) <- c("bage_prior_rwseasvary", "bage_prior")
-    ans
+new_bage_prior_rw2randomseasfix <- function(n_seas,
+                                            sd_seas,
+                                            scale,
+                                            sd,
+                                            sd_slope,
+                                            along,
+                                            con) {
+  ans <- list(i_prior = 23L,
+              const = c(n_seas = n_seas,       ## put season-related quantities at beginning
+                        sd_seas = sd_seas,
+                        scale = scale,
+                        sd = sd,
+                        sd_slope = sd_slope),
+              specific = list(n_seas = n_seas, ## put season-related quantities at beginning
+                              sd_seas = sd_seas,
+                              scale = scale,
+                              sd = sd,
+                              sd_slope = sd_slope,
+                              along = along,
+                              con = con))
+  class(ans) <- c("bage_prior_rw2randomseasfix", "bage_prior")
+  ans
 }
 
 ## HAS_TESTS
-new_bage_prior_rw2 <- function(scale, along) {
-    ans <- list(i_prior = 7L,
-                const = c(scale = scale),
-                specific = list(scale = scale,
-                                along = along))
-    class(ans) <- c("bage_prior_rw2", "bage_prior")
-    ans
+new_bage_prior_rw2randomseasvary <- function(n_seas,
+                                             scale_seas,
+                                             sd_seas,
+                                             scale,
+                                             sd,
+                                             sd_slope,
+                                             along,
+                                             con) {
+  ans <- list(i_prior = 24L,
+              const = c(n_seas = n_seas,       ## put season-related quantities at beginning
+                        scale_seas = scale_seas,
+                        sd_seas = sd_seas,
+                        scale = scale,
+                        sd = sd,
+                        sd_slope = sd_slope),
+              specific = list(n_seas = n_seas, ## put season-related quantities at beginning
+                              scale_seas = scale_seas,
+                              sd_seas = sd_seas,
+                              scale = scale,
+                              sd = sd,
+                              sd_slope = sd_slope,
+                              along = along,
+                              con = con))
+  class(ans) <- c("bage_prior_rw2randomseasvary", "bage_prior")
+  ans
 }
 
 ## HAS_TESTS
-new_bage_prior_rw2seasfix <- function(n_seas, scale, along) {
-    ans <- list(i_prior = 12L,
-                const = c(n_seas = n_seas,       ## put season-related quantities at beginning
-                          scale = scale),
-                specific = list(n_seas = n_seas, ## put season-related quantities at beginning
-                                scale = scale,
-                                along = along))
-    class(ans) <- c("bage_prior_rw2seasfix", "bage_prior")
-    ans
+new_bage_prior_rw2zero <- function(scale,
+                                   sd_slope,
+                                   along,
+                                   con) {
+  ans <- list(i_prior = 7L,
+              const = c(scale = scale,
+                        sd_slope = sd_slope),
+              specific = list(scale = scale,
+                              sd_slope = sd_slope,
+                              along = along,
+                              con = con))
+  class(ans) <- c("bage_prior_rw2zero", "bage_prior")
+  ans
 }
 
 ## HAS_TESTS
-new_bage_prior_rw2seasvary <- function(n_seas, scale_seas, scale, along) {
-    ans <- list(i_prior = 13L,
-                const = c(n_seas = n_seas,       ## put season-related quantities at beginning
-                          scale_seas = scale_seas,  
-                          scale = scale),
-                specific = list(n_seas = n_seas, ## put season-related quantities at beginning
-                                scale_seas = scale_seas,
-                                scale = scale,
-                                along = along))
-    class(ans) <- c("bage_prior_rw2seasvary", "bage_prior")
-    ans
+new_bage_prior_rw2zeroseasfix <- function(n_seas,
+                                          sd_seas,
+                                          scale,
+                                          sd_slope,
+                                          along,
+                                          con) {
+  ans <- list(i_prior = 12L,
+              const = c(n_seas = n_seas,       ## put season-related quantities at beginning
+                        sd_seas = sd_seas,
+                        scale = scale,
+                        sd_slope = sd_slope),
+              specific = list(n_seas = n_seas, ## put season-related quantities at beginning
+                              sd_seas = sd_seas,
+                              scale = scale,
+                              sd_slope = sd_slope,
+                              along = along,
+                              con = con))
+  class(ans) <- c("bage_prior_rw2zeroseasfix", "bage_prior")
+  ans
 }
 
 ## HAS_TESTS
-new_bage_prior_spline <- function(n_comp, scale, along) {
+new_bage_prior_rw2zeroseasvary <- function(n_seas,
+                                           scale_seas,
+                                           sd_seas,
+                                           scale,
+                                           sd_slope,
+                                           along,
+                                           con) {
+  ans <- list(i_prior = 13L,
+              const = c(n_seas = n_seas,       ## put season-related quantities at beginning
+                        scale_seas = scale_seas,
+                        sd_seas = sd_seas,
+                        scale = scale,
+                        sd_slope = sd_slope),
+              specific = list(n_seas = n_seas, ## put season-related quantities at beginning
+                              scale_seas = scale_seas,
+                              sd_seas = sd_seas,
+                              scale = scale,
+                              sd_slope = sd_slope,
+                              along = along,
+                              con = con))
+  class(ans) <- c("bage_prior_rw2zeroseasvary", "bage_prior")
+  ans
+}
+
+## HAS_TESTS
+new_bage_prior_spline <- function(n_comp,
+                                  scale,
+                                  sd,
+                                  sd_slope,
+                                  along,
+                                  con) {
     ans <- list(i_prior = 8L,
-                const = c(scale = scale),
+                const = c(scale = scale,
+                          sd = sd,
+                          sd_slope = sd_slope),
                 specific = list(n_comp = n_comp,
                                 scale = scale,
-                                along = along))
+                                sd = sd,
+                                sd_slope = sd_slope,
+                                along = along,
+                                con = con))
     class(ans) <- c("bage_prior_spline", "bage_prior")
     ans
 }
 
 ## HAS_TESTS
-new_bage_prior_svd <- function(ssvd, nm_ssvd, n_comp, indep) {
+new_bage_prior_svd <- function(ssvd,
+                               nm_ssvd,
+                               n_comp,
+                               indep) {
     ans <- list(i_prior = 9L,
                 const = 0, ## not used
                 specific = list(ssvd = ssvd,
@@ -1698,10 +2373,18 @@ new_bage_prior_svd <- function(ssvd, nm_ssvd, n_comp, indep) {
 }
 
 ## HAS_TESTS
-new_bage_prior_svd_ar <- function(ssvd, nm_ssvd, n_comp, indep,
-                                  n_coef, scale, min, max, nm) {
-  shape1 <- 2.0
-  shape2 <- 2.0
+new_bage_prior_svd_ar <- function(ssvd,
+                                  nm_ssvd,
+                                  n_comp,
+                                  indep,
+                                  n_coef,
+                                  scale,
+                                  shape1,
+                                  shape2,
+                                  min,
+                                  max,
+                                  con,
+                                  nm) {
   ans <- list(i_prior = 14L,
               const = c(shape1 = shape1,
                         shape2 = shape2,
@@ -1718,15 +2401,43 @@ new_bage_prior_svd_ar <- function(ssvd, nm_ssvd, n_comp, indep,
                               min = min,
                               max = max,
                               scale = scale,
-                              nm = nm,
-                              along = NULL))
+                              along = NULL,
+                              con = con,
+                              nm = nm))
   class(ans) <- c("bage_prior_svd_ar", "bage_prior")
   ans
 }
 
 ## HAS_TESTS
-new_bage_prior_svd_rw <- function(ssvd, nm_ssvd, n_comp, indep,
-                                  scale) {
+new_bage_prior_svd_rwrandom <- function(ssvd,
+                                        nm_ssvd,
+                                        n_comp,
+                                        indep,
+                                        scale,
+                                        sd,
+                                        con) {
+  ans <- list(i_prior = 25L,
+              const = c(scale = scale,
+                        sd = sd),
+              specific = list(ssvd = ssvd,
+                              nm_ssvd = nm_ssvd,
+                              n_comp = n_comp,
+                              indep = indep,
+                              scale = scale,
+                              sd = sd,
+                              along = NULL,
+                              con = con))
+  class(ans) <- c("bage_prior_svd_rwrandom", "bage_prior")
+  ans
+}
+
+## HAS_TESTS
+new_bage_prior_svd_rwzero <- function(ssvd,
+                                      nm_ssvd,
+                                      n_comp,
+                                      indep,
+                                      scale,
+                                      con) {
   ans <- list(i_prior = 15L,
               const = c(scale = scale),
               specific = list(ssvd = ssvd,
@@ -1734,23 +2445,58 @@ new_bage_prior_svd_rw <- function(ssvd, nm_ssvd, n_comp, indep,
                               n_comp = n_comp,
                               indep = indep,
                               scale = scale,
-                              along = NULL))
-  class(ans) <- c("bage_prior_svd_rw", "bage_prior")
+                              along = NULL,
+                              con = con))
+  class(ans) <- c("bage_prior_svd_rwzero", "bage_prior")
   ans
 }
 
+
 ## HAS_TESTS
-new_bage_prior_svd_rw2 <- function(ssvd, nm_ssvd, n_comp, indep,
-                                   scale) {
-  ans <- list(i_prior = 16L,
-              const = c(scale = scale),
+new_bage_prior_svd_rw2random <- function(ssvd,
+                                         nm_ssvd,
+                                         n_comp,
+                                         indep,
+                                         scale,
+                                         sd,
+                                         sd_slope,
+                                         con) {
+  ans <- list(i_prior = 26L,
+              const = c(scale = scale,
+                        sd = sd,
+                        sd_slope = sd_slope),
               specific = list(ssvd = ssvd,
                               nm_ssvd = nm_ssvd,
                               n_comp = n_comp,
                               indep = indep,
                               scale = scale,
-                              along = NULL))
-  class(ans) <- c("bage_prior_svd_rw2", "bage_prior")
+                              sd = sd,
+                              sd_slope = sd_slope,
+                              along = NULL,
+                              con = con))
+  class(ans) <- c("bage_prior_svd_rw2random", "bage_prior")
   ans
 }
 
+## HAS_TESTS
+new_bage_prior_svd_rw2zero <- function(ssvd,
+                                       nm_ssvd,
+                                       n_comp,
+                                       indep,
+                                       scale,
+                                       sd_slope,
+                                       con) {
+  ans <- list(i_prior = 16L,
+              const = c(scale = scale,
+                        sd_slope = sd_slope),
+              specific = list(ssvd = ssvd,
+                              nm_ssvd = nm_ssvd,
+                              n_comp = n_comp,
+                              indep = indep,
+                              scale = scale,
+                              sd_slope = sd_slope,
+                              along = NULL,
+                              con = con))
+  class(ans) <- c("bage_prior_svd_rw2zero", "bage_prior")
+  ans
+}

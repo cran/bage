@@ -46,6 +46,8 @@ test_that("'aggregate_report_comp' works with valid inputs", {
                   exposure = popn)
   mod_sim <- mod
   mod_est <- mod
+  prior_class_est <- make_prior_class(mod_est)
+  prior_class_sim <- make_prior_class(mod_sim)
   mod_sim <- set_n_draw(mod, n = 1)
   comp_sim <- components(mod_sim, quiet = TRUE)
   aug_sim <- augment(mod_sim, quiet = TRUE)
@@ -54,12 +56,16 @@ test_that("'aggregate_report_comp' works with valid inputs", {
   comp_est <- components(mod_est)
   perform_comp <- list(perform_comp(est = comp_est,
                                     sim = comp_sim,
+                                    prior_class_est = prior_class_est,
+                                    prior_class_sim = prior_class_sim,
                                     i_sim = 1L,
                                     point_est_fun = "median",
                                     widths = c(0.5, 0.95)))
   report_comp <- make_report_comp(perform_comp = perform_comp,
                                   comp_est = comp_est,
-                                  comp_sim = comp_sim)
+                                  comp_sim = comp_sim,
+                                  prior_class_est = prior_class_est,
+                                  prior_class_sim = prior_class_sim)
   report_comp <- rvec_to_mean(report_comp)
   ans_obtained <- aggregate_report_comp(report_comp)
   expect_identical(names(ans_obtained), setdiff(names(report_comp), "level"))
@@ -156,7 +162,7 @@ test_that("'draw_vals_coef' works with n = 10", {
 
 ## 'draw_vals_components_unfitted' --------------------------------------------
 
-test_that("'draw_vals_components_unfitted' works, standardize = 'terms'", {
+test_that("'draw_vals_components_unfitted' works", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -168,27 +174,11 @@ test_that("'draw_vals_components_unfitted' works, standardize = 'terms'", {
   mod <- set_prior(mod, age ~ Sp())
   mod <- set_prior(mod, age:time ~ Sp())
   n_sim <- 2
-  ans <- draw_vals_components_unfitted(mod = mod,
-                                       n_sim = n_sim,
-                                       standardize = "terms")
+  ans <- draw_vals_components_unfitted(mod = mod, n_sim = n_sim)
   ans_est <- components(fit(mod))
   comb <- merge(ans, ans_est, by = c("component", "term", "level"), all.x = TRUE,
                 all.y = TRUE)
   expect_true(identical(nrow(comb), nrow(ans)))
-})
-
-test_that("'draw_vals_components_unfitted' gives correct error with invalid standardize", {
-  set.seed(0)
-  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
-  data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rpois(n = nrow(data), lambda = 10)
-  formula <- deaths ~ age * time + sex
-  mod <- mod_pois(formula = formula,
-                  data = data,
-                  exposure = popn)
-  expect_error(draw_vals_components_unfitted(mod = mod, n_sim = 5,
-                                             standardize = "wrong"),
-               "Internal error: Invalid value for `standardize`.")
 })
 
 
@@ -239,7 +229,8 @@ test_that("'draw_vals_effect_mod' works with bage_mod_pois", {
                               n_sim = n_sim)
   expect_setequal(names(ans), c("(Intercept)", "age", "time", "age:time", "age:sex"))
   expect_true(all(sapply(ans, ncol) == n_sim))
-  expect_identical(sapply(ans, nrow), sapply(mod$matrices_effect_outcome, ncol))
+  expect_identical(sapply(ans, nrow),
+                   sapply(make_matrices_effect_outcome(mod$data, mod$dimnames_terms), ncol))
 })
 
 
@@ -271,13 +262,13 @@ test_that("'draw_vals_hyperrand_mod' works with bage_mod_pois", {
     mod <- mod_pois(formula = formula,
                     data = data,
                     exposure = popn)
-    mod <- set_prior(mod, age:time ~ Lin())
+    mod <- set_prior(mod, age:time ~ Lin(con = "by"))
     vals_hyper <- draw_vals_hyper_mod(mod = mod, n_sim = 10)
     ans <- draw_vals_hyperrand_mod(mod, vals_hyper = vals_hyper, n_sim = 10)
     expect_identical(names(ans), c("(Intercept)", "age", "time", "sex", "age:time"))
     expect_identical(nrow(ans[["age:time"]]$slope), 10L)
     expect_identical(sapply(ans, length),
-                     c("(Intercept)" = 0L, age = 0L, time = 0L, sex = 0L, "age:time" = 2L))
+                     c("(Intercept)" = 0L, age = 0L, time = 0L, sex = 0L, "age:time" = 3L))
 })
 
 
@@ -289,22 +280,21 @@ test_that("'draw_vals_lin' works - along dimension is first", {
   n_sim <- 10
   matrix_along_by <- matrix(0:11, nr = 3)
   colnames(matrix_along_by) <- 11:14
-  intercept <- matrix(rnorm(n = 4 * n_sim), nrow = 4)
-  slope <- draw_vals_slope(sd_slope = prior$const[["sd_slope"]],
+  slope <- draw_vals_slope(mean_slope = prior$const[["mean_slope"]],
+                           sd_slope = prior$const[["sd_slope"]],
                            matrix_along_by = matrix_along_by,
                            n_sim = n_sim)
   sd <- draw_vals_sd(prior = prior,
                      n_sim = n_sim)
   labels <- 1:12
   set.seed(0)
-  ans_obtained <- draw_vals_lin(intercept = intercept,
-                                slope,
+  ans_obtained <- draw_vals_lin(slope,
                                 sd = sd,
                                 matrix_along_by = matrix_along_by,
                                 labels = labels)
   set.seed(0)
-  intercept1 <- rep(intercept, each = 3)
   slope1 <- rep(slope, each = 3)
+  intercept1 <- -((3 + 1)/2) * slope1
   sd1 <- rep(sd, each = 12)
   ans_expected <- rnorm(12 * n_sim, mean = intercept1 + (1:3) * slope1, sd = sd1)
   ans_expected <- matrix(ans_expected, ncol = n_sim)
@@ -320,20 +310,19 @@ test_that("'draw_vals_lin' works - along dimension is second", {
   colnames(matrix_along_by) <- 1:3
   sd <- draw_vals_sd(prior = prior,
                      n_sim = n_sim)
-  intercept <- matrix(rnorm(n = 3 * n_sim), nrow = 3)
-  slope <- draw_vals_slope(sd_slope = prior$const[["sd_slope"]],
+  slope <- draw_vals_slope(mean_slope = prior$const[["mean_slope"]],
+                           sd_slope = prior$const[["sd_slope"]],
                            matrix_along_by = matrix_along_by,
                            n_sim = n_sim)
   labels <- 1:12
   set.seed(0)
-  ans_obtained <- draw_vals_lin(intercept = intercept,
-                                slope = slope,
+  ans_obtained <- draw_vals_lin(slope = slope,
                                 sd = sd,
                                 matrix_along_by = matrix_along_by,
                                 labels = labels)
   set.seed(0)
-  intercept1 <- rep(intercept, each = 4)
   slope1 <- rep(slope, each = 4)
+  intercept1 <- -0.5 * (4 + 1) * slope1
   sd1 <- rep(sd, each = 12)
   ans_expected <- rnorm(12 * n_sim, mean = intercept1 + (1:4) * slope1, sd = sd1)
   ans_expected <- matrix(ans_expected, nrow = 12)
@@ -350,8 +339,8 @@ test_that("'draw_vals_linar' works - along dimension is first", {
   n_sim <- 10
   matrix_along_by <- matrix(0:11, nr = 3)
   colnames(matrix_along_by) <- 11:14
-  intercept <- matrix(rnorm(n = 4 * n_sim), nrow = 4)
-  slope <- draw_vals_slope(sd_slope = prior$const[["sd_slope"]],
+  slope <- draw_vals_slope(mean_slope = prior$const[["mean_slope"]],
+                           sd_slope = prior$const[["sd_slope"]],
                            matrix_along_by = matrix_along_by,
                            n_sim = n_sim)
   sd <- draw_vals_sd(prior = prior,
@@ -359,12 +348,12 @@ test_that("'draw_vals_linar' works - along dimension is first", {
   coef <- draw_vals_coef(prior = prior, n_sim = n_sim)
   labels <- 1:12
   set.seed(0)
-  ans_obtained <- draw_vals_linar(intercept = intercept,
-                                  slope = slope,
+  ans_obtained <- draw_vals_linar(slope = slope,
                                   sd = sd,
                                   coef = coef,
                                   matrix_along_by = matrix_along_by,
                                   labels = labels)
+  intercept <- -(3 + 1) * slope / 2
   mean <- matrix(1:3, nrow = 3, ncol = 4 * n_sim) *
     rep(slope, each = 3) + rep(intercept, each = 3)
   sd <- rep(sd, each = 4)
@@ -377,10 +366,77 @@ test_that("'draw_vals_linar' works - along dimension is first", {
   expect_equal(ans_obtained, ans_expected)  
 })
 
+## 'draw_vals_lintrend' -------------------------------------------------------
+
+test_that("'draw_vals_lintrend' works - along dimension is first", {
+  set.seed(0)
+  prior <- Lin()
+  n_sim <- 10
+  matrix_along_by <- matrix(0:11, nr = 3)
+  colnames(matrix_along_by) <- 11:14
+  slope <- draw_vals_slope(mean_slope = prior$const[["mean_slope"]],
+                           sd_slope = prior$const[["sd_slope"]],
+                           matrix_along_by = matrix_along_by,
+                           n_sim = n_sim)
+  labels <- 1:12
+  set.seed(0)
+  ans_obtained <- draw_vals_lintrend(slope,
+                                     matrix_along_by = matrix_along_by,
+                                     labels = labels)
+  set.seed(0)
+  slope1 <- rep(slope, each = 3)
+  intercept1 <- -((3 + 1)/2) * slope1
+  ans_expected <- intercept1 + (1:3) * slope1
+  ans_expected <- matrix(ans_expected, ncol = n_sim)
+  dimnames(ans_expected) <- list(1:12, NULL)
+  expect_equal(ans_obtained, ans_expected)  
+})
+
+test_that("'draw_vals_lintrend' works - along dimension is second", {
+  set.seed(0)
+  prior <- Lin()
+  n_sim <- 10
+  matrix_along_by <- t(matrix(0:11, nr = 3))
+  colnames(matrix_along_by) <- 1:3
+  slope <- draw_vals_slope(mean_slope = prior$const[["mean_slope"]],
+                           sd_slope = prior$const[["sd_slope"]],
+                           matrix_along_by = matrix_along_by,
+                           n_sim = n_sim)
+  labels <- 1:12
+  set.seed(0)
+  ans_obtained <- draw_vals_lintrend(slope = slope,
+                                     matrix_along_by = matrix_along_by,
+                                     labels = labels)
+  set.seed(0)
+  slope1 <- rep(slope, each = 4)
+  intercept1 <- -0.5 * (4 + 1) * slope1
+  ans_expected <- intercept1 + (1:4) * slope1
+  ans_expected <- matrix(ans_expected, nrow = 12)
+  ans_expected <- ans_expected[c(1, 5, 9, 2, 6, 10, 3, 7, 11, 4, 8, 12),]
+  dimnames(ans_expected) <- list(1:12, NULL)
+  expect_equal(ans_obtained, ans_expected)  
+})
+
+
+## 'draw_vals_norm' -------------------------------------------------------
+
+test_that("'draw_vals_norm' works", {
+  set.seed(0)
+  sd <- runif(10)
+  labels <- letters
+  set.seed(0)
+  ans_obtained <- draw_vals_norm(sd = sd, labels = labels)
+  set.seed(0)
+  ans_expected <- rnorm(n = 26 * 10, sd = rep(sd, each = 26))
+  ans_expected <- matrix(ans_expected, nc = 10)
+  dimnames(ans_expected) <- list(letters, NULL)
+  expect_equal(ans_obtained, ans_expected)  
+})
+
 
 ## 'draw_vals_rw' ----------------------------------------------------------
 
-test_that("'draw_vals_rw' works - n_by = 1", {
+test_that("'draw_vals_rw' works - n_by = 1, sd_init 0", {
     set.seed(0)
     prior <- RW()
     n_sim <- 1000
@@ -389,6 +445,7 @@ test_that("'draw_vals_rw' works - n_by = 1", {
     matrix_along_by <- matrix(0:199, 200)
     set.seed(0)
     ans <- draw_vals_rw(sd = sd,
+                        sd_init = 0,
                         matrix_along_by = matrix_along_by,
                         levels_effect = levels_effect)
     expect_equal(unname(apply(ans, 2, function(x) sd(diff(x)))),
@@ -399,7 +456,7 @@ test_that("'draw_vals_rw' works - n_by = 1", {
                      list(as.character(seq_len(200)), NULL))
 })
 
-test_that("'draw_vals_rw' works - along dimension is first", {
+test_that("'draw_vals_rw' works - along dimension is first, sd_init 0.2", {
   set.seed(0)
   prior <- RW()
   n_sim <- 10
@@ -409,6 +466,7 @@ test_that("'draw_vals_rw' works - along dimension is first", {
   levels_effect <- 1:3000
   set.seed(0)
   ans <- draw_vals_rw(sd = sd,
+                      sd_init = 0.2,
                       matrix_along_by = matrix_along_by,
                       levels_effect = levels_effect)
   expect_identical(dim(ans), c(3000L, 10L))
@@ -429,6 +487,7 @@ test_that("'draw_vals_rw' works - along dimension is second", {
   levels_effect <- 1:3000
   set.seed(0)
   ans <- draw_vals_rw(sd = sd,
+                      sd_init = 0.2,
                       matrix_along_by = matrix_along_by,
                       levels_effect = levels_effect)
   expect_identical(dim(ans), c(3000L, 10L))
@@ -453,6 +512,8 @@ test_that("'draw_vals_rw2' works", {
   levels_effect <- 1:100
   set.seed(0)
   ans <- draw_vals_rw2(sd = sd,
+                       sd_init = 0,
+                       sd_slope = 0.5,
                        matrix_along_by = matrix(0:99, nr = 100),
                        levels_effect = levels_effect)
   expect_equal(unname(apply(ans, 2, function(x) sd(diff(x, diff = 2)))),
@@ -472,6 +533,8 @@ test_that("'draw_vals_rw2' works - along dimension is first", {
   levels_effect <- 1:3000
   set.seed(0)
   ans <- draw_vals_rw2(sd = sd,
+                       sd_init = 0.5,
+                       sd_slope = 0.1,
                        matrix_along_by = matrix_along_by,
                        levels_effect = levels_effect)
   expect_identical(dim(ans), c(3000L, 10L))
@@ -517,10 +580,17 @@ test_that("'draw_vals_seasfix' works - along dimension is first", {
   matrix_along_by <- matrix(0:29, nc = 3)
   set.seed(0)
   ans <- draw_vals_seasfix(n = 4,
+                           sd_init = 0.2,
                            matrix_along_by = matrix_along_by,
                            n_sim = n_sim)
   expect_identical(dim(ans), c(30L, 10L))
   expect_equal(ans[1:4,], ans[5:8,], ignore_attr = "dimnames")
+  expect_equal(colSums(ans[1:4,]), rep(0, times = 10))
+  expect_equal(sd(c(as.numeric(ans[1:3,]),
+                    as.numeric(ans[11:13,]),
+                    as.numeric(ans[21:23,]))),
+               0.2,
+               tolerance = 0.2)
 })
 
 test_that("'draw_vals_seasfix' works - along dimension is second", {
@@ -529,6 +599,7 @@ test_that("'draw_vals_seasfix' works - along dimension is second", {
   matrix_along_by <- t(matrix(0:29, nc = 10))
   set.seed(0)
   ans <- draw_vals_seasfix(n = 4,
+                           sd_init = 0.2,
                            matrix_along_by = matrix_along_by,
                            n_sim = 10)
   expect_identical(dim(ans), c(30L, 10L))
@@ -545,16 +616,17 @@ test_that("'draw_vals_seasvary' works - along dimension is first", {
   set.seed(0)
   n_sim <- 10
   matrix_along_by <- matrix(0:2999, nc = 3)
-  sd <- abs(rnorm(n = 10))
+  sd_innov <- abs(rnorm(n = 10))
   set.seed(0)
   ans <- draw_vals_seasvary(n = 4,
-                            sd = sd,
+                            sd_init = 0.3,
+                            sd_innov = sd_innov,
                             matrix_along_by = matrix_along_by)
   expect_identical(dim(ans), c(3000L, 10L))
   ans <- matrix(ans, nrow = 1000)
-  expect_equal(colMeans(ans), rep(0, times = ncol(ans)), ignore_attr = "names")
-  expect_equal(unname(apply(ans[-(1:4),], 2, function(x) sd(diff(x, lag = 4)))),
-               rep(sd, each = 3),
+  ans <- ans[seq.int(from = 0, to = nrow(ans) - 1) %% 4 != 0,]
+  expect_equal(unname(apply(ans[-(1:3),], 2, function(x) sd(diff(x, lag = 3)))),
+               rep(sd_innov, each = 3),
                tolerance = 0.05)
 })
 
@@ -562,19 +634,20 @@ test_that("'draw_vals_seasvary' works - along dimension is second", {
   set.seed(0)
   n_sim <- 10
   matrix_along_by <- t(matrix(0:2999, nc = 1000))
-  sd <- abs(rnorm(n = 10))
+  sd_innov <- abs(rnorm(n = 10))
   set.seed(0)
   ans <- draw_vals_seasvary(n = 4,
-                         sd = sd,
-                         matrix_along_by = matrix_along_by)
+                            sd_init = 0.5,
+                            sd_innov = sd_innov,
+                            matrix_along_by = matrix_along_by)
   expect_identical(dim(ans), c(3000L, 10L))
   ans <- array(ans, dim = c(3, 1000, 10))
   ans <- aperm(ans, perm = c(2, 1, 3))
   ans <- matrix(ans, nrow = 1000)
-  expect_equal(colMeans(ans), rep(0, times = ncol(ans)), ignore_attr = "names")
-  expect_equal(unname(apply(ans[-(1:4),], 2, function(x) sd(diff(x, lag = 4)))),
-               rep(sd, each = 3),
-               tolerance = 0.03)
+  ans <- ans[seq.int(from = 0, to = nrow(ans) - 1) %% 4 != 0,]
+  expect_equal(unname(apply(ans[-(1:3),], 2, function(x) sd(diff(x, lag = 3)))),
+               rep(sd_innov, each = 3),
+               tolerance = 0.05)
 })
 
 
@@ -583,14 +656,16 @@ test_that("'draw_vals_seasvary' works - along dimension is second", {
 test_that("'draw_vals_slope' works - has 'by' variables", {
   set.seed(0)
   n_sim <- 1000
+  mean_slope <- -0.1
   sd_slope <- 0.5
   matrix_along_by <- matrix(0:9, nr = 5, dimnames = list(1:5, c("a", "b")))
-  ans_obtained <- draw_vals_slope(sd_slope = 0.5,
+  ans_obtained <- draw_vals_slope(mean_slope = mean_slope,
+                                  sd_slope = sd_slope,
                                   matrix_along_by = matrix_along_by,
                                   n_sim = n_sim)
   set.seed(0)
   ans_expected <- matrix(rnorm(n = 2000,
-                               mean = rep(0, each = 2),
+                               mean = rep(-0.1, each = 2),
                                sd = rep(0.5, each = 2)),
                          nr = 2)
   rownames(ans_expected) <- paste("slope", c("a", "b"), sep = ".")
@@ -600,18 +675,19 @@ test_that("'draw_vals_slope' works - has 'by' variables", {
 test_that("'draw_vals_slope' works - no 'by' variables", {
   set.seed(0)
   n_sim <- 1000
+  mean_slope <- 0.1
   sd_slope <- 0.5
   matrix_along_by <- matrix(0:9, nr = 10, dimnames = list(1:10))
-  ans_obtained <- draw_vals_slope(sd_slope = 0.5,
+  ans_obtained <- draw_vals_slope(mean_slope = mean_slope,
+                                  sd_slope = sd_slope,
                                   matrix_along_by = matrix_along_by,
                                   n_sim = n_sim)
   set.seed(0)
-  ans_expected <- matrix(rnorm(n = 1000, 0, 0.5),
+  ans_expected <- matrix(rnorm(n = 1000, 0.1, 0.5),
                          nr = 1)
   rownames(ans_expected) <- "slope"
   expect_identical(ans_obtained, ans_expected)
 })
-
 
 
 ## draw_vals_spline_mod -------------------------------------------------------
@@ -875,6 +951,8 @@ test_that("'make_report_comp' works with valid inputs", {
                   exposure = popn)
   mod_sim <- mod
   mod_est <- mod
+  prior_class_est <- make_prior_class(mod_est)
+  prior_class_sim <- make_prior_class(mod_sim)
   mod_sim <- set_n_draw(mod, n = 1)
   comp_sim <- components(mod_sim, quiet = TRUE)
   aug_sim <- augment(mod_sim, quiet = TRUE)
@@ -883,12 +961,16 @@ test_that("'make_report_comp' works with valid inputs", {
   comp_est <- components(mod_est)
   perform_comp <- list(perform_comp(est = comp_est,
                                     sim = comp_sim,
+                                    prior_class_est = prior_class_est,
+                                    prior_class_sim = prior_class_sim,
                                     i_sim = 1L,
                                     point_est_fun = "median",
                                     widths = c(0.5, 0.95)))
   ans_obtained <- make_report_comp(perform_comp = perform_comp,
                                    comp_est = comp_est,
-                                   comp_sim = comp_sim)
+                                   comp_sim = comp_sim,
+                                   prior_class_est = prior_class_est,
+                                   prior_class_sim = prior_class_sim)
   expect_setequal(names(ans_obtained),
                   c("term", "component", "level", ".error",
                     ".cover_50", ".cover_95",
@@ -1012,6 +1094,8 @@ test_that("'perform_comp' works with valid inputs - models same", {
                   exposure = popn)
   mod_sim <- mod
   mod_est <- mod
+  prior_class_est <- make_prior_class(mod_est)
+  prior_class_sim <- make_prior_class(mod_sim)
   mod_sim <- set_n_draw(mod, n = 1)
   comp_sim <- components(mod_sim, quiet = TRUE)
   aug_sim <- augment(mod_sim, quiet = TRUE)
@@ -1019,10 +1103,12 @@ test_that("'perform_comp' works with valid inputs - models same", {
   mod_est <- fit(mod_est)
   comp_est <- components(mod_est)
   ans_obtained <- perform_comp(est = comp_est,
-                                   sim = comp_sim,
-                                   i_sim = 1L,
-                                   point_est_fun = "median",
-                                   widths = c(0.6, 0.8))
+                               sim = comp_sim,
+                               prior_class_est = prior_class_est,
+                               prior_class_sim = prior_class_sim,
+                               i_sim = 1L,
+                               point_est_fun = "median",
+                               widths = c(0.6, 0.8))
   names(comp_est)[[4]] <- ".fitted_est"
   names(comp_sim)[[4]] <- ".fitted_sim"
   merged <- merge(comp_est, comp_sim, sort = FALSE) 
@@ -1037,7 +1123,7 @@ test_that("'perform_comp' works with valid inputs - models same", {
                                                widths = c(0.6, 0.8)),
                               length_interval =
                                 length_interval(var_est = merged[[".fitted_est"]],
-                                               widths = c(0.6, 0.8))))
+                                                widths = c(0.6, 0.8))))
   expect_equal(ans_obtained, ans_expected)
 })
 
@@ -1054,20 +1140,26 @@ test_that("'perform_comp' works with valid inputs - models different", {
   mod_sim <- mod_pois(formula = formula_sim,
                       data = data,
                       exposure = popn)
+  mod_sim <- set_prior(mod_sim, time ~ AR1())
   mod_sim <- set_n_draw(mod_sim, n = 1)
   comp_sim <- components(mod_sim, quiet = TRUE)
   aug_sim <- augment(mod_sim, quiet = TRUE)
   mod_est$outcome <- as.numeric(aug_sim$deaths)
   mod_est <- fit(mod_est)
   comp_est <- components(mod_est)
+  prior_class_est <- make_prior_class(mod_est)
+  prior_class_sim <- make_prior_class(mod_sim)
   ans_obtained <- perform_comp(est = comp_est,
-                                   sim = comp_sim,
-                                   i_sim = 1L,
-                                   point_est_fun = "median",
-                                   widths = c(0.6, 0.8))
+                               sim = comp_sim,
+                               prior_class_est = prior_class_est,
+                               prior_class_sim = prior_class_sim,
+                               i_sim = 1L,
+                               point_est_fun = "median",
+                               widths = c(0.6, 0.8))
   names(comp_est)[[4]] <- ".fitted_est"
   names(comp_sim)[[4]] <- ".fitted_sim"
-  merged <- merge(comp_est, comp_sim, sort = FALSE) 
+  merged <- merge(comp_est, comp_sim, sort = FALSE)
+  merged <- merged[!(merged$term == "time" & merged$component == "hyper"),]
   ans_expected <- list(.fitted =
                          list(error_point_est =
                                 error_point_est(var_est = merged[[".fitted_est"]],
@@ -1079,7 +1171,7 @@ test_that("'perform_comp' works with valid inputs - models different", {
                                                widths = c(0.6, 0.8)),
                               length_interval =
                                 length_interval(var_est = merged[[".fitted_est"]],
-                                               widths = c(0.6, 0.8))))
+                                                widths = c(0.6, 0.8))))
   expect_equal(ans_obtained, ans_expected)
 })
 
@@ -1114,7 +1206,8 @@ test_that("'report_sim' works when mod_sim more complicated that mod_est", {
                         exposure = popn)
     mod_sim <- mod_pois(deaths ~ age * sex,
                         data = data,
-                        exposure = popn)
+                        exposure = popn) |>
+      set_prior(age ~ N())
     set.seed(0)
     ans_obtained <- report_sim(mod_est = mod_est, mod_sim = mod_sim, n_sim = 2)
     expect_setequal(names(ans_obtained), c("components", "augment"))
@@ -1149,6 +1242,24 @@ test_that("'report_sim' works when mod_sim is identical to mod_est - parallel pr
                              n_sim = 2,
                              n_core = 2)
   expect_identical(names(ans_obtained), c("components", "augment"))
+})
+
+test_that("'report_sim' works with fitted model", {
+  set.seed(0)
+  data <- expand.grid(age = 0:2, time = 2000:2002, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * time + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+                  fit()
+  set.seed(0)
+  ans1 <- suppressMessages(report_sim(mod_est = mod, n_sim = 1))
+  expect_true(is.list(ans1))
+  set.seed(0)
+  ans2 <- suppressMessages(report_sim(mod_est = mod, mod_sim = mod, n_sim = 1))
+  expect_identical(ans1, ans2)
 })
 
 
@@ -1297,8 +1408,11 @@ test_that("'vals_hyper_to_dataframe' works", {
 test_that("'vals_hyperrand_to_dataframe_one' works with 'bage_prior_ar'", {
   prior <- AR(n_coef = 3)
   vals_hyperrand <- list()
-  ans_obtained <- vals_hyperrand_to_dataframe_one(nm = "time",
+  ans_obtained <- vals_hyperrand_to_dataframe_one(prior = prior,
                                                   vals_hyperrand = vals_hyperrand,
+                                                  dimnames_term = list(time = 2001:2010),
+                                                  var_age = "age",
+                                                  var_time = "time",
                                                   n_sim = 10)
   ans_expected <- tibble::tibble(term = character(),
                                  component = character(),
@@ -1310,14 +1424,39 @@ test_that("'vals_hyperrand_to_dataframe_one' works with 'bage_prior_ar'", {
 test_that("'vals_hyperrand_to_dataframe_one' works with bage_prior_lin", {
   set.seed(0)
   prior <- Lin()
-  vals_hyperrand <- list(slope = matrix(rnorm(30), nr = 3))
-  ans_obtained <- vals_hyperrand_to_dataframe_one(vals_hyperrand = vals_hyperrand,
-                                                  nm = "time",
-                                                  n_sim = 10)
-  ans_expected <- tibble::tibble(term = "time",
-                                 component = "hyperrand",
-                                 level = c("slope", "slope", "slope"),
-                                 .fitted = rvec::rvec(vals_hyperrand$slope))
+  n_sim <- 10
+  dimnames_term <- list(time = 2001:2010,
+                        region = c("a", "b", "c"))
+  var_age <- "age"
+  var_time <- "time"
+  vals_hyper <- list(sd = runif(n_sim))
+  vals_hyperrand <- draw_vals_hyperrand(prior = prior,
+                                        vals_hyper = vals_hyper,
+                                        dimnames_term = dimnames_term,
+                                        var_time = var_time,
+                                        var_age = var_age,
+                                        n_sim = n_sim)
+  ans_obtained <- vals_hyperrand_to_dataframe_one(prior = prior,
+                                                  dimnames_term = list(time = 2001:2010,
+                                                                       region = 1:3),
+                                                  var_age = "age",
+                                                  var_time = "time",
+                                                  vals_hyperrand = vals_hyperrand,
+                                                  n_sim = n_sim)
+  .fitted <- rbind(vals_hyperrand$slope,
+                   vals_hyperrand$trend,
+                   vals_hyperrand$error)
+  .fitted <- unname(.fitted)
+  .fitted <- rvec::rvec(.fitted)
+  ans_expected <- tibble::tibble(term = "time:region",
+                                 component = rep(c("hyper", "trend", "error"),
+                                                 times = c(3, 30, 30)),
+                                 level = c(paste("slope", c("a", "b", "c"), sep = "."),
+                                           rep(paste(2001:2010,
+                                                     rep(c("a", "b", "c"), each = 10),
+                                                     sep = "."),
+                                               times = 2)),
+                                 .fitted = .fitted)
   expect_equal(ans_obtained, ans_expected)
 })
 
@@ -1347,25 +1486,25 @@ test_that("'vals_spline_to_dataframe' works", {
 ## 'vals_spline_to_dataframe_one' ---------------------------------------------
 
 test_that("'vals_spline_to_dataframe_one' works", {
-    set.seed(0)
-    data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
-    data$popn <- rpois(n = nrow(data), lambda = 100)
-    data$deaths <- rpois(n = nrow(data), lambda = 10)
-    formula <- deaths ~ age * time + sex
-    mod <- mod_pois(formula = formula,
-                    data = data,
-                    exposure = popn)
-    mod <- set_prior(mod, age ~ Sp(n_comp = 4))
-    vals_hyper <- draw_vals_hyper_mod(mod = mod, n_sim = 10)
-    vals_spline <- draw_vals_spline_mod(mod, vals_hyper = vals_hyper, n_sim = 10)$age
-    ans_obtained <- vals_spline_to_dataframe_one(vals_spline = vals_spline,
-                                                 nm = "age",
-                                                 n_sim = 10)
-    ans_expected <- tibble::tibble(term = "age",
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * time + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_prior(mod, age ~ Sp(n_comp = 4))
+  vals_hyper <- draw_vals_hyper_mod(mod = mod, n_sim = 10)
+  vals_spline <- draw_vals_spline_mod(mod, vals_hyper = vals_hyper, n_sim = 10)$age
+  ans_obtained <- vals_spline_to_dataframe_one(vals_spline = vals_spline,
+                                               nm = "age",
+                                               n_sim = 10)
+  ans_expected <- tibble::tibble(term = "age",
                                  component = "spline",
                                  level = paste0("comp", 1:4),
                                  .fitted = rvec::rvec(unname(vals_spline)))
-    expect_identical(ans_obtained, ans_expected)                                                 
+  expect_identical(ans_obtained, ans_expected)                                                 
 })
 
 

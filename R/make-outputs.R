@@ -1,251 +1,111 @@
 
 ## HAS_TESTS
-#' Center Effects, SVD, Spline, Trend, Cyclical, Seasonal, Error
+#' Combined Stored Draws and Point EStimates from Two Models
 #'
-#' @param components Data frame with estimates of hyper parameters
-#' @param priors Named list of objects of class 'bage_prior'
-#' @param dimnames_terms Dimnames for array representation of terms
-#' @param var_time Name of time variable
-#' @param var_age Name of age variable
-#' @param var_sexgender Name of sex/gender variable
-#' @param center_along Whether to center along the 'along' dimension
+#' Term used from first model if 'use_term' is TRUE; otherwise
+#' from second model. Dispersion ignored.
+#'
+#' @param mod Model receiving the draws
+#' @param mod_inner Model for which use_term is TRUE
+#' @param mod_outer Model for which use_term is FALSE
+#' @param use_term Logical vector
+#'
+#' @returns Modified version of 'mod'
 #' 
-#' @returns A modifed version of 'components'
-#'
 #' @noRd
-center_all <- function(components,
-                       priors,
-                       dimnames_terms,
-                       var_time,
-                       var_age,
-                       var_sexgender,
-                       center_along) {
-  components <- center_effects(components = components,
-                               priors = priors,
-                               dimnames_terms = dimnames_terms,
-                               var_time = var_time,
-                               var_age = var_age,
-                               center_along = center_along)
-  components <- center_svd_spline(components = components,
-                                  priors = priors,
-                                  dimnames_terms = dimnames_terms,
-                                  var_time = var_time,
-                                  var_age = var_age,
-                                  var_sexgender = var_sexgender,
-                                  center_along = center_along)
-  components <- center_trend_cyc_seas_err(components = components,
-                                          priors = priors,
-                                          dimnames_terms = dimnames_terms,
-                                          var_time = var_time,
-                                          var_age = var_age,
-                                          center_along = center_along)
-  components
+combine_stored_draws_point_inner_outer <- function(mod, mod_inner, mod_outer, use_term) { 
+  priors <- mod$priors
+  n_term <- length(priors)
+  nms_term <- names(priors)
+  terms_effectfree_inner <- make_terms_effectfree(mod_inner)
+  terms_effectfree_outer <- make_terms_effectfree(mod_outer)
+  terms_hyper_inner <- make_terms_hyper(mod_inner)
+  terms_hyper_outer <- make_terms_hyper(mod_outer)
+  terms_hyperrandfree_inner <- make_terms_hyperrandfree(mod_inner)
+  terms_hyperrandfree_outer <- make_terms_hyperrandfree(mod_outer)
+  draws_effectfree_inner <- mod_inner$draws_effectfree
+  draws_effectfree_outer <- mod_outer$draws_effectfree
+  draws_hyper_inner <- mod_inner$draws_hyper
+  draws_hyper_outer <- mod_outer$draws_hyper
+  draws_hyperrandfree_inner <- mod_inner$draws_hyperrandfree
+  draws_hyperrandfree_outer <- mod_outer$draws_hyperrandfree
+  point_effectfree_inner <- mod_inner$point_effectfree
+  point_effectfree_outer <- mod_outer$point_effectfree
+  point_hyper_inner <- mod_inner$point_hyper
+  point_hyper_outer <- mod_outer$point_hyper
+  point_hyperrandfree_inner <- mod_inner$point_hyperrandfree
+  point_hyperrandfree_outer <- mod_outer$point_hyperrandfree
+  draws_effectfree <- vector(mode = "list", length = n_term)
+  draws_hyper <- vector(mode = "list", length = n_term)
+  draws_hyperrandfree <- vector(mode = "list", length = n_term)
+  point_effectfree <- double()
+  point_hyper <- double()
+  point_hyperrandfree <- double()
+  for (i_term in seq_len(n_term)) {
+    nm_term <- nms_term[[i_term]]
+    use_inner <- use_term[[i_term]]
+    if (use_inner) {
+      is_term_effectfree <- terms_effectfree_inner == nm_term
+      draws_effectfree[[i_term]] <- draws_effectfree_inner[is_term_effectfree, , drop = FALSE]
+      point_effectfree <- c(point_effectfree, point_effectfree_inner[is_term_effectfree])
+      is_term_hyper <- terms_hyper_inner == nm_term
+      draws_hyper[[i_term]] <- draws_hyper_inner[is_term_hyper, , drop = FALSE]
+      point_hyper <- c(point_hyper, point_hyper_inner[is_term_hyper])
+      is_term_hyperrandfree <- terms_hyperrandfree_inner == nm_term
+      draws_hyperrandfree[[i_term]] <- draws_hyperrandfree_inner[is_term_hyperrandfree, , drop = FALSE]
+      point_hyperrandfree <- c(point_hyperrandfree, point_hyperrandfree_inner[is_term_hyperrandfree])
+    }
+    else {
+      is_term_effectfree <- terms_effectfree_outer == nm_term
+      draws_effectfree[[i_term]] <- draws_effectfree_outer[is_term_effectfree, , drop = FALSE]
+      point_effectfree <- c(point_effectfree, point_effectfree_outer[is_term_effectfree])
+      is_term_hyper <- terms_hyper_outer == nm_term
+      draws_hyper[[i_term]] <- draws_hyper_outer[is_term_hyper, , drop = FALSE]
+      point_hyper <- c(point_hyper, point_hyper_outer[is_term_hyper])
+      is_term_hyperrandfree <- terms_hyperrandfree_outer == nm_term
+      draws_hyperrandfree[[i_term]] <- draws_hyperrandfree_outer[is_term_hyperrandfree, , drop = FALSE]
+      point_hyperrandfree <- c(point_hyperrandfree, point_hyperrandfree_outer[is_term_hyperrandfree])
+    }
+  }
+  draws_effectfree <- do.call(rbind, draws_effectfree)
+  draws_hyper <- do.call(rbind, draws_hyper)
+  draws_hyperrandfree <- do.call(rbind, draws_hyperrandfree)
+  mod$draws_effectfree <- draws_effectfree
+  mod$draws_hyper <- draws_hyper
+  mod$draws_hyperrandfree <- draws_hyperrandfree
+  mod$point_effectfree <- point_effectfree
+  mod$point_hyper <- point_hyper
+  mod$point_hyperrandfree <- point_hyperrandfree
+  mod
 }
 
 
 ## HAS_TESTS
-#' Center Effects Along 'by' and (Optionally) 'along' Dimensions
+#' Standardize 'fitted' So It Conforms to 'con == "by"' Constraints
 #'
-#' @param components Data frame with estimates of hyper parameters
-#' @param priors Named list of objects of class 'bage_prior'
-#' @param dimnames_terms Dimnames for array representation of terms
-#' @param var_time Name of time variable
-#' @param var_age Name of age variable
-#' @param center_along Whether to center along the 'along' dimension
-#' 
-#' @returns A modifed version of 'components'
+#' @param prior Object of class 'bage_prior'
+#' @param fitted A vector, possibly an rvec
+#' @param dimnames_term Dimnames for array representation of term
+#' @param var_time Name of time dimension
+#' @param var_age Name of age dimension
 #'
-#' @noRd
-center_effects <- function(components,
-                           priors,
-                           dimnames_terms,
-                           var_time,
-                           var_age,
-                           center_along) {
-  key_comp <- with(components, paste(term, component, level))
-  for (i_term in seq_along(priors)) {
-    dimnames_term <- dimnames_terms[[i_term]]
-    prior <- priors[[i_term]]
-    nm_term_split <- dimnames_to_nm_split(dimnames_term)
-    nm_term <- dimnames_to_nm(dimnames_term)
-    levels_term <- dimnames_to_levels(dimnames_term)
-    key_effect <- paste(nm_term, "effect", levels_term)
-    i_effect <- match(key_effect, key_comp, nomatch = 0L)
-    has_val <- any(i_effect > 0L)
-    if (has_val) {
-      effect <- components$.fitted[i_effect]
-      is_intercept <- nm_term == "(Intercept)"
-      if (!is_intercept) {
-        uses_along <- uses_along(prior)
-        if (uses_along) {
-          along <- prior$specific$along
-          matrix_along_by <- make_matrix_along_by_effect(along = along,
-                                                         dimnames_term = dimnames_term,
-                                                         var_time = var_time,
-                                                         var_age = var_age)
-          effect <- center_within_along_by(x = effect,
-                                           matrix_along_by = matrix_along_by,
-                                           center_along = center_along)
-        }
-        else {
-          i_along <- 1L
-          matrix_along_by <- make_matrix_along_by_inner(i_along = i_along,
-                                                        dimnames_term = dimnames_term)
-          effect <- center_within_along_by(x = effect,
-                                           matrix_along_by = matrix_along_by,
-                                           center_along = TRUE)
-        }
-      }
-      components$.fitted[i_effect] <- effect
-    }
-  }
-  components
-}
-
-
-## HAS_TESTS
-#' Center SVD and Spline Coefficients
-#'
-#' @param components Data frame with estimates of hyper parameters
-#' @param priors Named list of objects of class 'bage_prior'
-#' @param dimnames_terms Dimnames for array representation of terms
-#' @param var_time Name of time variable
-#' @param var_age Name of age variable
-#' @param var_sexgender Name of sex/gender variable
-#' @param center_along Whether to center along the 'along' dimension
-#' 
-#' @returns A modifed version of 'components'
+#' @returns A standardized version of 'fitted'
 #'
 #' @noRd
-center_svd_spline <- function(components,
-                              priors,
-                              dimnames_terms,
-                              var_time,
-                              var_age,
-                              var_sexgender,
-                              center_along) {
-  key_components <- with(components, paste(term, component, level))
-  for (i_term in seq_along(priors)) {
-    prior <- priors[[i_term]]
-    is_svd <- is_svd(prior)
-    is_spline <- is_spline(prior)
-    if (is_svd || is_spline) {
-      dimnames_term <- dimnames_terms[[i_term]]
-      nm_split <- dimnames_to_nm_split(dimnames_term)
-      nm <- dimnames_to_nm(dimnames_term)
-      if (is_svd) {
-        levels <- make_levels_svd_term(prior = prior,
-                                       dimnames_term = dimnames_term,
-                                       var_age = var_age,
-                                       var_sexgender = var_sexgender)
-        key_term <- "svd"
-      }
-      else {
-        levels <- make_levels_spline_term(prior = prior,
-                                          dimnames_term = dimnames_term,
-                                          var_time = var_time,
-                                          var_age = var_age)
-        key_term <- "spline"
-      }
-      key_term <- paste(nm, key_term, levels)
-      indices_comp <- match(key_term, key_components)
-      val_term <- components$.fitted[indices_comp]
-      matrix_along_by <- make_matrix_along_by_effectfree(prior = prior,
-                                                         dimnames_term = dimnames_term,
-                                                         var_time = var_time,
-                                                         var_age = var_age,
-                                                         var_sexgender = var_sexgender)
-      val_term <- center_within_along_by(x = val_term, 
-                                         matrix_along_by = matrix_along_by,
-                                         center_along)
-      components$.fitted[indices_comp] <- val_term
-    }
-  }
-  components
-}
-
-
-## HAS_TESTS
-#' Center Trend, Cyclical, Seasonal, and Error Components of Terms
-#'
-#' @param components Data frame with estimates of hyper parameters
-#' @param priors Named list of objects of class 'bage_prior'
-#' @param dimnames_terms Dimnames for array representation of terms
-#' @param var_time Name of time variable
-#' @param var_age Name of age variable
-#' @param center_along Whether to center along the 'along' dimension
-#' 
-#' @returns A modifed version of 'components'
-#'
-#' @noRd
-center_trend_cyc_seas_err <- function(components,
-                                      priors,
-                                      dimnames_terms,
-                                      var_time,
-                                      var_age,
-                                      center_along) {
-  nms_tcse <- c("trend", "cyclical", "seasonal", "error")
-  key_comp <- with(components, paste(term, component, level))
-  for (i_term in seq_along(priors)) {
-    dimnames_term <- dimnames_terms[[i_term]]
-    nm_term_split <- dimnames_to_nm_split(dimnames_term)
-    nm_term <- dimnames_to_nm(dimnames_term)
-    levels_term <- dimnames_to_levels(dimnames_term)
-    for (nm_tcse in nms_tcse) {
-      key_tcse <- paste(nm_term, nm_tcse, levels_term)
-      i_tcse <- match(key_tcse, key_comp, nomatch = 0L)
-      has_val <- any(i_tcse > 0L)
-      if (has_val) {
-        prior <- priors[[i_term]]
-        dimnames_term <- dimnames_terms[[i_term]]
-        tcse <- components$.fitted[i_tcse]
-        if (!uses_along(prior))
-          cli::cli_abort("Internal error: Prior for term {.val {nm_term}} does not use along.")
-        along <- prior$specific$along
-        matrix_along_by <- make_matrix_along_by_effect(along = along,
-                                                       dimnames_term = dimnames_term,
-                                                       var_time = var_time,
-                                                       var_age = var_age)
-        tcse <- center_within_along_by(x = tcse,
-                                       matrix_along_by = matrix_along_by,
-                                       center_along = center_along)
-        components$.fitted[i_tcse] <- tcse
-      }
-    }
-  }
-  components
-} 
-
-
-## HAS_TESTS
-#' Center Values Within Each Value of 'along'
-#' Variable and (Optionally) Each Value
-#' of 'by' Variable
-#' 
-#' @param x A numeric vector or rvec
-#' @param matrix_along_by Mapping matrix for 'x'
-#' @param center_along Whether to center within 'along'
-#' variable
-#'
-#' @returns A modifed version of 'x'
-#'
-#' @noRd
-center_within_along_by <- function(x, matrix_along_by, center_along) {
-  n_along <- nrow(matrix_along_by)
-  n_by <- ncol(matrix_along_by)
-  if (center_along) {
-    for (i_by in seq_len(n_by)) {
-      i_along <- matrix_along_by[, i_by] + 1L
-      x[i_along] <- x[i_along] - mean(x[i_along])
-    }
-  }
-  if (n_by > 1L) {
-    for (i_along in seq_len(n_along)) {
-      i_by <- matrix_along_by[i_along, ] + 1L
-      x[i_by] <- x[i_by] - mean(x[i_by])
-    }
-  }
-  x
+con_by_fitted <- function(prior,
+                          fitted,
+                          dimnames_term,
+                          var_time,
+                          var_age) {
+  i_along <- make_i_along(prior = prior,
+                          dimnames_term = dimnames_term,
+                          var_time = var_time,
+                          var_age = var_age)
+  dim <- lengths(dimnames_term)
+  m <- make_matrix_con_by(i_along = i_along,
+                          dim = dim)
+  m <- as.matrix(m)
+  fitted <- m %*% fitted
 }
 
 
@@ -253,13 +113,12 @@ center_within_along_by <- function(x, matrix_along_by, center_along) {
 #' Return Values for Higher-Level Parameters from Fitted Model
 #'
 #' @param mod A fitted object of class 'bage_mod'
-#' @param standardize Whether to standardize
 #' estimates
 #'
 #' @returns A tibble
 #'
 #' @noRd
-draw_vals_components_fitted <- function(mod, standardize) {
+draw_vals_components_fitted <- function(mod) {
   data <- mod$data
   priors <- mod$priors
   dimnames_terms <- mod$dimnames_terms
@@ -270,42 +129,561 @@ draw_vals_components_fitted <- function(mod, standardize) {
   comp <- make_comp_components(mod)
   level <- make_level_components(mod)
   draws <- make_draws_components(mod)
-  ans <- tibble::tibble(term = term,
-                        component = comp,
-                        level = level,
-                        .fitted = draws)
-  ans <- infer_trend_cyc_seas_err(components = ans,
-                                  priors = priors,
-                                  dimnames_terms = dimnames_terms,
-                                  var_time = var_time,
-                                  var_age = var_age)
-  if (standardize == "terms") {
-    ans <- center_all(components = ans,
-                      priors = priors,
-                      dimnames_terms = dimnames_terms,
-                      var_time = var_time,
-                      var_age = var_age,
-                      var_sexgender = var_sexgender,
-                      center_along = TRUE)
-  }
-  else if (standardize == "anova") {
-    linpred <- make_linpred_comp(components = ans,
-                                 data = data,
-                                 dimnames_terms = dimnames_terms)
-    ans <- standardize_anova(components = ans,
-                             data = data,
-                             linpred = linpred,
-                             dimnames_terms = dimnames_terms)
-  }
-  else if (standardize == "none") {
-    NULL
-  }
-  else
-    cli::cli_abort("Internal error: Invalid value for {.arg standardize}.")
-  ans
+  tibble::tibble(term = term,
+                 component = comp,
+                 level = level,
+                 .fitted = draws)
 }
 
-  
+
+## HAS_TESTS
+#' Default Method for Fitting a Model
+#'
+#' @param object A `bage_mod` object.
+#' typically created with [mod_pois()],
+#' [mod_binom()], or [mod_norm()].
+#' @param aggregate Whether to aggregate outcome and offset variables
+#' @param optimizer Which optimizer to use
+#' @param quiet Whether to suppress warnings and trace information
+#' from optimizer
+#' @param start_oldpar Whether to start from old parameter values
+#'
+#' @returns A `bage_mod` object
+#'
+#' @noRd
+fit_default <- function(mod, aggregate, optimizer, quiet, start_oldpar) {
+  t1 <- Sys.time()
+  optimizer_original <- optimizer
+  if (start_oldpar) {
+    if (is_fitted(mod))
+      oldpar <- mod$oldpar
+    else
+      cli::cli_abort("{.arg start_oldpar} is {.val {start_oldpar}} but model has not been fitted.")
+  }
+  mod <- unfit(mod)
+  ## data
+  if (aggregate) {
+    vals_ag <- make_vals_ag(mod)
+    outcome <- vals_ag$outcome
+    offset <- vals_ag$offset
+    matrices_effect_outcome <- vals_ag$matrices_effect_outcome
+  }
+  else {
+    vals_in_lik <- make_vals_in_lik(mod)
+    outcome <- vals_in_lik$outcome
+    offset <- vals_in_lik$offset
+    matrices_effect_outcome <- vals_in_lik$matrices_effect_outcome
+  }
+  dimnames_terms <- mod$dimnames_terms
+  terms_effect <- make_terms_effects(dimnames_terms)
+  i_lik <- make_i_lik_mod(mod)
+  terms_effectfree <- make_terms_effectfree(mod)
+  uses_matrix_effectfree_effect <- make_uses_matrix_effectfree_effect(mod)
+  matrices_effectfree_effect <- make_matrices_effectfree_effect(mod)
+  uses_offset_effectfree_effect <- make_uses_offset_effectfree_effect(mod)
+  offsets_effectfree_effect <- make_offsets_effectfree_effect(mod)
+  i_prior <- make_i_prior(mod)
+  uses_hyper <- make_uses_hyper(mod)
+  terms_hyper <- make_terms_hyper(mod)
+  uses_hyperrandfree <- make_uses_hyperrandfree(mod)
+  terms_hyperrandfree <- make_terms_hyperrandfree(mod)
+  const <- make_const(mod)
+  terms_const <- make_terms_const(mod)
+  matrices_along_by_effectfree <- make_matrices_along_by_effectfree(mod)
+  mean_disp <- mod$mean_disp
+  has_disp <- mean_disp > 0
+  data <- list(i_lik = i_lik,
+               outcome = outcome,
+               offset = offset,
+               terms_effect = terms_effect,
+               terms_effectfree = terms_effectfree,
+               uses_matrix_effectfree_effect = uses_matrix_effectfree_effect,
+               matrices_effectfree_effect = matrices_effectfree_effect,
+               uses_offset_effectfree_effect = uses_offset_effectfree_effect,
+               offsets_effectfree_effect = offsets_effectfree_effect,
+               matrices_effect_outcome = matrices_effect_outcome,
+               i_prior = i_prior,
+               uses_hyper = uses_hyper,
+               terms_hyper = terms_hyper,
+               uses_hyperrandfree = uses_hyperrandfree,
+               terms_hyperrandfree = terms_hyperrandfree,
+               consts = const, ## 'const' is reserved word in C
+               terms_consts = terms_const,
+               matrices_along_by_effectfree = matrices_along_by_effectfree,
+               mean_disp = mean_disp)
+  ## parameters
+  if (start_oldpar)
+    parameters <- oldpar
+  else {
+    effectfree <- make_effectfree(mod)
+    hyper <- make_hyper(mod)
+    hyperrandfree <- make_hyperrandfree(mod)
+    log_disp <- c(disp = 0)
+    parameters <- list(effectfree = effectfree,   
+                       hyper = hyper,
+                       hyperrandfree = hyperrandfree,
+                       log_disp = log_disp)
+  }
+  ## MakeADFun
+  map <- make_map(mod)
+  random <- make_random(mod)
+  has_random_effects <- !is.null(random)
+  f <- TMB::MakeADFun(data = data,
+                      parameters = parameters,
+                      map = map,
+                      DLL = "bage",
+                      random = random,
+                      silent = TRUE)
+  ## optimise
+  t2 <- Sys.time()
+  if (optimizer %in% c("multi", "nlminb")) {
+    if (quiet) {
+      suppressWarnings(out <- stats::nlminb(start = f$par,
+                                            objective = f$fn,
+                                            gradient = f$gr,
+                                            control = list(iter.max = 300L,
+                                                           eval.max = 400L,
+                                                           trace = 0L)))
+    }
+    else {
+      cli::cli_alert("Output from {.fun nlminb}:")
+      out <- stats::nlminb(start = f$par,
+                           objective = f$fn,
+                           gradient = f$gr,
+                           control = list(iter.max = 300L,
+                                          eval.max = 400L,
+                                          trace = 1L))
+    }
+    iter <- out$iterations
+    message <- out$message
+    multi_nonconv <- identical(optimizer, "multi") && !identical(out$convergence, 0L)
+    if (multi_nonconv) {
+      if (!quiet)
+        cli::cli_alert_info("\"nlminb\" optimizer did not converge: continuing with \"BFGS\".")
+      if (has_random_effects)
+        sdreport <- TMB::sdreport(f, bias.correct = FALSE, getJointPrecision = FALSE)
+      else
+        sdreport <- TMB::sdreport(f, bias.correct = FALSE, getReportCovariance = FALSE)
+      oldpar <- as.list(sdreport, what = "Est")
+      f <- TMB::MakeADFun(data = data,
+                          parameters = oldpar,
+                          map = map,
+                          DLL = "bage",
+                          random = random,
+                          silent = TRUE)
+      optimizer <- "BFGS"
+    }
+  }
+  if (optimizer %in% c("BFGS", "CG")) {
+    if (quiet) {
+      suppressWarnings(out <- stats::optim(par = f$par,
+                                           fn = f$fn,
+                                           gr = f$gr,
+                                           method = optimizer,
+                                           control = list(maxit = 300L,
+                                                          trace = 0L)))
+    }
+    else {
+      cli::cli_alert("Output from {.fun optim}:")
+      out <- stats::optim(par = f$par,
+                          fn = f$fn,
+                          gr = f$gr,
+                          method = optimizer,
+                          control = list(trace = 1L,
+                                         maxit = 300L,
+                                         REPORT = 1L))
+    }
+    if (optimizer_original == "multi")
+      iter <- paste(iter, out$counts[["gradient"]], sep = "+")
+    else
+      iter <- out$counts[["gradient"]]
+    message <- out$message
+    if (is.null(message))
+      message <- "<none>"
+  }
+  t3 <- Sys.time()
+  ## extract results
+  if (has_random_effects)
+    sdreport <- TMB::sdreport(f,
+                              bias.correct = TRUE,
+                              getJointPrecision = TRUE)
+  else
+    sdreport <- TMB::sdreport(f) 
+  est <- as.list(sdreport, what = "Est")
+  check_est(est)
+  if (has_random_effects) {
+    prec <- sdreport$jointPrecision
+    check_var_prec(x = prec, est = est)
+  }
+  else {
+    var <- sdreport$cov.fixed
+    check_var_prec(x = var, est = est)
+    prec <- solve(var) ## should be very low dimension
+  }
+  t4 <- Sys.time()
+  mod <- make_stored_draws(mod = mod,
+                           est = est,
+                           prec = prec,
+                           map = map)
+  mod <- make_stored_point(mod = mod,
+                           est = est)
+  t5 <- Sys.time()
+  time_total <- as.numeric(difftime(t5, t1, units = "secs"))
+  time_optim <- as.numeric(difftime(t3, t2, units = "secs"))
+  time_report <- as.numeric(difftime(t4, t3, units = "secs"))
+  converged <- identical(out$convergence, 0L)
+  if (!converged)
+    cli::cli_alert_warning("Optimizer did not converge.")
+  mod$computations <- tibble::tibble(time_total = time_total,
+                                     time_optim = time_optim,
+                                     time_report = time_report,
+                                     iter = iter,
+                                     converged = converged,
+                                     message = message)
+  mod$optimizer <- optimizer_original
+  mod$oldpar <- est
+  mod
+}
+
+
+## HAS_TESTS
+#' Two-Step Method for Fitting a Model
+#'
+#' @param object A `bage_mod` object.
+#' @param quiet Whether to suppress warning messages from nlminb
+#' @param vars_inner Variables used
+#' in inner model.
+#' @param optimizer Which optimizer to use
+#' @param quiet Whether to suppress warnings from 'optimizer'
+#'
+#' @returns A `bage_mod` object
+#'
+#' @noRd
+fit_inner_outer <- function(mod, optimizer, quiet, vars_inner, start_oldpar) {
+  if (start_oldpar)
+    cli::cli_abort("{.arg start_oldpar} must be {.val {FALSE}} when using \"inner-outer\" method.")
+  if (is.null(vars_inner))
+    vars_inner <- make_vars_inner(mod)
+  else
+    check_vars_inner(vars_inner)
+  use_term <- make_use_term(mod = mod,
+                            vars_inner = vars_inner)
+  mod_inner <- make_mod_inner(mod = mod,
+                              use_term = use_term)
+  mod_inner <- fit_default(mod = mod_inner,
+                           optimizer = optimizer,
+                           quiet = quiet,
+                           start_oldpar = start_oldpar,
+                           aggregate = TRUE)
+  mod_outer <- make_mod_outer(mod = mod,
+                              mod_inner = mod_inner,
+                              use_term = use_term)
+  mod_outer <- fit_default(mod = mod_outer,
+                           optimizer = optimizer,
+                           quiet = quiet,
+                           start_oldpar = start_oldpar,
+                           aggregate = TRUE)
+  computations <- rbind(inner = mod_inner$computations,
+                        outer = mod_outer$computations)
+  mod <- combine_stored_draws_point_inner_outer(mod = mod,
+                                                mod_inner = mod_inner,
+                                                mod_outer = mod_outer,
+                                                use_term = use_term)
+  if (has_disp(mod)) {
+    mod_disp <- make_mod_disp(mod)
+    mod_disp <- fit_default(mod = mod_disp,
+                            optimizer = optimizer,
+                            quiet = quiet,
+                            start_oldpar = start_oldpar,
+                            aggregate = FALSE)
+    computations <- rbind(computations,
+                          disp = mod_disp$computations)
+    mod <- transfer_draws_disp(mod = mod,
+                               mod_disp = mod_disp)
+  }
+  computations <- cbind(model = rownames(computations),
+                        computations)
+  rownames(computations) <- NULL
+  mod$computations <- computations
+  mod$vars_inner <- vars_inner
+  mod
+}
+
+
+## HAS_TESTS
+#' Helper Function for 'generate' Methods for 'bage_prior'
+#'
+#' @param x Object of class 'bage_prior'
+#' @param n_element Total number of elements
+#' @param n_along Number of elements of 'along' variable
+#' @param n_by Number of combinations of 'by' variables
+#' @param n_draw Number of draws
+#'
+#' @returns A named list
+#'
+#' @noRd
+generate_prior_helper <- function(x, n_element, n_along, n_by, n_draw) {
+  uses_along_by <- missing(n_element)
+  if (uses_along_by) {
+    poputils::check_n(n = n_along,
+                      nm_n = "n_along",
+                      min = 1L,
+                      max = NULL,
+                      divisible_by = NULL)
+    poputils::check_n(n = n_by,
+                      nm_n = "n_by",
+                      min = 1L,
+                      max = NULL,
+                      divisible_by = NULL)
+  }
+  else
+    poputils::check_n(n = n_element,
+                      nm_n = "n_element",
+                      min = 1L,
+                      max = NULL,
+                      divisible_by = NULL)
+  poputils::check_n(n = n_draw,
+                    nm_n = "n_draw",
+                    min = 1L,
+                    max = NULL,
+                    divisible_by = NULL)
+  if (uses_along_by) {
+    ans <- vctrs::vec_expand_grid(draw = paste("Draw", seq_len(n_draw)),
+                                  by = paste("By", seq_len(n_by)),
+                                  along = seq_len(n_along))
+    ans$draw <- factor(ans$draw, levels = unique(ans$draw))
+    ans$by <- factor(ans$by, levels = unique(ans$by))
+    matrix_along_by <- matrix(seq_len(n_along * n_by) - 1L,
+                              nrow = n_along,
+                              ncol = n_by,
+                              dimnames = list(seq_len(n_along), seq_len(n_by)))
+    levels_effect <- paste(rep(seq_len(n_by), each = n_along), seq_len(n_along), sep = ".")
+  }
+  else {
+    ans <- vctrs::vec_expand_grid(draw = paste("Draw", seq_len(n_draw)),
+                                  element = seq_len(n_element))
+    ans$draw <- factor(ans$draw, levels = unique(ans$draw))
+    matrix_along_by <- matrix(seq_len(n_element) - 1L,
+                              nrow = n_element,
+                              ncol = 1L,
+                              dimnames = list(seq_len(n_element), NULL))
+    levels_effect <- seq_len(n_element)
+  }
+  ans <- tibble::tibble(ans)
+  list(ans = ans,
+       matrix_along_by = matrix_along_by,
+       levels_effect = levels_effect)
+}
+
+
+## HAS_TESTS
+#' Helper Function for 'generate' Methods for 'bage_prior' that
+#' Uses SVD
+#'
+#' @param x Object of class 'bage_prior' that uses SVD
+#' @param n_elements Number of element
+#' @param n_along Number of element in 'along' dimension
+#' @param n_by Number of combinations of categories for 'by' variables
+#' @param n_draw Number of draws
+#'
+#' @returns A named list
+#'
+#' @noRd
+generate_prior_svd_helper <- function(x, n_element, n_along, n_by, n_draw) {
+  uses_along_by <- missing(n_element)
+  ssvd <- x$specific$ssvd
+  n_comp <- x$specific$n_comp
+  indep <- x$specific$indep
+  if (isTRUE(indep) && !has_sexgender(ssvd))
+    indep <- NULL
+  if (uses_along_by)
+    generate_ssvd_helper(ssvd = ssvd,
+                         n_along = n_along,
+                         n_by = n_by,
+                         n_draw = n_draw,
+                         n_comp = n_comp,
+                         indep = indep,
+                         age_labels = NULL)
+  else
+    generate_ssvd_helper(ssvd = ssvd,
+                         n_element = n_element,
+                         n_draw = n_draw,
+                         n_comp = n_comp,
+                         indep = indep,
+                         age_labels = NULL)
+}
+
+
+## HAS_TESTS
+#' Generate Values for Scaled SVD
+#'
+#' Used by 'generate' method for "bage_ssvd" and 'generate'
+#' method for "bage_prior" (after minor rearrangement
+#' by function 'generate_prior_svd_helper').
+#'
+#' @param svd An object of class `"bage_ssvd"`.
+#' @param n_along Number of element in 'along' dimension (always 1 for SVD() prior)
+#' @param n_by Number of combinations of categories for 'by' variables
+#' @param n_comp Number of SVD components to be used
+#' @param indep Whether to use independent SVDs for sexes/genders
+#' @param n_draw Number of random draws to generate.
+#' @param age_labels Vector of age labels
+#'
+#' @returns A named list
+#'
+#' @noRd
+generate_ssvd_helper <- function(ssvd,
+                                 n_element,
+                                 n_along,
+                                 n_by,
+                                 n_comp,
+                                 indep,
+                                 n_draw,
+                                 age_labels) {
+  uses_along_by <- missing(n_element)
+  if (uses_along_by) {
+    poputils::check_n(n = n_along,
+                      nm_n = "n_along",
+                      min = 1L,
+                      max = NULL,
+                      divisible_by = NULL)
+    poputils::check_n(n = n_by,
+                      nm_n = "n_by",
+                      min = 1L,
+                      max = NULL,
+                      divisible_by = NULL)
+    n_element <- n_by * n_along
+  }
+  else
+    poputils::check_n(n = n_element,
+                      nm_n = "n_element",
+                      min = 1L,
+                      max = NULL,
+                      divisible_by = NULL)
+  poputils::check_n(n = n_draw,
+                    nm_n = "n_draw",
+                    min = 1L,
+                    max = NULL,
+                    divisible_by = NULL)
+  n_comp_ssvd <- get_n_comp(ssvd)
+  if (is.null(n_comp))
+    n_comp <- ceiling(n_comp_ssvd / 2)
+  else {
+    poputils::check_n(n = n_comp,
+                      nm_n = "n_comp",
+                      min = 1L,
+                      max = NULL,
+                      divisible_by = NULL)
+    if (n_comp > n_comp_ssvd)
+      cli::cli_abort(c("{.arg n_comp} larger than number of components of {.arg x}.",
+                       i = "{.arg n_comp}: {.val {n_comp}}.",
+                       i = "Number of components: {.val {n_comp_ssvd}}."))
+  }
+  n_comp <- as.integer(n_comp)
+  has_indep <- !is.null(indep)
+  if (has_indep) {
+    check_flag(x = indep, nm_x = "indep")
+    if (!has_sexgender(ssvd))
+      cli::cli_abort(paste("Value supplied for {.arg indep}, but {.arg x}",
+                           "does not have a sex/gender dimension."))
+    type <- if (indep) "indep" else "joint"
+  }
+  else
+    type <- "total"
+  has_age <- !is.null(age_labels)
+  if (has_age) {
+    age_labels <- tryCatch(poputils::reformat_age(age_labels, factor = FALSE),
+                           error = function(e) e)
+    if (inherits(age_labels, "error"))
+      cli::cli_abort(c("Problem with {.arg age_labels}.",
+                       i = age_labels$message))
+  }
+  data <- ssvd$data
+  data <- data[data$type == type, , drop = FALSE]
+  if (has_age) {
+    is_matched <- vapply(data$labels_age, setequal, TRUE, y = age_labels)
+    if (!any(is_matched))
+      cli::cli_abort("Can't find labels from {.arg age_labels} in {.arg x}.")
+    i_matched <- which(is_matched)
+  }
+  else {
+    lengths_labels <- lengths(data$labels_age)
+    i_matched <- which.max(lengths_labels)
+  }
+  levels_age <- data$labels_age[[i_matched]]
+  levels_sexgender <- data$labels_sexgender[[i_matched]]
+  levels_age <- unique(levels_age)
+  levels_sexgender <- unique(levels_sexgender)
+  n_sexgender <- length(levels_sexgender)
+  agesex <- if (has_indep) "age:sex" else "age"
+  matrix <- get_matrix_or_offset_svd(ssvd = ssvd,
+                                     levels_age = levels_age,
+                                     levels_sexgender = levels_sexgender,
+                                     joint = !indep,
+                                     agesex = agesex,
+                                     get_matrix = TRUE,
+                                     n_comp = n_comp)
+  offset <- get_matrix_or_offset_svd(ssvd = ssvd,
+                                     levels_age = levels_age,
+                                     levels_sexgender = levels_sexgender,
+                                     joint = !indep,
+                                     agesex = agesex,
+                                     get_matrix = FALSE,
+                                     n_comp = n_comp)
+  n_svd <- ncol(matrix)
+  I <- Matrix::.sparseDiagonal(n_element)
+  ones <- Matrix::sparseMatrix(i = seq_len(n_element),
+                               j = rep(1L, times = n_element),
+                               x = rep(1, times = n_element))
+  matrix <- Matrix::kronecker(I, matrix)
+  offset <- Matrix::kronecker(ones, offset)
+  offset <- as.double(offset)
+  if (uses_along_by) {
+    dim <- c(n_svd, n_by, n_along)
+    matrix_along_by <- make_matrix_along_by_inner(i_along = 3L, dim = dim)
+  }
+  else {
+    dim <- c(n_svd, n_element)
+    matrix_along_by <- make_matrix_along_by_inner(i_along = 1L, dim = dim)
+  }    
+  if (uses_along_by) {
+    if (has_indep)
+      levels <- list(by = seq_len(n_by),
+                     along = seq_len(n_along),
+                     sexgender = levels_sexgender,
+                     age = levels_age)
+    else
+      levels <- list(by = seq_len(n_by),
+                     along = seq_len(n_along),
+                     age = levels_age)
+  }
+  else {
+    if (has_indep)
+      levels <- list(element = seq_len(n_element),
+                     sexgender = levels_sexgender,
+                     age = levels_age)
+    else 
+      levels <- list(element = seq_len(n_element),
+                     age = levels_age)
+  }
+  levels_draw <- list(draw = seq_len(n_draw))
+  levels <- c(levels_draw, levels)
+  ans <- vctrs::vec_expand_grid(!!!levels)
+  ans$draw <- paste("Draw", ans$draw)
+  ans$draw <- factor(ans$draw, levels = unique(ans$draw))
+  if (uses_along_by) {
+    ans$by <- paste("By", ans$by)
+    ans$by <- factor(ans$by, levels = unique(ans$by))
+  }
+  if (has_indep)
+    ans$sexgender <- poputils::reformat_sex(ans$sexgender)
+  ans$age <- poputils::reformat_age(ans$age)
+  ans <- tibble::tibble(ans)
+  list(ans = ans,
+       matrix = matrix,
+       offset = offset,
+       matrix_along_by = matrix_along_by)
+}
 
 
 ## HAS_TESTS
@@ -332,6 +710,27 @@ get_disp <- function(mod) {
 }
 
 
+## HAS_TESTS
+#' Get the Name of the Term(s) for Element(s) in the 'est'
+#' Object Returned by TMB
+#'
+#' @param est Named list
+#' @param index_term Integer vector with indices of
+#' elements within unlisted version of 'est'
+#'
+#' @returns A character vector
+#'
+#' @noRd
+get_term_from_est <- function(est, index_term) {
+  nm_term <- lapply(est, names)
+  nm_term <- unlist(nm_term, use.names = FALSE)
+  ans <- nm_term[index_term]
+  ans <- unique(ans)
+  ans
+}
+
+
+## HAS_TESTS
 #' Insert a Into a Data Frame
 #'
 #' Insert a variable into a dataframe, immediately
@@ -370,32 +769,8 @@ insert_after <- function(df, nm_after, x, nm_x) {
   ans
 }
   
+
 ## HAS_TESTS
-#' Insert values for fixed parameters into
-#' random draws for non-fixed parameters
-#'
-#' @param draws A matrix containing draws
-#' for non-fixed parameters. Each row is one
-#' variable and each column is one draw.
-#' @param est Mean values for (fixed and unfixed)
-#' parameters. Output from TMB.
-#' @param is_fixed Logical vector indicator whether
-#' each (unlisted) value in 'est' is fixed
-#'
-#' @returns A matrix with more rows than 'draws',
-#' but same number of columns.
-#'
-#' @noRd
-insert_draws_known <- function(draws, est, is_fixed) {
-    est <- unlist(est)
-    ans <- matrix(nrow = length(is_fixed),
-                  ncol = ncol(draws))
-    ans[!is_fixed, ] <- draws
-    ans[is_fixed, ] <- est[is_fixed]
-    ans
-}
-
-
 #' Test Whether Two Objects Have the Same Class
 #'
 #' @param x,y Objects
@@ -405,6 +780,43 @@ insert_draws_known <- function(draws, est, is_fixed) {
 #' @noRd
 is_same_class <- function(x, y)
   identical(class(x)[[1L]], class(y)[[1L]])
+
+
+## HAS_TESTS
+#' Derive the Name of the 'along' Dimension for Terms in Model
+#'
+#' Returns NA for terms that do not have an "along" dimension
+#' 
+#' @param mod An object of class 'bage_mod'
+#'
+#' @returns A character vector
+#'
+#' @noRd
+make_along_mod <- function(mod) {
+  priors <- mod$priors
+  dimnames_terms <- mod$dimnames_terms
+  var_time <- mod$var_time
+  var_age <- mod$var_age
+  n_term <- length(priors)
+  ans <- character(length = n_term)
+  nms <- names(priors)
+  names(ans) <- nms
+  for (i_term in seq_len(n_term)) {
+    prior <- priors[[i_term]]
+    dimnames_term <- dimnames_terms[[i_term]]
+    if (uses_along(prior)) {
+      i_along <- make_i_along(prior = prior,
+                              dimnames_term = dimnames_term,
+                              var_time = var_time,
+                              var_age = var_age)
+      nm_split <- dimnames_to_nm_split(dimnames_term)
+      ans[[i_term]] <- nm_split[[i_along]]
+    }
+    else
+      ans[[i_term]] <- NA_character_
+  }
+  ans
+}
 
 
 ## HAS_TESTS
@@ -420,8 +832,12 @@ is_same_class <- function(x, y)
 #'
 #' @noRd
 make_combined_matrix_effect_outcome <- function(mod) {
-    matrices_effect_outcome <- mod$matrices_effect_outcome
-    Reduce(Matrix::cbind2, matrices_effect_outcome)
+  data <- mod$data
+  dimnames_terms <- mod$dimnames_terms
+  nms_terms <- names(dimnames_terms)
+  matrices_effect_outcome <- make_matrices_effect_outcome(data = data,
+                                                          dimnames_terms = dimnames_terms)
+  Reduce(Matrix::cbind2, matrices_effect_outcome)
 }
 
 
@@ -472,20 +888,45 @@ make_combined_offset_effectfree_effect <- function(mod) {
 #'
 #' @noRd
 make_comp_components <- function(mod) {
-  est <- mod$est
-  terms_effect <- mod$terms_effect
-  terms_spline <- make_term_spline(mod)
-  terms_svd <- make_term_svd(mod)
+  dimnames_terms <- mod$dimnames_terms
+  terms_effects <- make_terms_effects(dimnames_terms)
+  hyper <- make_hyper(mod)
+  term_spline <- make_term_spline(mod)
+  term_svd <- make_term_svd(mod)
   has_disp <- has_disp(mod)
-  vals <- c("effect", "hyper", "hyperrand", "spline", "svd", "disp")
-  n_effect <- length(terms_effect)
-  n_hyper <- length(est$hyper)
-  n_hyperrand <- length(est$hyperrand)
-  n_spline <- length(terms_spline)
-  n_svd <- length(terms_svd)
-  n_disp <- as.integer(has_disp)
-  times <- c(n_effect, n_hyper, n_hyperrand, n_spline, n_svd, n_disp)
-  rep(vals, times = times)
+  effect <- rep("effect", times = length(terms_effects))
+  hyper <- rep("hyper", times = length(hyper))
+  hyperrand <- make_comp_hyperrand(mod)
+  spline <- rep("spline", times = length(term_spline))
+  svd <- rep("svd", times = length(term_svd))
+  disp <- rep("disp", times = has_disp)
+  ans <- c(effect, hyper, hyperrand, spline, svd, disp)
+  ans
+}
+
+
+## HAS_TESTS
+#' Make Variable Identifying Component in 'components' - Hyperrand Only
+#'
+#' Helper function for function 'components'
+#'
+#' @param mod Object of class 'bage_mod'
+#'
+#' @returns A character vector
+#'
+#' @noRd
+make_comp_hyperrand <- function(mod) {
+  priors <- mod$priors
+  dimnames_terms <- mod$dimnames_terms
+  var_time <- mod$var_time
+  var_age <- mod$var_age
+  ans <- .mapply(comp_hyperrand,
+                 dots = list(prior = priors,
+                             dimnames_term = dimnames_terms),
+                 MoreArgs = list(var_time = var_time,
+                                 var_age = var_age))
+  ans <- unlist(ans)
+  ans
 }
 
 
@@ -528,8 +969,7 @@ make_draws_components <- function(mod) {
   hyper <- mod$draws_hyper
   ans_hyper <- rvec::rvec_dbl(hyper)
   ## hyperrand
-  hyperrand <- mod$draws_hyperrand
-  ans_hyperrand <- rvec::rvec_dbl(hyperrand)
+  ans_hyperrand <- make_hyperrand(mod)
   ## spline
   ans_spline <- make_spline(mod = mod, effectfree = effectfree)
   ans_spline <- rvec::rvec_dbl(ans_spline)
@@ -540,14 +980,11 @@ make_draws_components <- function(mod) {
   ans <- c(ans_effects, ans_hyper, ans_hyperrand, ans_spline, ans_svd)
   ## disp
   if (has_disp(mod)) {
-    disp <- mod$draws_disp
-    disp <- matrix(disp, nrow = 1L)
-    ans_disp <- rvec::rvec_dbl(disp)
+    ans_disp <- get_disp(mod)
     ans <- c(ans, ans_disp)
   }
   ## return
   ans <- unname(ans)
-  dimnames(vctrs::field(ans, "data")) <- NULL ## TODO - remove this when rvec updated
   ans
 }
 
@@ -557,14 +994,13 @@ make_draws_components <- function(mod) {
 #'
 #' Includes transforming back to natural units.
 #'
-#' @param mod A fitted object of class "bage_mod"
 #' @param draws_post Posterior draws for all parameters
 #' estimated in TMB. Output from 'make_draws_post'.
 #'
 #' @returns A numeric vector.
 #' 
 #' @noRd
-make_draws_disp <- function(mod, draws_post) {
+make_draws_disp <- function(draws_post) {
   n_val <- nrow(draws_post)
   ans <- draws_post[n_val, ]
   ans <- exp(ans)
@@ -578,15 +1014,15 @@ make_draws_disp <- function(mod, draws_post) {
 #' Make draws from 'effectfree' (as opposed
 #' to 'effect', the values that users see.)
 #
-#' @param mod A fitted object of class "bage_mod"
+#' @param est Named list. Output from TMB.
 #' @param draws_post Posterior draws for all parameters
 #' estimated in TMB. Output from 'make_draws_post'.
 #'
 #' @returns A matrix
 #' 
 #' @noRd
-make_draws_effectfree <- function(mod, draws_post) {
-  n_effectfree <- length(mod$est$effectfree)
+make_draws_effectfree <- function(est, draws_post) {
+  n_effectfree <- length(est$effectfree)
   i_effectfree <- seq_len(n_effectfree)
   draws_post[i_effectfree, , drop = FALSE]
 }
@@ -598,21 +1034,22 @@ make_draws_effectfree <- function(mod, draws_post) {
 #' Does not include hyperrand or disp.
 #' Includes transforming back to natural units.
 #'
-#' @param mod A fitted object of class "bage_mod"
+#' @param est Named list. Output from TMB.
+#' @param transforms_hyper List of transforms to be
+#' applied to hyper-parameters
 #' @param draws_post Posterior draws for all parameters
 #' estimated in TMB. Output from 'make_draws_post'.
 #'
 #' @returns A matrix
 #' 
 #' @noRd
-make_draws_hyper <- function(mod, draws_post) {
-  n_effectfree <- length(mod$est$effectfree)
-  n_hyper <- length(mod$est$hyper)
+make_draws_hyper <- function(est, transforms_hyper, draws_post) {
+  n_effectfree <- length(est$effectfree)
+  n_hyper <- length(est$hyper)
   i_hyper <- seq.int(from = n_effectfree + 1L, length.out = n_hyper)
   ans <- draws_post[i_hyper, , drop = FALSE]
-  transforms <- make_transforms_hyper(mod)
-  for (i in seq_along(transforms)) {
-    transform <- transforms[[i]]
+  for (i in seq_along(transforms_hyper)) {
+    transform <- transforms_hyper[[i]]
     if (!is.null(transform))
       ans[i, ] <- transform(ans[i, ])
   }
@@ -624,20 +1061,20 @@ make_draws_hyper <- function(mod, draws_post) {
 #' Make Draws from Hyper-Parameters that can be
 #' Treated as Random Effects
 #'
-#' @param mod A fitted object of class "bage_mod"
+#' @param est Named list. Output from TMB.
 #' @param draws_post Posterior draws for all parameters
 #' estimated in TMB. Output from 'make_draws_post'.
 #'
 #' @returns A matrix
 #' 
 #' @noRd
-make_draws_hyperrand <- function(mod, draws_post) {
-  n_effectfree <- length(mod$est$effectfree)
-  n_hyper <- length(mod$est$hyper)
-  n_hyperrand <- length(mod$est$hyperrand)
-  i_hyperrand <- seq.int(from = n_effectfree + n_hyper + 1L,
-                         length.out = n_hyperrand)
-  draws_post[i_hyperrand, , drop = FALSE]
+make_draws_hyperrandfree <- function(est, draws_post) {
+  n_effectfree <- length(est$effectfree)
+  n_hyper <- length(est$hyper)
+  n_hyperrandfree <- length(est$hyperrandfree)
+  i_hyperrandfree <- seq.int(from = n_effectfree + n_hyper + 1L,
+                             length.out = n_hyperrandfree)
+  draws_post[i_hyperrandfree, , drop = FALSE]
 }
 
 
@@ -666,36 +1103,423 @@ make_effects <- function(mod, effectfree) {
 #' matrix of TMB model output.
 #'
 #' If the Cholesky decomposition of
-#' 'prec' was successful, then use that.
+#' 'prec' is successful, then use that.
 #' Otherwise, use the eigen decomposition.
 #' Insert values for parameters that were
 #' fixed via the 'map' function
 #'
-#' @param mod Object of class 'bage_mod'
+#' @param est Named list with estimates returned by TMB
+#' @param prec Precision matrix returned by TMB
+#' @param map 'map' argument to TMB
+#' @param n_draw Number of posterior draws
 #'
 #' @returns A matrix
 #'
 #' @noRd
-make_draws_post <- function(mod) {
-  est <- unlist(mod$est)
-  R_prec <- mod$R_prec
-  scaled_eigen <- mod$scaled_eigen
-  is_fixed <- mod$is_fixed
-  n_draw <- mod$n_draw
-  ans <- matrix(nrow = length(is_fixed),
-                ncol = n_draw)
-  mean <- est[!is_fixed]
-  if (is.matrix(R_prec))
+make_draws_post <- function(est, prec, map, n_draw) {
+  is_fixed <- make_is_fixed(est = est, map = map)
+  est_unlist <- unlist(est)
+  mean <- est_unlist[!is_fixed]
+  CH <- Matrix::Cholesky(prec)
+  is_sparse <- methods::is(CH, "dCHMsimpl") || methods::is(CH, "dCHMsuper")
+  if (is_sparse) {
+    t_draws_nonfixed <- sparseMVN::rmvn.sparse(n = n_draw,
+                                               mu = mean,
+                                               CH = CH,
+                                               prec = TRUE)
+    draws_nonfixed <- t(t_draws_nonfixed)
+  }
+  else {
+    R_prec <- Matrix::expand1(CH, which = "L")
     draws_nonfixed <- rmvnorm_chol(n = n_draw,
                                    mean = mean,
                                    R_prec = R_prec)
-  else
-    draws_nonfixed <- rmvnorm_eigen(n = n_draw,
-                                    mean = mean,
-                                    scaled_eigen = scaled_eigen)
+  }
+  ans <- matrix(nrow = length(is_fixed), ncol = n_draw)
   ans[!is_fixed, ] <- draws_nonfixed
-  ans[is_fixed, ] <- est[is_fixed]
+  ans[is_fixed, ] <- est_unlist[is_fixed]
   ans
+}
+
+
+#' Make Values for Hyperrand
+#'
+#' Includes converting from unconstrained to constrained where necessary
+#'
+#' @param mod Fitted object of class 'bage_mod'
+#'
+#' @returns An rvec
+#'
+#' @noRd
+make_hyperrand <- function(mod) {
+  priors <- mod$priors
+  dimnames_terms <- mod$dimnames_terms
+  var_time <- mod$var_time
+  var_age <- mod$var_age
+  var_sexgender <- mod$var_sexgender
+  n_draw <- mod$n_draw
+  hyperrandfree <- mod$draws_hyperrandfree
+  effectfree <- mod$draws_effectfree
+  terms_hyperrandfree <- make_terms_hyperrandfree(mod)
+  terms_effectfree <- make_terms_effectfree(mod)
+  hyperrandfree <- split(hyperrandfree, terms_hyperrandfree)
+  effectfree <- split(effectfree, terms_effectfree)
+  hyperrandfree <- lapply(hyperrandfree, matrix, ncol = n_draw)
+  effectfree <- lapply(effectfree, matrix, ncol = n_draw)
+  hyperrandfree <- lapply(hyperrandfree, rvec::rvec_dbl)
+  effectfree <- lapply(effectfree, rvec::rvec_dbl)
+  ans <- .mapply(make_hyperrand_one,
+                 dots = list(prior = priors,
+                             hyperrandfree = hyperrandfree,
+                             effectfree = effectfree,
+                             dimnames_term = dimnames_terms),
+                 MoreArgs = list(var_time = var_time,
+                                 var_age = var_age,
+                                 var_sexgender = var_sexgender))
+  vctrs::vec_c(!!!ans)
+}
+
+
+## HAS_TESTS
+#' Derive Values for Hyper-Paramers Involving Lines
+#'
+#' @param prior Object of class 'bage_prior'.
+#' @param hyperrandfree Values for unconstrained hyper-parameters. An rvec.
+#' @param effectfree Values for unconstrained effect. An rvec.
+#' @param dimnames_term Dimnames for array representation of term
+#' @param var_time Name of time variable
+#' @param var_age Name of age variable
+#' @param var_sexgender Name of sex/gender variable
+#'
+#' @returns An rvec
+#'
+#' @noRd
+make_hyperrand_lin <- function(prior,
+                               hyperrandfree,
+                               effectfree,
+                               dimnames_term,
+                               var_time,
+                               var_age,
+                               var_sexgender) {
+  matrix_along_by_effectfree <- make_matrix_along_by_effectfree(prior = prior,
+                                                                dimnames_term = dimnames_term,
+                                                                var_time = var_time,
+                                                                var_age = var_age,
+                                                                var_sexgender = var_sexgender)
+  matrix_effectfree_effect <- make_matrix_effectfree_effect(prior = prior,
+                                                            dimnames_term = dimnames_term,
+                                                            var_time = var_time,
+                                                            var_age = var_age,
+                                                            var_sexgender = var_sexgender)
+  matrix_along_by_effect <- make_matrix_along_by_effect(prior = prior,
+                                                        dimnames_term = dimnames_term,
+                                                        var_time = var_time,
+                                                        var_age = var_age)
+  n_along <- nrow(matrix_along_by_effectfree)
+  n_by <- ncol(matrix_along_by_effectfree)
+  v <- seq_len(n_along) - 0.5 * (n_along + 1)
+  n_draw <- rvec::n_draw(hyperrandfree)
+  trend <- rvec::new_rvec(length = n_along * n_by, n_draw = n_draw)
+  for (i_by in seq_len(n_by)) {
+    i_along <- matrix_along_by_effectfree[, i_by] + 1L
+    trend[i_along] <- hyperrandfree[[i_by]] * v
+  }
+  error <- effectfree - trend
+  trend <- as.matrix(trend) ## to cope with sparse matrix
+  error <- as.matrix(error) ## to cope with sparse matrix
+  trend <- matrix_effectfree_effect %*% trend
+  error <- matrix_effectfree_effect %*% error
+  trend <- rvec::rvec_dbl(as.matrix(trend))
+  error <- rvec::rvec_dbl(as.matrix(error))
+  ## calculate slope on constrained space
+  n_by_constr <- ncol(matrix_along_by_effect)
+  slope <- rvec::new_rvec(length = n_by_constr, n_draw = n_draw)
+  for (i_by in seq_len(n_by_constr)) {
+    i_1 <- matrix_along_by_effect[1L, i_by] + 1L
+    i_2 <- matrix_along_by_effect[2L, i_by] + 1L
+    slope[[i_by]] <- trend[[i_2]] - trend[[i_1]]
+  }
+  vctrs::vec_c(slope, trend, error)
+}
+
+
+
+## HAS_TESTS
+#' Derive Values for Hyper-Parameters Involving Fixed Seasonal Effects and
+#' Random Initial Value Random Walk
+#'
+#' @param prior Object of class 'bage_prior'.
+#' @param hyperrandfree Values for unconstrained hyper-parameters. An rvec.
+#' @param effectfree Values for unconstrained effect. An rvec.
+#' @param dimnames_term Dimnames for array representation of term
+#' @param var_time Name of time variable
+#' @param var_age Name of age variable
+#' @param var_sexgender Name of sex/gender variable
+#'
+#' @returns An rvec
+#'
+#' @noRd
+make_hyperrand_randomseasfix <- function(prior,
+                                         hyperrandfree,
+                                         effectfree,
+                                         dimnames_term,
+                                         var_time,
+                                         var_age,
+                                         var_sexgender) {
+  n_seas <- prior$specific$n_seas
+  matrix_along_by_effectfree <- make_matrix_along_by_effectfree(prior = prior,
+                                                                dimnames_term = dimnames_term,
+                                                                var_time = var_time,
+                                                                var_age = var_age,
+                                                                var_sexgender = var_sexgender)
+  matrix_effectfree_effect <- make_matrix_effectfree_effect(prior = prior,
+                                                            dimnames_term = dimnames_term,
+                                                            var_time = var_time,
+                                                            var_age = var_age,
+                                                            var_sexgender = var_sexgender)
+  n_along <- nrow(matrix_along_by_effectfree)
+  n_by <- ncol(matrix_along_by_effectfree)
+  n_draw <- rvec::n_draw(hyperrandfree)
+  season <- rvec::new_rvec(length = n_along * n_by, n_draw = n_draw)
+  for (i_by in seq_len(n_by)) {
+    sum_seas <- 0
+    for (i_along in seq_len(n_along)) {
+      i_season <- matrix_along_by_effectfree[i_along, i_by] + 1L
+      index_seas <- (i_along - 1L) %% n_seas
+      is_final_seas <- index_seas == n_seas - 1L
+      if (!is_final_seas) {
+        i_hyper <- index_seas + (i_by - 1L) * (n_seas - 1L) + 1L
+        season[[i_season]] <- hyperrandfree[[i_hyper]]
+        sum_seas <- sum_seas + hyperrandfree[[i_hyper]]
+      }
+      else {
+        season[[i_season]] <- -sum_seas
+        sum_seas <- 0
+      }
+    }
+  }
+  trend <- effectfree - season
+  trend <- as.matrix(trend) ## to cope with sparse matrix
+  season <- as.matrix(season) ## to cope with sparse matrix
+  trend <- matrix_effectfree_effect %*% trend
+  season <- matrix_effectfree_effect %*% season
+  trend <- rvec::rvec_dbl(as.matrix(trend))
+  season <- rvec::rvec_dbl(as.matrix(season))
+  vctrs::vec_c(trend, season)
+}
+
+  
+## HAS_TESTS
+#' Derive Values for Hyper-Parameters Involving Varying Seasonal Effects
+#' and Random Initial Value Random Walk
+#'
+#' @param prior Object of class 'bage_prior'.
+#' @param hyperrandfree Values for unconstrained hyper-parameters. An rvec.
+#' @param effectfree Values for unconstrained effect. An rvec.
+#' @param dimnames_term Dimnames for array representation of term
+#' @param var_time Name of time variable
+#' @param var_age Name of age variable
+#' @param var_sexgender Name of sex/gender variable
+#'
+#' @returns An rvec
+#'
+#' @noRd
+make_hyperrand_randomseasvary <- function(prior,
+                                          hyperrandfree,
+                                          effectfree,
+                                          dimnames_term,
+                                          var_time,
+                                          var_age,
+                                          var_sexgender) {
+  n_seas <- prior$specific$n_seas
+  matrix_along_by_effectfree <- make_matrix_along_by_effectfree(prior = prior,
+                                                                dimnames_term = dimnames_term,
+                                                                var_time = var_time,
+                                                                var_age = var_age,
+                                                                var_sexgender = var_sexgender)
+  matrix_effectfree_effect <- make_matrix_effectfree_effect(prior = prior,
+                                                            dimnames_term = dimnames_term,
+                                                            var_time = var_time,
+                                                            var_age = var_age,
+                                                            var_sexgender = var_sexgender)
+  n_along <- nrow(matrix_along_by_effectfree)
+  n_by <- ncol(matrix_along_by_effectfree)
+  n_along_hyper <- length(hyperrandfree) %/% n_by
+  n_draw <- rvec::n_draw(hyperrandfree)
+  season <- rvec::new_rvec(length = n_along * n_by, n_draw = n_draw)
+  for (i_by in seq_len(n_by)) {
+    i_along_hyper <- 1L
+    sum_seas <- 0
+    for (i_along in seq_len(n_along)) {
+      index_seas <- (i_along - 1L) %% n_seas
+      is_last_seas <- index_seas == n_seas - 1L
+      i_season <- matrix_along_by_effectfree[i_along, i_by] + 1L
+      if (!is_last_seas) {
+        i_hyper <- i_along_hyper + (i_by - 1L) * n_along_hyper
+        i_along_hyper <- i_along_hyper + 1L
+        season[[i_season]] <- hyperrandfree[[i_hyper]]
+        sum_seas <- sum_seas + hyperrandfree[[i_hyper]]
+      }
+      if (is_last_seas) {
+        season[[i_season]] <- -sum_seas
+        sum_seas <- 0
+      }
+    }
+  }
+  trend <- effectfree - season
+  trend <- as.matrix(trend) ## to cope with sparse matrix
+  season <- as.matrix(season) ## to cope with sparse matrix
+  trend <- matrix_effectfree_effect %*% trend
+  season <- matrix_effectfree_effect %*% season
+  trend <- rvec::rvec_dbl(as.matrix(trend))
+  season <- rvec::rvec_dbl(as.matrix(season))
+  vctrs::vec_c(trend, season)
+}
+
+
+
+
+
+## HAS_TESTS
+#' Derive Values for Hyper-Parameters Involving Fixed Seasonal Effects and
+#' Zero Initial Value Random Walk
+#'
+#' @param prior Object of class 'bage_prior'.
+#' @param hyperrandfree Values for unconstrained hyper-parameters. An rvec.
+#' @param effectfree Values for unconstrained effect. An rvec.
+#' @param dimnames_term Dimnames for array representation of term
+#' @param var_time Name of time variable
+#' @param var_age Name of age variable
+#' @param var_sexgender Name of sex/gender variable
+#'
+#' @returns An rvec
+#'
+#' @noRd
+make_hyperrand_zeroseasfix <- function(prior,
+                                   hyperrandfree,
+                                   effectfree,
+                                   dimnames_term,
+                                   var_time,
+                                   var_age,
+                                   var_sexgender) {
+  n_seas <- prior$specific$n_seas
+  matrix_along_by_effectfree <- make_matrix_along_by_effectfree(prior = prior,
+                                                                dimnames_term = dimnames_term,
+                                                                var_time = var_time,
+                                                                var_age = var_age,
+                                                                var_sexgender = var_sexgender)
+  matrix_effectfree_effect <- make_matrix_effectfree_effect(prior = prior,
+                                                            dimnames_term = dimnames_term,
+                                                            var_time = var_time,
+                                                            var_age = var_age,
+                                                            var_sexgender = var_sexgender)
+  n_along <- nrow(matrix_along_by_effectfree)
+  n_by <- ncol(matrix_along_by_effectfree)
+  n_draw <- rvec::n_draw(hyperrandfree)
+  season <- rvec::new_rvec(length = n_along * n_by, n_draw = n_draw)
+  for (i_by in seq_len(n_by)) {
+    sum_seas <- 0
+    for (i_along in seq_len(n_along)) {
+      i_season <- matrix_along_by_effectfree[i_along, i_by] + 1L
+      if (i_along == 1L) {
+        effectfree_first <- effectfree[[i_season]]
+        season[[i_season]] <- effectfree_first
+      }
+      else if (i_along < n_seas) {
+        i_hyper <- i_along - 1L + (i_by - 1L) * (n_seas - 2L)
+        season[[i_season]] <- effectfree_first + hyperrandfree[[i_hyper]]
+        sum_seas <- sum_seas + hyperrandfree[[i_hyper]]
+      }
+      else if (i_along == n_seas) {
+        season[[i_season]] <- -sum_seas - (n_seas - 1) * effectfree_first
+      }
+      else {
+        i_season_prev <- matrix_along_by_effectfree[i_along - n_seas, i_by] + 1L
+        season[[i_season]] <- season[[i_season_prev]]
+      }
+    }
+  }
+  trend <- effectfree - season
+  trend <- as.matrix(trend) ## to cope with sparse matrix
+  season <- as.matrix(season) ## to cope with sparse matrix
+  trend <- matrix_effectfree_effect %*% trend
+  season <- matrix_effectfree_effect %*% season
+  trend <- rvec::rvec_dbl(as.matrix(trend))
+  season <- rvec::rvec_dbl(as.matrix(season))
+  vctrs::vec_c(trend, season)
+}
+
+  
+## HAS_TESTS
+#' Derive Values for Hyper-Parameters Involving Varying Seasonal Effects
+#' and Zero Initial Value Random Walk
+#'
+#' @param prior Object of class 'bage_prior'.
+#' @param hyperrandfree Values for unconstrained hyper-parameters. An rvec.
+#' @param effectfree Values for unconstrained effect. An rvec.
+#' @param dimnames_term Dimnames for array representation of term
+#' @param var_time Name of time variable
+#' @param var_age Name of age variable
+#' @param var_sexgender Name of sex/gender variable
+#'
+#' @returns An rvec
+#'
+#' @noRd
+make_hyperrand_zeroseasvary <- function(prior,
+                                        hyperrandfree,
+                                        effectfree,
+                                        dimnames_term,
+                                        var_time,
+                                        var_age,
+                                        var_sexgender) {
+  n_seas <- prior$specific$n_seas
+  matrix_along_by_effectfree <- make_matrix_along_by_effectfree(prior = prior,
+                                                                dimnames_term = dimnames_term,
+                                                                var_time = var_time,
+                                                                var_age = var_age,
+                                                                var_sexgender = var_sexgender)
+  matrix_effectfree_effect <- make_matrix_effectfree_effect(prior = prior,
+                                                            dimnames_term = dimnames_term,
+                                                            var_time = var_time,
+                                                            var_age = var_age,
+                                                            var_sexgender = var_sexgender)
+  n_along <- nrow(matrix_along_by_effectfree)
+  n_by <- ncol(matrix_along_by_effectfree)
+  n_along_hyper <- length(hyperrandfree) %/% n_by
+  n_draw <- rvec::n_draw(hyperrandfree)
+  season <- rvec::new_rvec(length = n_along * n_by, n_draw = n_draw)
+  for (i_by in seq_len(n_by)) {
+    i_effectfree_first <- matrix_along_by_effectfree[1L, i_by] + 1L
+    effectfree_first <- effectfree[[i_effectfree_first]]
+    i_along_hyper <- 1L
+    sum_seas <- 0
+    for (i_along in seq_len(n_along)) {
+      is_first_element <- i_along == 1L
+      index_seas <- (i_along - 1L) %% n_seas
+      is_last_seas <- index_seas == n_seas - 1L
+      i_season <- matrix_along_by_effectfree[i_along, i_by] + 1L
+      if (is_first_element)
+        season[[i_season]] <- effectfree_first
+      if (!is_first_element && !is_last_seas) {
+        i_hyper <- i_along_hyper + (i_by - 1L) * n_along_hyper
+        i_along_hyper <- i_along_hyper + 1L
+        season[[i_season]] <- hyperrandfree[[i_hyper]] + effectfree_first
+        sum_seas <- sum_seas + hyperrandfree[[i_hyper]]
+      }
+      if (is_last_seas) {
+        season[[i_season]] <- -sum_seas - (n_seas - 1) * effectfree_first
+        sum_seas <- 0
+      }
+    }
+  }
+  trend <- effectfree - season
+  trend <- as.matrix(trend) ## to cope with sparse matrix
+  season <- as.matrix(season) ## to cope with sparse matrix
+  trend <- matrix_effectfree_effect %*% trend
+  season <- matrix_effectfree_effect %*% season
+  trend <- rvec::rvec_dbl(as.matrix(trend))
+  season <- rvec::rvec_dbl(as.matrix(season))
+  vctrs::vec_c(trend, season)
 }
 
 
@@ -744,9 +1568,10 @@ make_is_fixed <- function(est, map) {
 #'
 #' @noRd
 make_level_components <- function(mod) {
-  effect <- mod$levels_effect
+  dimnames_terms <- mod$dimnames_terms
+  effect <- make_levels_effects(dimnames_terms)
   hyper <- make_levels_hyper(mod)
-  hyperrand <- make_levels_hyperrand(mod)
+  hyperrand <- make_levels_hyperrand(mod, unlist = TRUE)
   spline <- make_levels_spline(mod, unlist = TRUE)
   svd <- make_levels_svd(mod, unlist = TRUE)
   effect <- as.character(effect)
@@ -785,25 +1610,23 @@ make_levels_hyper <- function(mod) {
 #' Make levels for hyperparameters for each term
 #'
 #' @param mod An object of class 'bage_mod'.
+#' @param unlist Whether to return as list or vector.
 #'
 #' @returns A character vector.
 #'
 #' @noRd
-make_levels_hyperrand <- function(mod) {
+make_levels_hyperrand <- function(mod, unlist) {
   priors <- mod$priors
   dimnames_terms <- mod$dimnames_terms
   var_time <- mod$var_time
   var_age <- mod$var_age
-  levels_effect <- mod$levels_effect
-  terms_effect <- mod$terms_effect
-  levels_effect <- split(levels_effect, terms_effect)
   ans <- .mapply(levels_hyperrand,
                  dots = list(prior = priors,
-                             dimnames_term = dimnames_terms,
-                             levels_effect = levels_effect),
+                             dimnames_term = dimnames_terms),
                  MoreArgs = list(var_time = var_time,
                                  var_age = var_age))
-  ans <- unlist(ans)
+  if (unlist)
+    ans <- unlist(ans)
   ans
 }
 
@@ -860,6 +1683,7 @@ make_levels_spline <- function(mod, unlist) {
 }
 
 
+## HAS_TESTS
 #' Make Levels for Spline
 #'
 #' @param prior Object of class 'bage_prior_spline'
@@ -875,8 +1699,8 @@ make_levels_spline_term <- function(prior,
                                     dimnames_term,
                                     var_time,
                                     var_age) {
-  along <- prior$specific$along
-  i_along <- make_i_along(along = along,
+  con <- prior$specific$con
+  i_along <- make_i_along(prior = prior,
                           dimnames_term = dimnames_term,
                           var_time = var_time,
                           var_age = var_age)
@@ -884,8 +1708,11 @@ make_levels_spline_term <- function(prior,
   n_comp <- get_n_comp_spline(prior = prior,
                               n_along = n_along)
   levels_along <- paste0("comp", seq_len(n_comp))
-  dimnames_term <- c(list(.spline = levels_along),
-                     dimnames_term[-i_along])
+  dimnames_term[[i_along]] <- levels_along
+  if (con == "by") {
+    dimnames_term[-i_along] <- make_unconstr_dimnames_by(i_along = i_along,
+                                                         dimnames_term = dimnames_term)
+  }
   dimnames_to_levels(dimnames_term)
 }
 
@@ -901,6 +1728,7 @@ make_levels_spline_term <- function(prior,
 make_levels_svd <- function(mod, unlist) {
   priors <- mod$priors
   nms_priors <- names(priors)
+  var_time <- mod$var_time
   var_age <- mod$var_age
   var_sexgender <- mod$var_sexgender
   dimnames_terms <- mod$dimnames_terms
@@ -911,6 +1739,7 @@ make_levels_svd <- function(mod, unlist) {
       dimnames_term <- dimnames_terms[[i]]
       ans[[i]] <- make_levels_svd_term(prior = prior,
                                        dimnames_term = dimnames_term,
+                                       var_time = var_time,
                                        var_age = var_age,
                                        var_sexgender = var_sexgender)
     }
@@ -938,6 +1767,7 @@ make_levels_svd <- function(mod, unlist) {
 #' @noRd
 make_levels_svd_term <- function(prior,
                                  dimnames_term,
+                                 var_time,
                                  var_age,
                                  var_sexgender) {
   labels_svd <- get_labels_svd(prior = prior,
@@ -946,6 +1776,14 @@ make_levels_svd_term <- function(prior,
   nms <- names(dimnames_term)
   nms_noagesex <- setdiff(nms, c(var_age, var_sexgender))
   dimnames_noagesex <- dimnames_term[nms_noagesex]
+  if (uses_along(prior)) {
+    con <- prior$specific$con
+    if (con == "by") {
+      i_along <- match(var_time, names(dimnames_noagesex))
+      dimnames_noagesex[-i_along] <- make_unconstr_dimnames_by(i_along = i_along,
+                                                               dimnames_term = dimnames_noagesex)
+    }
+  }
   dimnames_svd <- c(list(.svd = labels_svd), dimnames_noagesex)
   dimnames_to_levels(dimnames_svd)
 }
@@ -954,7 +1792,6 @@ make_levels_svd_term <- function(prior,
 ## HAS_TESTS
 #' Calculate Trend Values for a Line or Lines
 #'
-#' @param intercept Intercept(s) of line(s). An rvec.
 #' @param slope Slope(s) of line(s). An rvec.
 #' @param matrix_along_by Matrix mapping
 #' along and by dimensions to position in estimates
@@ -962,13 +1799,12 @@ make_levels_svd_term <- function(prior,
 #' @returns An rvec
 #'
 #' @noRd
-make_lin_trend <- function(intercept,
-                           slope,
+make_lin_trend <- function(slope,
                            matrix_along_by) {
   n_along <- nrow(matrix_along_by)
   n_by <- ncol(matrix_along_by)
-  intercept <- rep(intercept, each = n_along)
   slope <- rep(slope, each = n_along)
+  intercept <- -0.5 * (n_along + 1) * slope
   s <- rep(seq_len(n_along), times = n_by)
   ans <- intercept + slope * s
   i <- match(sort(matrix_along_by), matrix_along_by)
@@ -1019,17 +1855,48 @@ make_linpred_comp <- function(components, data, dimnames_terms) {
 #' Return value aligned to outcome, not data.
 #'
 #' @param mod Object of class "bage_mod"
+#' @param point Whether to return point estimates
+#' or draws from the posterior.
 #'
-#' @returns An rvec
+#' @returns An rvec if 'point' is FALSE, otherwise a vector of doubles
 #'
 #' @noRd
-make_linpred_raw <- function(mod) {
+make_linpred_raw <- function(mod, point) {
   matrix_effect_outcome <- make_combined_matrix_effect_outcome(mod)
-  effectfree <- mod$draws_effectfree
+  if (point)
+    effectfree <- mod$point_effectfree
+  else
+    effectfree <- mod$draws_effectfree
   effect <- make_effects(mod = mod, effectfree = effectfree)
   ans <- matrix_effect_outcome %*% effect
-  ans <- Matrix::as.matrix(ans)
-  ans <- rvec::rvec(ans)
+  if (point)
+    ans <- as.double(ans)
+  else {
+    ans <- Matrix::as.matrix(ans)
+    ans <- rvec::rvec(ans)
+  }
+  ans
+}
+
+
+## HAS_TESTS
+#' Derive Point Estimates for Effects
+#'
+#' @param mod A fitted object of class 'bage_mod'
+#'
+#' @returns A named list of numeric vectors
+#'
+#' @noRd
+make_point_est_effects <- function(mod) {
+  if (!is_fitted(mod))
+    cli::cli_abort("Internal error: Model not fitted.")
+  point_effectfree <- mod$point_effectfree
+  dimnames_terms <- mod$dimnames_terms
+  terms_effects <- make_terms_effects(dimnames_terms)
+  point_effects <- make_effects(mod = mod, effectfree = point_effectfree)
+  point_effects <- as.double(point_effects)
+  ans <- split(x = point_effects, f = terms_effects)
+  ans <- ans[unique(terms_effects)] ## 'split' orders result
   ans
 }
 
@@ -1071,42 +1938,33 @@ make_scaled_eigen <- function(prec) {
 #' @noRd
 make_spline <- function(mod, effectfree) {
   priors <- mod$priors
-  is_spline <- vapply(priors, is_spline, FALSE)
+  dimnames_terms <- mod$dimnames_terms
+  var_time <- mod$var_time
+  var_age <- mod$var_age
+  var_sexgender <- mod$var_sexgender
+  n_term <- length(priors)
+  ans <- vector(mode = "list", length = n_term)
   lengths_effectfree <- make_lengths_effectfree(mod)
-  is_spline <- rep(is_spline, times = lengths_effectfree)
-  effectfree[is_spline, , drop = FALSE]
-}
-
-
-
-#' Make Standardized Version of a Single Effect
-#'
-#' @param linpred Linear predictor. An rvec
-#' @param indices_linpred Indices into linear predictor
-#' from elements of term. An integer vector.
-#'
-#' @returns An rvec.
-#'
-#' @noRd
-make_standardized_effect <- function(linpred, indices_linpred) {
-  n_element <- max(indices_linpred)
-  n_draw <- rvec::n_draw(linpred)
-  linpred <- as.matrix(linpred)
-  ans <- matrix(nrow = n_element, ncol = n_draw)
-  for (i_element in seq_len(n_element)) {
-    maps_to_element <- indices_linpred == i_element
-    ans[i_element, ] <- matrixStats::colMeans2(linpred,
-                                               rows = maps_to_element,
-                                               useNames = FALSE)
+  to <- 0L
+  for (i_term in seq_len(n_term)) {
+    length_effectfree <- lengths_effectfree[[i_term]]
+    to <- to + length_effectfree
+    prior <- priors[[i_term]]
+    dimnames_term <- dimnames_terms[[i_term]]
+    if (is_spline(prior)) {
+      s <- seq.int(to = to, length.out = length_effectfree)
+      vals <- effectfree[s, , drop = FALSE]
+      ans[[i_term]] <- vals
+    }
   }
-  ans <- rvec::rvec_dbl(ans)
+  ans <- do.call(rbind, ans)
   ans
 }
 
 
-
-## HAS_TESTS
 #' Extract Posterior Draws for Free Parameters used in SVD Priors
+#'
+#' Where necessary, append zeros to start of time dimension.
 #'
 #' @param mod Fitted object of class 'bage_mod'
 #' @param mod effectfree Matrix with posterior draws of free parameters
@@ -1116,10 +1974,34 @@ make_standardized_effect <- function(linpred, indices_linpred) {
 #' @noRd
 make_svd <- function(mod, effectfree) {
   priors <- mod$priors
-  is_svd <- vapply(priors, is_svd, FALSE)
+  dimnames_terms <- mod$dimnames_terms
+  var_time <- mod$var_time
+  var_age <- mod$var_age
+  var_sexgender <- mod$var_sexgender
+  n_term <- length(priors)
+  ans <- vector(mode = "list", length = n_term)
   lengths_effectfree <- make_lengths_effectfree(mod)
-  is_svd <- rep(is_svd, times = lengths_effectfree)
-  effectfree[is_svd, , drop = FALSE]
+  to <- 0L
+  for (i_term in seq_len(n_term)) {
+    length_effectfree <- lengths_effectfree[[i_term]]
+    to <- to + length_effectfree
+    prior <- priors[[i_term]]
+    dimnames_term <- dimnames_terms[[i_term]]
+    m <- make_matrix_draws_svd(prior = prior,
+                               dimnames_term = dimnames_term,
+                               var_time = var_time,
+                               var_age = var_age,
+                               var_sexgender = var_sexgender)
+    if (!is.null(m)) {
+      s <- seq.int(to = to, length.out = length_effectfree)
+      vals <- effectfree[s, , drop = FALSE]
+      vals <- m %*% vals
+      vals <- Matrix::as.matrix(vals)
+      ans[[i_term]] <- vals
+    }
+  }
+  ans <- do.call(rbind, ans)
+  ans
 }
 
 
@@ -1140,10 +2022,10 @@ make_svd <- function(mod, effectfree) {
 make_term_spline <- function(mod) {
   priors <- mod$priors
   nms_terms <- names(priors)
-  lengths_effectfree <- make_lengths_effectfree(mod)
   is_spline <- vapply(priors, is_spline, FALSE)
   nms_terms_spline <- nms_terms[is_spline]
-  lengths_spline <- lengths_effectfree[is_spline]
+  levels_spline <- make_levels_spline(mod, unlist = FALSE)
+  lengths_spline <- lengths(levels_spline[is_spline])
   ans <- rep(nms_terms_spline, times = lengths_spline)
   ans <- factor(ans, levels = nms_terms_spline)
   ans
@@ -1166,13 +2048,52 @@ make_term_spline <- function(mod) {
 #' @noRd
 make_term_svd <- function(mod) {
   priors <- mod$priors
+  levels <- make_levels_svd(mod, unlist = FALSE)
+  lengths_levels <- lengths(levels)
   nms_terms <- names(priors)
-  lengths_effectfree <- make_lengths_effectfree(mod)
   is_svd <- vapply(priors, is_svd, FALSE)
-  nms_terms_svd <- nms_terms[is_svd]
-  lengths_svd <- lengths_effectfree[is_svd]
-  ans <- rep(nms_terms_svd, times = lengths_svd)
-  ans <- factor(ans, levels = nms_terms_svd)
+  lengths_svd <- lengths_levels[is_svd]
+  nms_svd <- nms_terms[is_svd]
+  ans <- rep(nms_svd, times = lengths_svd)
+  ans <- factor(ans, levels = nms_svd)
+  ans
+}
+
+
+## HAS_TESTS
+#' Make factor identifying components of 'hyperrand'
+#'
+#' @param mod Object of class "bage_mod"
+#'
+#' @returns A factor, the same length
+#' as 'hyper'.
+#'
+#' @noRd
+make_terms_hyperrand <- function(mod) {
+  priors <- mod$priors
+  nms_terms <- names(priors)
+  levels <- make_levels_hyperrand(mod, unlist = FALSE)
+  lengths <- lengths(levels)
+  ans <- rep(nms_terms, times = lengths)
+  ans <- factor(ans, levels = nms_terms)
+  ans
+}
+
+
+## HAS_TESTS
+#' Make Dimnames for Unconstrainted Version of By Dimensions
+#'
+#' @param i_along Index of 'along' dimension
+#' @param dimnames_term Dimnames for array representation of term
+#'
+#' @returns A named list
+#'
+#' @noRd
+make_unconstr_dimnames_by <- function(i_along, dimnames_term) {
+  ans <- dimnames_term[-i_along]
+  nms <- names(ans)
+  for (i in seq_along(ans))
+    ans[[i]] <- paste0(nms[[i]], seq_along(ans[[i]][-1L]))
   ans
 }
 
@@ -1212,55 +2133,12 @@ rescale_lin_intercept <- function(slope, effect, matrix_along_by) {
 
 
 ## HAS_TESTS
-#' Standardize Posterior Draws for Intercept, Main Effects, and Interactions
-#' following 'ANOVA' Conventions
-#'
-#' @param components Data frame with estimates of hyper-parameters
-#' @param data Data frame with original data
-#' @param linpred Rvec with linear predictor formed from effects
-#' @param dimnames_terms Dimnames of array representation of terms.
-#' A named list.
-#'
-#' @returns Modifed version of 'components'
-#'
-#' @noRd
-standardize_anova <- function(components, data, linpred, dimnames_terms) {
-  max_resid_permitted <- 0.001
-  key_comp <- with(components, paste(term, component, level))
-  data_has_intercept <- "(Intercept)" %in% names(data)
-  if (!data_has_intercept)
-    data[["(Intercept)"]] <- "(Intercept)"
-  for (i_term in seq_along(dimnames_terms)) {
-    dimnames_term <- dimnames_terms[[i_term]]
-    nm_split <- dimnames_to_nm_split(dimnames_term)
-    nm <- dimnames_to_nm(dimnames_term)
-    levels_term <- dimnames_to_levels(dimnames_term)
-    levels_data <- Reduce(paste_dot, data[nm_split])
-    indices_linpred <- match(levels_data, levels_term)
-    standardized_effect <- make_standardized_effect(linpred = linpred,
-                                                    indices_linpred = indices_linpred)
-    standardized_effect_linpred <- standardized_effect[indices_linpred]
-    linpred <- linpred - standardized_effect_linpred
-    key_term <- paste(nm, "effect", levels_term)
-    indices_comp <- match(key_term, key_comp)
-    components$.fitted[indices_comp] <- standardized_effect
-  }
-  max_resid <- max(abs(as.matrix(linpred)))
-  if (max_resid > max_resid_permitted)
-    cli::cli_alert_warning(paste("Standardized values do not exactly reproduce", ## nocov
-                                 "linear predictor:",                            ## nocov
-                                 "Maximum difference is {.val {max_resid}}."))   ## nocov
-  components
-}
-
-
-## HAS_TESTS
 #' Make Draws Stored as Part of Model Object
 #'
 #' Draws created are
 #' - 'draws_effectfree',
 #' - 'draws_hyper',
-#' - 'draws_hyperrand', and, optionally,
+#' - 'draws_hyperrandfree', and, optionally,
 #' - 'draws_disp'.
 #'
 #' Reproducibility is achieved via 'seed_stored_draws'.
@@ -1270,19 +2148,54 @@ standardize_anova <- function(components, data, linpred, dimnames_terms) {
 #' @returns Modified version of 'mod'
 #'
 #' @noRd
-make_stored_draws <- function(mod) {
-  if (!is_fitted(mod))
-    cli::cli_abort("Internal error: Can't make stored draws for an unfitted model.")
+make_stored_draws <- function(mod, est, prec, map) {
+  n_draw <- mod$n_draw
+  transforms_hyper <- make_transforms_hyper(mod)
   seed_stored_draws <- mod$seed_stored_draws
   seed_restore <- make_seed() ## create randomly-generated seed
   set.seed(seed_stored_draws) ## set pre-determined seed
-  draws_post <- make_draws_post(mod)
-  mod$draws_effectfree <- make_draws_effectfree(mod = mod, draws_post = draws_post)
-  mod$draws_hyper <- make_draws_hyper(mod = mod, draws_post = draws_post)
-  mod$draws_hyperrand <- make_draws_hyperrand(mod = mod, draws_post = draws_post)
-  if (has_disp(mod))
-    mod$draws_disp <- make_draws_disp(mod = mod, draws_post = draws_post)
+  draws_post <- make_draws_post(est = est,
+                                prec = prec,
+                                map = map,
+                                n_draw = n_draw)
   set.seed(seed_restore) ## set randomly-generated seed, to restore randomness
+  mod$draws_effectfree <- make_draws_effectfree(est = est,
+                                                draws_post = draws_post)
+  mod$draws_hyper <- make_draws_hyper(est = est,
+                                      transforms_hyper = transforms_hyper,
+                                      draws_post = draws_post)
+  mod$draws_hyperrandfree <- make_draws_hyperrandfree(est = est,
+                                                      draws_post = draws_post)
+  if (has_disp(mod))
+    mod$draws_disp <- make_draws_disp(draws_post)
+  mod
+}
+
+
+## HAS_TESTS
+#' Make Point Estimates Stored as Part of Model Object
+#'
+#' Draws created are
+#' - 'point_effectfree',
+#' - 'point_hyper',
+#' - 'point_hyperrandfree', and, optionally,
+#' - 'point_disp'.
+#'
+#' @param mod A fitted 'bage_mod' object
+#'
+#' @returns Modified version of 'mod'
+#'
+#' @noRd
+make_stored_point <- function(mod, est) {
+  transforms_hyper <- make_transforms_hyper(mod)
+  mod$point_effectfree <- est$effectfree
+  point_hyper <- est$hyper
+  for (i in seq_along(point_hyper))
+    point_hyper[[i]] <- transforms_hyper[[i]](point_hyper[[i]])
+  mod$point_hyper <- point_hyper
+  mod$point_hyperrandfree <- est$hyperrandfree
+  if (has_disp(mod))
+    mod$point_disp <- exp(est$log_disp)
   mod
 }
 
@@ -1299,7 +2212,8 @@ make_stored_draws <- function(mod) {
 #'
 #' @noRd
 make_term_components <- function(mod) {
-  effect <- mod$terms_effect
+  dimnames_terms <- mod$dimnames_terms
+  effect <- make_terms_effects(dimnames_terms)
   hyper <- make_terms_hyper(mod)
   hyperrand <- make_terms_hyperrand(mod)
   spline <- make_term_spline(mod)
@@ -1334,37 +2248,6 @@ make_transforms_hyper <- function(mod) {
   ans <- lapply(priors, transform_hyper)
   ans <- unlist(ans, recursive = FALSE)
   ans
-}
-
-
-## HAS_TESTS
-#' Derive Parts of 'components' Data Frame Dealing with
-#' Hyper-Parameters that are Treated as Random Effects - Estimates
-#'
-#' @param components A data frame
-#' @param priors List of objects of class 'bage_prior'.
-#' @param dimnames_terms Dimnames for array representations of terms
-#' @param var_time Name of time variable
-#' @param var_age Name of age variable
-#'
-#' @returns A modified version of 'components'
-#'
-#' @noRd
-infer_trend_cyc_seas_err <- function(components,
-                                     priors,
-                                     dimnames_terms,
-                                     var_time,
-                                     var_age) {
-  for (i_prior in seq_along(priors)) {
-    prior <- priors[[i_prior]]
-    dimnames_term <- dimnames_terms[[i_prior]]
-    components <- infer_trend_cyc_seas_err_one(prior = prior,
-                                               dimnames_term = dimnames_term,
-                                               var_time = var_time,
-                                               var_age = var_age,
-                                               components = components)
-  }
-  components
 }
 
 
@@ -1405,64 +2288,6 @@ infer_trend_cyc_seas_err_forecast <- function(components,
 
 
 ## HAS_TESTS
-#' Reformat 'Components' Output for Terms with Fixed Seasonal Effect
-#' - Estimates
-#'
-#' Derive 'trend' from 'effect' and 'seasonal'
-#' 
-#' @param prior Object of class 'bage_prior'.
-#' @param dimnames_term Dimnames for array representation of term
-#' @param var_time Name of time variable
-#' @param var_age Name of age variable
-#' @param components A data frame.
-#'
-#' @returns A modifed version of 'components'
-#'
-#' @noRd
-infer_trend_cyc_seas_err_seasfix <- function(prior,
-                                             dimnames_term,
-                                             var_time,
-                                             var_age,
-                                             components) {
-  n_seas <- prior$specific$n_seas
-  along <- prior$specific$along
-  nm <- dimnames_to_nm(dimnames_term)
-  is_seasonal <- with(components, (term == nm) & (component == "hyperrand"))
-  is_effect <- with(components, (term == nm) & (component == "effect"))
-  seas <- components$.fitted[is_seasonal]
-  effect <- components$.fitted[is_effect]
-  matrix_along_by_effect <- make_matrix_along_by_effect(along = along,
-                                                        dimnames_term = dimnames_term,
-                                                        var_time = var_time,
-                                                        var_age = var_age)
-  n_along <- nrow(matrix_along_by_effect)
-  n_by <- ncol(matrix_along_by_effect)
-  matrix_along_by_seas <- matrix(seq_along(seas) - 1L, nrow = n_seas, ncol = n_by)
-  seasonal <- rep(seas[[1L]], times = n_along * n_by)
-  for (i_by in seq_len(n_by)) {
-    for (i_along in seq_len(n_along)) {
-      i_seas <- ((i_along - 1L) %% n_seas) + (i_by - 1L) * n_seas + 1L
-      i_seasonal <- matrix_along_by_effect[i_along, i_by] + 1L
-      seasonal[i_seasonal] <- seas[i_seas]
-    }
-  }
-  trend <- effect - seasonal
-  level <- components$level[is_effect]
-  seasonal <- tibble::tibble(term = nm,
-                             component = "seasonal",
-                             level = level,
-                             .fitted = seasonal)
-  trend <- tibble::tibble(term = nm,
-                          component = "trend",
-                          level = level,
-                          .fitted = trend)
-  ans <- components[!is_seasonal, , drop = FALSE]
-  ans <- vctrs::vec_rbind(ans, seasonal, trend)
-  ans
-}
-
-
-## HAS_TESTS
 #' Derive 'Components' Output for Terms with Fixed Seasonal Effect
 #' - Forecasts
 #'
@@ -1483,51 +2308,14 @@ infer_trend_cyc_seas_err_seasfix_forecast <- function(prior,
                                                       var_age,
                                                       components) {
   nm <- dimnames_to_nm(dimnames_term)
-  is_seasonal <- with(components, (term == nm) & (component == "seasonal"))
+  is_season <- with(components, (term == nm) & (component == "season"))
   is_trend <- with(components, (term == nm) & (component == "trend"))
   is_effect <- with(components, (term == nm) & (component == "effect"))
   trend <- components$.fitted[is_trend]
   effect <- components$.fitted[is_effect]
-  seasonal <- effect - trend
-  components$.fitted[is_seasonal] <- seasonal
+  season <- effect - trend
+  components$.fitted[is_season] <- season
   components
-}
-
-
-
-## HAS_TESTS
-#' Derive 'Components' Output for Terms with Varying Seasonal Effect - Estimates
-#'
-#' Derive 'trend' from 'effect' and 'seasonal'
-#'
-#' @param prior Object of class 'bage_prior'.
-#' @param dimnames_term Dimnames for array representation of term
-#' @param var_time Name of time variable
-#' @param var_age Name of age variable
-#' @param components A data frame.
-#'
-#' @returns A modifed version of 'components'
-#'
-#' @noRd
-infer_trend_cyc_seas_err_seasvary <- function(prior,
-                                              dimnames_term,
-                                              var_time,
-                                              var_age,
-                                              components) {
-  nm <- dimnames_to_nm(dimnames_term)
-  is_seasonal <- with(components, (term == nm) & (component == "hyperrand"))
-  is_effect <- with(components, (term == nm) & (component == "effect"))
-  seasonal <- components$.fitted[is_seasonal]
-  effect <- components$.fitted[is_effect]
-  trend <- effect - seasonal
-  components$component[is_seasonal] <- "seasonal"
-  level <- components$level[is_effect]
-  trend <- tibble::tibble(term = nm,
-                          component = "trend",
-                          level = level,
-                          .fitted = trend)
-  ## combine
-  vctrs::vec_rbind(components, trend)
 }
 
 
@@ -1552,12 +2340,12 @@ infer_trend_cyc_seas_err_seasvary_forecast <- function(prior,
                                                        components) {
   nm <- dimnames_to_nm(dimnames_term)
   is_trend <- with(components, (term == nm) & (component == "trend"))
-  is_seasonal <- with(components, (term == nm) & (component == "seasonal"))
+  is_season <- with(components, (term == nm) & (component == "season"))
   is_effect <- with(components, (term == nm) & (component == "effect"))
   trend <- components$.fitted[is_trend]
   effect <- components$.fitted[is_effect]
-  seasonal <- effect - trend
-  components$.fitted[is_seasonal] <- seasonal
+  season <- effect - trend
+  components$.fitted[is_season] <- season
   components
 }
 
@@ -1628,7 +2416,7 @@ rvec_to_mean <- function(data) {
 #' @noRd
 sort_components <- function(components, mod) {
   levels_component <- c("effect",
-                        "trend", "cyclical", "seasonal", "error",
+                        "trend", "season", "error",
                         "spline", "svd",
                         "disp",
                         "hyper")
@@ -1652,6 +2440,22 @@ sort_components <- function(components, mod) {
   
 
 ## HAS_TESTS
+#' Transfer Draws for Dispersion between Models
+#'
+#'
+#' @param mod Model receiving the draws
+#' @param mod_disp Model giving the draws
+#'
+#' @returns Modified version of 'mod'
+#' 
+#' @noRd
+transfer_draws_disp <- function(mod, mod_disp) { 
+  mod$draws_disp <- mod_disp$draws_disp
+  mod
+}
+
+
+## HAS_TESTS
 #' Create Functions Needed to Transform Hyper-Parameters
 #' from AR-Based Prior
 #'
@@ -1673,5 +2477,3 @@ transform_hyper_ar <- function(prior) {
   rep(list(coef = shifted_inv_logit, sd = exp),
       times = c(n_coef, 1L))
 }
-
-  

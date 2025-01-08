@@ -6,10 +6,10 @@
 \usage{
 \method{forecast}{bage_mod}(
   object,
+  newdata = NULL,
   output = c("augment", "components"),
   include_estimates = FALSE,
-  standardize = c("terms", "anova", "none"),
-  labels,
+  labels = NULL,
   ...
 )
 }
@@ -18,16 +18,14 @@
 typically created with \code{\link[=mod_pois]{mod_pois()}},
 \code{\link[=mod_binom]{mod_binom()}}, or \code{\link[=mod_norm]{mod_norm()}}.}
 
+\item{newdata}{Data frame with data for
+future periods.}
+
 \item{output}{Type of output returned}
 
 \item{include_estimates}{Whether to
 include historical estimates along
 with the forecasts. Default is \code{FALSE}.}
-
-\item{standardize}{Standardization method:
-one of \code{"terms"}, \code{"anova"}, or "none".
-The default is \code{"terms"}.
-See below for details.}
 
 \item{labels}{Labels for future values.}
 
@@ -52,6 +50,9 @@ interactions with non-time-varying parameters, e.g.
 age effects or dispersion.
 \item Use the combined parameters to generate values for
 rates, probabilities or means.
+\item If a \code{newdata} argument has been provided,
+and \code{output} is \code{"augment"},
+draw values for outcome.
 }
 
 \code{vignette("vig2_math")} has the technical details.
@@ -73,17 +74,6 @@ When \code{include_estimates} is \code{TRUE}, the output
 includes these values.
 Setting \code{include_estimates} to \code{TRUE} can be helpful
 when creating graphs that combine estimates and forecasts.
-}
-
-\section{Standardization}{
-
-
-The standardization used by \code{forecast()}
-is equivalent to the standardization
-applied by \link[=components.bage_mod]{components()},
-except that values for forecasted terms are
-are shifted so that they
-line up with the values for estimates.
 }
 
 \section{Fitted and unfitted models}{
@@ -111,9 +101,9 @@ The interface for \code{forecast()} has not been finalised.
 \examples{
 ## specify and fit model
 mod <- mod_pois(injuries ~ age * sex + ethnicity + year,
-                data = injuries,
+                data = nzl_injuries,
                 exposure = popn) |>
-  fit(mod)
+  fit()
 mod
 
 ## forecasts
@@ -130,9 +120,22 @@ mod |>
   forecast(labels = 2019:2024,
            output = "components")
 
+## hold back some data and forecast
+library(dplyr, warn.conflicts = FALSE)
+data_historical <- nzl_injuries |>
+  filter(year <= 2015)
+data_forecast <- nzl_injuries |>
+  filter(year > 2015) |>
+  mutate(injuries = NA)
+mod_pois(injuries ~ age * sex + ethnicity + year,
+         data = data_historical,
+         exposure = popn) |>
+  fit() |>
+  forecast(newdata = data_forecast)
+
 ## forecast based on priors only
 mod_unfitted <- mod_pois(injuries ~ age * sex + ethnicity + year,
-                         data = injuries,
+                         data = nzl_injuries,
                          exposure = popn)
 mod_unfitted |>
   forecast(labels = 2019:2024)

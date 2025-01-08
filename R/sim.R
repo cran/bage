@@ -181,13 +181,12 @@ draw_vals_coef <- function(prior, n_sim) {
 #'
 #' @param mod Object of class 'bage_mod'
 #' @param n_sim Number of draws
-#' @param standardize Whether to standardize
 #' estimates
 #'
 #' @returns Named list
 #'
 #' @noRd
-draw_vals_components_unfitted <- function(mod, n_sim, standardize) {
+draw_vals_components_unfitted <- function(mod, n_sim) {
   data <- mod$data
   priors <- mod$priors
   dimnames_terms <- mod$dimnames_terms
@@ -217,7 +216,8 @@ draw_vals_components_unfitted <- function(mod, n_sim, standardize) {
                                       n_sim = n_sim)
   vals_hyper <- vals_hyper_to_dataframe(vals_hyper = vals_hyper,
                                         n_sim = n_sim)
-  vals_hyperrand <- vals_hyperrand_to_dataframe(vals_hyperrand = vals_hyperrand,
+  vals_hyperrand <- vals_hyperrand_to_dataframe(mod = mod,
+                                                vals_hyperrand = vals_hyperrand,
                                                 n_sim = n_sim)
   vals_spline <- vals_spline_to_dataframe(vals_spline = vals_spline,
                                           n_sim = n_sim)
@@ -229,37 +229,6 @@ draw_vals_components_unfitted <- function(mod, n_sim, standardize) {
                           vals_effect,
                           vals_spline,
                           vals_svd)
-  ## this step is currently needed to get names right, but should be dropped
-  ## when we refactor to using 'draw_vals_term', since we already
-  ## have all the quantities needed, and don't need to infer them  
-  ans <- infer_trend_cyc_seas_err(components = ans,
-                                  priors = priors,
-                                  dimnames_terms = dimnames_terms,
-                                  var_time = var_time,
-                                  var_age = var_age)
-  if (standardize == "terms") {
-    ans <- center_all(components = ans,
-                      priors = priors,
-                      dimnames_terms = dimnames_terms,
-                      var_time = var_time,
-                      var_age = var_age,
-                      var_sexgender = var_sexgender,
-                      center_along = TRUE)
-  }
-  else if (standardize == "anova") {
-    linpred <- make_linpred_comp(components = ans,
-                                 data = data,
-                                 dimnames_terms = dimnames_terms)
-    ans <- standardize_anova(components = ans,
-                             data = data,
-                             linpred = linpred,
-                             dimnames_terms = dimnames_terms)
-  }
-  else if (standardize == "none") {
-    NULL
-  }
-  else
-    cli::cli_abort("Internal error: Invalid value for {.arg standardize}.")
   if (has_disp) {
     vals_disp <- draw_vals_disp(mod = mod,
                                 n_sim = n_sim)
@@ -294,8 +263,6 @@ draw_vals_disp <- function(mod, n_sim) {
 #' Draw Values for all Effects
 #'
 #' Draw values for main effects and interactions.
-#'
-#' Set intercept to 0
 #'
 #' @param mod Object of class "bage_mod"
 #' @param vals_hyper List of lists.
@@ -382,7 +349,6 @@ draw_vals_hyperrand_mod <- function(mod, vals_hyper, n_sim) {
 #'
 #' Each column is one draw.
 #'
-#' @param intercept Matrix of values
 #' @param slope Matrix of values
 #' @param sd Vector of values
 #' @param matrix_along_by Matrix with map for along and by dimensions
@@ -391,12 +357,12 @@ draw_vals_hyperrand_mod <- function(mod, vals_hyper, n_sim) {
 #' @returns A matrix, with dimnames.
 #'
 #' @noRd
-draw_vals_lin <- function(intercept, slope, sd, matrix_along_by, labels) {
-  n_sim <- ncol(intercept)
+draw_vals_lin <- function(slope, sd, matrix_along_by, labels) {
+  n_sim <- length(sd)
   n_along <- nrow(matrix_along_by)
   n_by <- ncol(matrix_along_by)
-  intercept <- rep(intercept, each = n_along)
   slope <- rep(slope, each = n_along)
+  intercept <- -0.5 * (n_along + 1) * slope
   sd <- rep(sd, each = n_along * n_by)
   s <- seq_len(n_along)
   ans <- stats::rnorm(n = n_along * n_by * n_sim,
@@ -415,9 +381,6 @@ draw_vals_lin <- function(intercept, slope, sd, matrix_along_by, labels) {
 #'
 #' Each column is one draw.
 #'
-#' Results are standardized
-#'
-#' @param intercept Matrix of values
 #' @param slope Matrix of values
 #' @param sd Vector of values
 #' @param matrix_along_by Matrix with map for along and by dimensions
@@ -426,13 +389,13 @@ draw_vals_lin <- function(intercept, slope, sd, matrix_along_by, labels) {
 #' @returns A matrix, with dimnames.
 #'
 #' @noRd
-draw_vals_linar <- function(intercept, slope, sd, coef, matrix_along_by, labels) {
+draw_vals_linar <- function(slope, sd, coef, matrix_along_by, labels) {
   n_sim <- ncol(slope)
   n_along <- nrow(matrix_along_by)
   n_by <- ncol(matrix_along_by)
   n_coef <- nrow(coef)
-  intercept <- as.numeric(intercept)
   slope <- as.numeric(slope)
+  intercept <- -0.5 * (n_along + 1) * slope
   s <- seq_len(n_along)
   mean <- outer(s, slope) + rep(intercept, each = n_along)
   coef <- array(coef, dim = c(n_coef, n_sim, n_by))
@@ -450,23 +413,73 @@ draw_vals_linar <- function(intercept, slope, sd, coef, matrix_along_by, labels)
 
 
 ## HAS_TESTS
+#' Generate Draws from a Linear Trend
+#'
+#' Each column is one draw.
+#'
+#' @param slope Matrix of values
+#' @param matrix_along_by Matrix with map for along and by dimensions
+#' @param labels Names of elements
+#'
+#' @returns A matrix, with dimnames.
+#'
+#' @noRd
+draw_vals_lintrend <- function(slope, matrix_along_by, labels) {
+  n_sim <- ncol(slope)
+  n_along <- nrow(matrix_along_by)
+  n_by <- ncol(matrix_along_by)
+  slope <- rep(slope, each = n_along)
+  intercept <- -0.5 * (n_along + 1) * slope
+  s <- seq_len(n_along)
+  ans <- intercept + slope * s
+  ans <- matrix(ans, nrow = n_along * n_by, ncol = n_sim)
+  i <- match(sort(matrix_along_by), matrix_along_by)
+  ans <- ans[i, , drop = FALSE]
+  dimnames(ans) <- list(labels, NULL)
+  ans
+}
+
+
+## HAS_TESTS
+#' Generate Draws from Normal Distribution
+#'
+#' @param sd Vector of values
+#' @param labels Names of elements
+#'
+#' @returns A matrix, with dimnames.
+#'
+#' @noRd
+draw_vals_norm <- function(sd, labels) {
+  n_sim <- length(sd)
+  n_effect <- length(labels)
+  n <- n_effect * n_sim
+  sd <- rep(sd, each = n_effect)
+  ans <- stats::rnorm(n = n, sd = sd)
+  ans <- matrix(ans, nrow = n_effect, ncol = n_sim)
+  dimnames(ans) <- list(labels, NULL)
+  ans
+}
+
+
+## HAS_TESTS
 #' Generate Draws from RW
 #'
 #' Each column is one draw.
 #'
 #' @param sd Vector of values
+#' @param sd_init Standard deviation of initial values. 
 #' @param matrix_along_by Matrix with map for along and by dimensions
 #' @param levels_effect Names of elements
 #'
 #' @returns A matrix, with dimnames.
 #'
 #' @noRd
-draw_vals_rw <- function(sd, matrix_along_by, levels_effect) {
+draw_vals_rw <- function(sd, sd_init, matrix_along_by, levels_effect) {
   n_sim <- length(sd)
   n_along <- nrow(matrix_along_by)
   n_by <- ncol(matrix_along_by)
   ans <- matrix(nrow = n_along, ncol = n_by * n_sim)
-  ans[1L, ] <- stats::rnorm(n = n_by * n_sim)
+  ans[1L, ] <- stats::rnorm(n = n_by * n_sim, sd = sd_init)
   sd <- rep(sd, each = n_by)
   for (i_along in seq.int(from = 2L, to = n_along))
     ans[i_along, ] <- stats::rnorm(n = n_by * n_sim,
@@ -486,20 +499,21 @@ draw_vals_rw <- function(sd, matrix_along_by, levels_effect) {
 #' Each column is one draw.
 #'
 #' @param sd Vector of values
+#' @param sd_slope Double
 #' @param matrix_along_by Matrix with map for along and by dimensions
 #' @param levels_effect Names of elements
 #'
 #' @returns A matrix, with dimnames.
 #'
 #' @noRd
-draw_vals_rw2 <- function(sd, matrix_along_by, levels_effect) {
+draw_vals_rw2 <- function(sd, sd_init, sd_slope, matrix_along_by, levels_effect) {
   n_sim <- length(sd)
   n_along <- nrow(matrix_along_by)
   n_by <- ncol(matrix_along_by)
   sd <- rep(sd, each = n_by)
   ans <- matrix(nrow = n_along, ncol = n_by * n_sim)
-  ans[1L, ] <- stats::rnorm(n = n_by * n_sim)
-  ans[2L, ] <- stats::rnorm(n = n_by * n_sim)
+  ans[1L, ] <- stats::rnorm(n = n_by * n_sim, sd = sd_init)
+  ans[2L, ] <- stats::rnorm(n = n_by * n_sim, mean = ans[1L, ], sd = sd_slope)
   for (i_along in seq.int(from = 3L, to = n_along))
     ans[i_along, ] <- stats::rnorm(n = n_by * n_sim,
                                    mean = 2 * ans[i_along - 1L, ] - ans[i_along - 2L, ],
@@ -508,87 +522,6 @@ draw_vals_rw2 <- function(sd, matrix_along_by, levels_effect) {
   i <- match(sort(matrix_along_by), matrix_along_by)
   ans <- ans[i, , drop = FALSE]
   dimnames(ans) <- list(levels_effect, NULL)
-  ans
-}
-
-
-## HAS_TESTS
-#' Generate Draws for Fixed Seasonal Effects
-#'
-#' Each column is one draw.
-#'
-#' @param n_seas Number of seasons
-#' @param sd Vector of values
-#' @param matrix_along_by Matrix with map for along and by dimensions
-#'
-#' @returns A matrix, with dimnames.
-#'
-#' @noRd
-draw_vals_seasfix <- function(n_seas, matrix_along_by, n_sim) {
-  n_along <- nrow(matrix_along_by)
-  n_by <- ncol(matrix_along_by)
-  ans <- matrix(nrow = n_along, ncol = n_by * n_sim)
-  ans[seq_len(n_seas), ] <- stats::rnorm(n = n_seas * n_by * n_sim)
-  for (i_along in seq.int(from = n_seas + 1L, to = n_along))
-    ans[i_along, ] <- ans[i_along - n_seas, ]
-  ans <- matrix(ans, nrow = n_along * n_by, ncol = n_sim)
-  i <- match(sort(matrix_along_by), matrix_along_by)
-  ans <- ans[i, , drop = FALSE]
-  ans
-}
-
-
-## HAS_TESTS
-#' Generate Draws for Time-Varying Seasonal Effects
-#'
-#' Each column is one draw.
-#'
-#' @param n_seas Number of seasons
-#' @param sd_seas Vector of values
-#' @param matrix_along_by Matrix with map for along and by dimensions
-#'
-#' @returns A matrix, with dimnames.
-#'
-#' @noRd
-draw_vals_seasvary <- function(n_seas, sd_seas, matrix_along_by) {
-  n_sim <- length(sd_seas)
-  n_along <- nrow(matrix_along_by)
-  n_by <- ncol(matrix_along_by)
-  ans <- matrix(nrow = n_along, ncol = n_by * n_sim)
-  ans[seq_len(n_seas), ] <- stats::rnorm(n = n_seas * n_by * n_sim)
-  sd_seas <- rep(sd_seas, each = n_by)
-  for (i_along in seq.int(from = n_seas + 1L, to = n_along))
-    ans[i_along, ] <- stats::rnorm(n = n_by * n_sim,
-                                   mean = ans[i_along - n_seas, ],
-                                   sd = sd_seas)
-  ans <- ans - rep(colMeans(ans), each = n_along)
-  ans <- matrix(ans, nrow = n_along * n_by, ncol = n_sim)
-  i <- match(sort(matrix_along_by), matrix_along_by)
-  ans <- ans[i, , drop = FALSE]
-  ans
-}
-
-
-## HAS_TESTS
-#' Draw Values for the 'slope' Hyper-Parameters of a Prior
-#'
-#' @param prior An object of class 'bage_prior'
-#' @param matrix_along_by Matrix with mapping for along and by dimensions
-#' @param n_sim Number of draws
-#'
-#' @returns A matrix
-#'
-#' @noRd
-draw_vals_slope <- function(sd_slope, matrix_along_by, n_sim) {
-  n_by <- ncol(matrix_along_by)
-  ans <- stats::rnorm(n = n_by * n_sim, sd = sd_slope)
-  ans <- matrix(ans, nrow = n_by, ncol = n_sim)
-  nms_by <- colnames(matrix_along_by)
-  if (n_by > 1L)
-    rownames <- paste("slope", nms_by, sep = ".")
-  else
-    rownames <- "slope"
-  rownames(ans) <- rownames
   ans
 }
 
@@ -624,6 +557,101 @@ draw_vals_sd_seas <- function(prior, n_sim) {
     ans
 }
 
+## HAS_TESTS
+#' Generate Draws for Fixed Seasonal Effects
+#'
+#' Each column is one draw.
+#'
+#' @param n_seas Number of seasons
+#' @param sd_init Scalar. SD of initial values
+#' @param matrix_along_by Matrix with map for along and by dimensions
+#' @param n_sim Number of draws
+#'
+#' @returns A matrix, with dimnames.
+#'
+#' @noRd
+draw_vals_seasfix <- function(n_seas, sd_init, matrix_along_by, n_sim) {
+  n_along <- nrow(matrix_along_by)
+  n_by <- ncol(matrix_along_by)
+  ans <- matrix(nrow = n_along, ncol = n_by * n_sim)
+  m <- diag(n_seas - 1L)
+  m[, 1L] <- 1
+  m <- rbind(m, -1 * colSums(m))
+  z <- matrix(stats::rnorm(n = (n_seas - 1L) * n_by * n_sim, sd = sd_init),
+              nrow = n_seas - 1L)
+  ans[seq_len(n_seas), ] <- m %*% z
+  for (i_along in seq.int(from = n_seas + 1L, to = n_along))
+    ans[i_along, ] <- ans[i_along - n_seas, ]
+  ans <- matrix(ans, nrow = n_along * n_by, ncol = n_sim)
+  i <- match(sort(matrix_along_by), matrix_along_by)
+  ans <- ans[i, , drop = FALSE]
+  ans
+}
+
+
+## HAS_TESTS
+#' Generate Draws for Time-Varying Seasonal Effects
+#'
+#' Each column is one draw.
+#'
+#' @param n_seas Number of seasons
+#' @param sd_init Scalar. SD of initial values.
+#' @param sd_innov Vector of values. SD of innoviations
+#' @param matrix_along_by Matrix with map for along and by dimensions
+#'
+#' @returns A matrix, with dimnames.
+#'
+#' @noRd
+draw_vals_seasvary <- function(n_seas, sd_init, sd_innov, matrix_along_by) {
+  n_sim <- length(sd_innov)
+  n_along <- nrow(matrix_along_by)
+  n_by <- ncol(matrix_along_by)
+  ans <- matrix(0, nrow = n_along, ncol = n_by * n_sim)
+  m <- diag(n_seas - 1L)
+  m[, 1L] <- 1
+  m <- rbind(m, -1 * colSums(m))
+  z <- matrix(stats::rnorm(n = (n_seas - 1L) * n_by * n_sim, sd = sd_init),
+              nrow = n_seas - 1L)
+  ans[seq_len(n_seas), ] <- m %*% z
+  sd_innov <- rep(sd_innov, each = n_by)
+  for (i_along in seq.int(from = n_seas + 1L, to = n_along)) {
+    is_first_seas <- (i_along - 1L) %% n_seas == 0L
+    if (!is_first_seas)
+      ans[i_along, ] <- stats::rnorm(n = n_by * n_sim,
+                                     mean = ans[i_along - n_seas, ],
+                                     sd = sd_innov)
+  }
+  ans <- matrix(ans, nrow = n_along * n_by, ncol = n_sim)
+  i <- match(sort(matrix_along_by), matrix_along_by)
+  ans <- ans[i, , drop = FALSE]
+  ans
+}
+
+
+## HAS_TESTS
+#' Draw Values for the 'slope' Hyper-Parameters of a Prior
+#'
+#' @param mean_slope Prior mean of slope. A scalar.
+#' @param sd_slope Prior standard deviation of slope. A positive scalar.
+#' @param matrix_along_by Matrix with mapping for along and by dimensions
+#' @param n_sim Number of draws
+#'
+#' @returns A matrix
+#'
+#' @noRd
+draw_vals_slope <- function(mean_slope, sd_slope, matrix_along_by, n_sim) {
+  n_by <- ncol(matrix_along_by)
+  ans <- stats::rnorm(n = n_by * n_sim, mean = mean_slope, sd = sd_slope)
+  ans <- matrix(ans, nrow = n_by, ncol = n_sim)
+  nms_by <- colnames(matrix_along_by)
+  if (n_by > 1L)
+    rownames <- paste("slope", nms_by, sep = ".")
+  else
+    rownames <- "slope"
+  rownames(ans) <- rownames
+  ans
+}
+
 
 ## HAS_TESTS
 #' Draw Values for Spline Coefficients
@@ -640,12 +668,12 @@ draw_vals_spline_mod <- function(mod, vals_hyper, n_sim) {
   dimnames_terms <- mod$dimnames_terms
   var_time <- mod$var_time
   var_age <- mod$var_age
-  levels_effectfree <- make_levels_spline(mod, unlist = FALSE)
+  levels_spline <- make_levels_spline(mod, unlist = FALSE)
   ans <- .mapply(draw_vals_spline,
                  dots = list(prior = priors,
                              vals_hyper = vals_hyper,
                              dimnames_term = dimnames_terms,
-                             levels_effectfree = levels_effectfree),
+                             levels_spline = levels_spline),
                  MoreArgs = list(var_time = var_time,
                                  var_age = var_age,
                                  n_sim = n_sim))
@@ -670,12 +698,12 @@ draw_vals_svd_mod <- function(mod, vals_hyper, n_sim) {
   var_time <- mod$var_time
   var_age <- mod$var_age
   var_sexgender <- mod$var_sexgender
-  levels_effectfree <- make_levels_svd(mod, unlist = FALSE)
+  levels_svd <- make_levels_svd(mod, unlist = FALSE)
   ans <- .mapply(draw_vals_svd,
                  dots = list(prior = priors,
                              vals_hyper = vals_hyper,
                              dimnames_term = dimnames_terms,
-                             levels_effectfree = levels_effectfree),
+                             levels_svd = levels_svd),
                  MoreArgs = list(var_time = var_time,
                                  var_age = var_age,
                                  var_sexgender = var_sexgender,
@@ -683,7 +711,6 @@ draw_vals_svd_mod <- function(mod, vals_hyper, n_sim) {
   names(ans) <- names(priors)
   ans
 }
-
 
 ## HAS_TESTS
 #' Calculate Errors from Using Point Estimates from Posterior Distribution
@@ -911,14 +938,28 @@ make_report_aug <- function(perform_aug, aug_sim) {
 #' 'components' an a fitted model.
 #' @param comp_sim Tibble created by calling
 #' 'components' an an unfitted model.
+#' @param prior_class_est Data frame giving class
+#' of each term in priors for 'mod_est'
+#' @param prior_class_sim Data frame giving class
+#' of each term in prior for 'mod_sim'
 #'
 #' @returns A tibble
 #'
 #' @noRd
-make_report_comp <- function(perform_comp, comp_est, comp_sim) {
+make_report_comp <- function(perform_comp,
+                             comp_est,
+                             comp_sim,
+                             prior_class_est,
+                             prior_class_sim) {
   byvar_comp <- merge(x = comp_est[c("term", "component", "level")],
                       y = comp_sim[c("term", "component", "level")],
                       sort = FALSE)
+  prior_class <- merge(prior_class_est, prior_class_sim, by = "term")
+  prior_class$is_class_diff <- prior_class$class.x != prior_class$class.y
+  is_class_diff <- prior_class$is_class_diff[match(byvar_comp$term, prior_class$term)]
+  is_hyper <- byvar_comp$component == "hyper"
+  is_remove <- is_class_diff & is_hyper
+  byvar_comp <- byvar_comp[!is_remove, , drop = FALSE]
   error_point_est_comp <- get_error_point_est(perform_comp)
   is_in_interval_comp <- get_is_in_interval(perform_comp)
   length_interval_comp <- get_length_interval(perform_comp)
@@ -989,6 +1030,10 @@ perform_aug <- function(est,
 #' and posterior distribution(s)
 #' @param sim Data frame with 'by' variables
 #' and simulation-true values
+#' @param prior_class_est Data frame giving class
+#' of each term in priors for 'mod_est'
+#' @param prior_class_sim Data frame giving class
+#' of each term in prior for 'mod_sim'
 #' @param i_sim Simulation draw to use for performance
 #' measures.
 #' @param point_est_fun Mean or median. Function used
@@ -1000,13 +1045,21 @@ perform_aug <- function(est,
 #' @noRd
 perform_comp <- function(est,
                          sim,
+                         prior_class_est,
+                         prior_class_sim,
                          i_sim,
                          point_est_fun,
                          widths) {
   names(est)[match(".fitted", names(est))] <- ".fitted_est"
   names(sim)[match(".fitted", names(sim))] <- ".fitted_sim"
-  sim[[".fitted_sim"]] <- as.matrix(sim[[".fitted_sim"]])[, i_sim]
+  sim[[".fitted_sim"]] <- as.matrix(sim[[".fitted_sim"]])[, i_sim]  
   merged <- merge(est, sim, sort = FALSE)
+  prior_class <- merge(prior_class_est, prior_class_sim, by = "term")
+  prior_class$is_class_diff <- prior_class$class.x != prior_class$class.y
+  is_class_diff <- prior_class$is_class_diff[match(merged$term, prior_class$term)]
+  is_hyper <- merged$component == "hyper"
+  is_remove <- is_class_diff & is_hyper
+  merged <- merged[!is_remove, , drop = FALSE]
   var_est <- merged[[".fitted_est"]]
   var_sim <- merged[[".fitted_sim"]]
   .fitted <- list(error_point_est = error_point_est(var_est = var_est,
@@ -1027,10 +1080,20 @@ perform_comp <- function(est,
 #' Use simulated data to assess the performance of
 #' an estimation model.
 #'
+#' @section Warning:
+#'
+#' The interface for `report_sim()` is still under development
+#' and may change in future.
+#'
 #' @param mod_est The model whose performance is being
 #' assessed. An object of class `bage_mod`.
 #' @param mod_sim The model used to generate the simulated
 #' data. If no value is supplied, `mod_est` is used.
+#' @param method Estimation method used for `mod_est`.
+#' See [fit()].
+#' @param vars_inner Variables used in inner model
+#' with `"inner-outer"`estimation method.
+#' See [fit()].
 #' @param n_sim Number of sets of simulated data to use.
 #' Default is 100.
 #' @param point_est_fun Name of the function to use
@@ -1045,36 +1108,11 @@ perform_comp <- function(est,
 #' processing. If `n_core` is `1` (the default),
 #' no parallel processing is done.
 #'
-#' @return
+#' @returns
 #'
-#' When `report_type` is `"short"`, a tibble with the following columns:
-#' 
-#' - `component`. Part of model. See Details.
-#' `"par"` is the rate, probability, or mean
-#' parameter from the likelihood.
-#' - `vals_sim`. Simulated value for parameter, averaged
-#' across all simulations and cells.
-#' - `error_point_est`. Point estimate minus simulation-true
-#' value, averaged across all simulations and cells.
-#' - `cover`. Actual proportion of simulation-true values
-#' that fall within each type of interval, averaged across all
-#' simulations and cells.
+#' A named list with a tibble called `"components"` and a
+#' tibble called `"augment"`.
 #'
-#' When `report_type` is `"long"`, a tibble with the following columns:
-#' 
-#' - `component`. Part of model. See [components()].
-#' `"par"` is the rate, probability,
-#' or mean parameter from the likelihood.
-#' - `term`. Category within `component`.
-#' - `level`. Category within `term`.
-#' - `vals_sim`. Simulated values for parameter,
-#' stored in an [rvec][rvec::rvec()].
-#' - `error_point_est`. Point estimates minus simulation-true
-#' values, stored in an [rvec][rvec::rvec()].
-#' - `cover`. Actual proportions of simulation-true values
-#' falling within each type of interval, stored in
-#' an [rvec][rvec::rvec()].
-#' 
 #' @seealso
 #' - [mod_pois()], [mod_binom()], [mod_norm()] Specify a
 #' model
@@ -1112,6 +1150,8 @@ perform_comp <- function(est,
 #' @export
 report_sim <- function(mod_est,
                        mod_sim = NULL,
+                       method = c("standard", "inner-outer"),
+                       vars_inner = NULL,
                        n_sim = 100,
                        point_est_fun = c("median", "mean"),
                        widths = c(0.5, 0.95),
@@ -1119,31 +1159,42 @@ report_sim <- function(mod_est,
                        n_core = 1) {
   ## check inputs
   check_bage_mod(x = mod_est, nm_x = "mod_est")
+  if (is_fitted(mod_est)) {
+    mod_est <- unfit(mod_est)
+    cli::cli_alert("Unfitting {.arg mod_est}.")
+  }
   if (is.null(mod_sim))
     mod_sim <- mod_est
-  else
+  else {
     check_mod_est_sim_compatible(mod_est = mod_est,
                                  mod_sim = mod_sim)
-  check_n(n = n_sim,
-          nm_n = "n_sim",
-          min = 1L,
-          max = NULL,
-          null_ok = FALSE)
+    if (is_fitted(mod_sim)) {
+      mod_sim <- unfit(mod_sim)
+      cli::cli_alert("Unfitting {.arg mod_sim}.")
+    }
+  }    
+  poputils::check_n(n = n_sim,
+                    nm_n = "n_sim",
+                    min = 1L,
+                    max = NULL,
+                    divisible_by = NULL)
   point_est_fun <- match.arg(point_est_fun)
   check_widths(widths)
   report_type <- match.arg(report_type)
-  check_n(n = n_core,
-          nm_n = "n_core",
-          min = 1L,
-          max = NULL,
-          null_ok = FALSE)
+  poputils::check_n(n = n_core,
+                    nm_n = "n_core",
+                    min = 1L,
+                    max = NULL,
+                    divisible_by = NULL)
   ## use 'mod_sim' to generate 'n_sim' sets of simulation-truth
   mod_sim$n_draw <- n_sim
-  comp_sim <- components(mod_sim, standardize = "none", quiet = TRUE)
+  comp_sim <- components(mod_sim, quiet = TRUE)
   aug_sim <- augment(mod_sim, quiet = TRUE)
   nm_outcome_obs <- get_nm_outcome_obs(mod_sim)
   outcome_obs_sim <- aug_sim[[nm_outcome_obs]]
   outcome_obs_sim <- as.matrix(outcome_obs_sim)
+  prior_class_est <- make_prior_class(mod_est)
+  prior_class_sim <- make_prior_class(mod_sim)
   ## create closure for evaluating 'mod_est' fitted
   ## to a single simulation-truth, and apply to
   ## the 'n_sim' sets
@@ -1153,11 +1204,13 @@ report_sim <- function(mod_est,
     perform_aug <- utils::getFromNamespace("perform_aug", ns = "bage")
     outcome <- outcome_obs_sim[, i_sim]
     mod_est$outcome <- outcome
-    mod_est <- fit(mod_est)
-    comp_est <- components(mod_est, standardize = "none")
+    mod_est <- fit(mod_est, method = method, vars_inner = vars_inner)
+    comp_est <- components(mod_est)
     aug_est <- augment(mod_est)
     results_comp <- perform_comp(est = comp_est,
                                  sim = comp_sim,
+                                 prior_class_est = prior_class_est,
+                                 prior_class_sim = prior_class_sim,
                                  i_sim = i_sim,
                                  point_est_fun = point_est_fun,
                                  widths = widths)
@@ -1186,7 +1239,9 @@ report_sim <- function(mod_est,
   comp_est <- components(mod_est, quiet = TRUE)
   report_comp <- make_report_comp(perform_comp = perform_comp,
                                   comp_est = comp_est,
-                                  comp_sim = comp_sim)
+                                  comp_sim = comp_sim,
+                                  prior_class_est = prior_class_est,
+                                  prior_class_sim = prior_class_sim)
   report_aug <- make_report_aug(perform_aug = perform_aug,
                                 aug_sim = aug_sim)
   if (report_type == "full")
@@ -1323,11 +1378,18 @@ vals_hyper_to_dataframe_one <- function(nm, vals_hyper, n_sim) {
 #'
 #' @noRd
 vals_hyperrand_to_dataframe <- function(mod, vals_hyperrand, n_sim) {
+  priors <- mod$priors
+  dimnames_term <- mod$dimnames_term
+  var_age <- mod$var_age
+  var_time <- mod$var_time
   nms <- names(vals_hyperrand)
   ans <- .mapply(vals_hyperrand_to_dataframe_one,
-                 dots = list(nm = nms,
-                             vals_hyperrand = vals_hyperrand),
-                 MoreArgs = list(n_sim = n_sim))
+                 dots = list(prior = priors,
+                             vals_hyperrand = vals_hyperrand,
+                             dimnames_term = dimnames_term),
+                 MoreArgs = list(var_age = var_age,
+                                 var_time = var_time,
+                                 n_sim = n_sim))
   ans <- vctrs::vec_rbind(!!!ans)
   ans
 }
@@ -1345,7 +1407,13 @@ vals_hyperrand_to_dataframe <- function(mod, vals_hyperrand, n_sim) {
 #' @returns A tibble.
 #'
 #' @noRd
-vals_hyperrand_to_dataframe_one <- function(nm, vals_hyperrand, n_sim) {
+vals_hyperrand_to_dataframe_one <- function(prior,
+                                            vals_hyperrand,
+                                            dimnames_term,
+                                            var_age,
+                                            var_time,
+                                            n_sim) {
+  nm <- dimnames_to_nm(dimnames_term)
   vals <- vctrs::vec_rbind(!!!vals_hyperrand, .name_repair = "universal_quiet")
   if (nrow(vals) > 0L) {
     vals <- as.matrix(vals)
@@ -1354,7 +1422,10 @@ vals_hyperrand_to_dataframe_one <- function(nm, vals_hyperrand, n_sim) {
   else
     vals <- matrix(NA_real_, nrow = 0L, ncol = n_sim)
   term <- rep(nm, times = nrow(vals))
-  component <- rep.int("hyperrand", times = nrow(vals))
+  component <- comp_hyperrand(prior = prior,
+                              dimnames_term = dimnames_term,
+                              var_age = var_age,
+                              var_time = var_time)
   if (nrow(vals) > 0L) {
     level <- lapply(vals_hyperrand, rownames)
     no_rownames <- vapply(level, is.null, FALSE)

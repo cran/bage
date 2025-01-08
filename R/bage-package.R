@@ -5,6 +5,13 @@
 #' Estimation uses [TMB](https://CRAN.R-project.org/package=TMB),
 #' and is fast.
 #'
+#' @section Example workflow:
+#'
+#' 1. Specify model using [mod_pois()]
+#' 2. Fit model using [fit()]
+#' 3. Extract results using [augment()]
+#' 4. Check model using [replicate_data()]
+#'
 #' @section Functions:
 #'
 #' **Specify model**
@@ -40,26 +47,31 @@
 #' - [replicate_data()] Compare real and simulated data
 #' - [report_sim()] Simulation study of model
 #'
-#' **SVD-based modelling of age-profiles**
+#' **SVD-based modelling of age profiles**
 #'
 #' - [components()][bage::components.bage_ssvd] Matrices and offsets from scaled SVD
 #' - [generate()][bage::generate.bage_ssvd] Random profiles
-#' - [HMD] SVD of mortality rates from Human Mortality Database
-#' - [LFP] SVD of labor force participation rates from OECD
+#' - [HFD] Scaled SVD of fertility rates from Human Fertility Database
+#' - [HMD] Scaled SVD of mortality rates from Human Mortality Database
+#' - [LFP] Scaled SVD of labor force participation rates from OECD
 #'
 #' **Data**
 #'
-#' - [deaths] Deaths in Iceland
-#' - [divorces] Divorces in New Zealand
-#' - [expenditure] Health expenditure in the Netherlands
-#' - [injuries] Injuries in New Zealand
-#' - [us_acc_deaths] Accidental deaths in the USA
+#' - [isl_deaths] Deaths in Iceland
+#' - [kor_births] Births in South Korea
+#' - [nld_expenditure] Health expenditure in the Netherlands
+#' - [nzl_divorces] Divorces in New Zealand
+#' - [nzl_households] One-person households in New Zealand
+#' - [nzl_injuries] Fatal injuries in New Zealand
+#' - [swe_infant] Infant mortality in Sweden
+#' - [usa_deaths] Accidental deaths in the USA
 #' 
 #' @keywords internal
 "_PACKAGE"
 
 ## usethis namespace: start
 #' @importFrom tibble tibble
+#' @importFrom rvec n_draw
 #' @useDynLib bage, .registration = TRUE
 ## usethis namespace: end
 NULL

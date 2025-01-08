@@ -7,7 +7,9 @@
 \method{augment}{bage_mod}(x, quiet = FALSE, ...)
 }
 \arguments{
-\item{x}{An object of class \code{"bage_mod"}.}
+\item{x}{Object of class \code{"bage_mod"}, typically
+created with \code{\link[=mod_pois]{mod_pois()}}, \code{\link[=mod_binom]{mod_binom()}},
+or \code{\link[=mod_norm]{mod_norm()}}.}
 
 \item{quiet}{Whether to suppress messages.
 Default is \code{FALSE}.}
@@ -79,7 +81,7 @@ estimates of the true value for the outcome.
 \examples{
 ## specify model
 mod <- mod_pois(divorces ~ age + sex + time,
-                data = divorces,
+                data = nzl_divorces,
                 exposure = population) |>
   set_n_draw(n_draw = 100) ## smaller sample, so 'augment' faster
 
@@ -94,7 +96,7 @@ mod <- mod |>
 mod |> augment()
 
 ## insert a missing value into outcome variable
-divorces_missing <- divorces
+divorces_missing <- nzl_divorces
 divorces_missing$divorces[1] <- NA
 
 ## fitting model and calling 'augument'
@@ -110,7 +112,7 @@ mod_pois(divorces ~ age + sex + time,
 ## original data also leads to a new
 ## variable called '.divorces'
 mod_pois(divorces ~ age + sex + time,
-         data = divorces,
+         data = nzl_divorces,
          exposure = population) |>
   set_datamod_outcome_rr3() |>
   fit() |>

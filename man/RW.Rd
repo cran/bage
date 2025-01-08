@@ -4,74 +4,113 @@
 \alias{RW}
 \title{Random Walk Prior}
 \usage{
-RW(s = 1, along = NULL)
+RW(s = 1, sd = 1, along = NULL, con = c("none", "by"))
 }
 \arguments{
 \item{s}{Scale for the prior for the innovations.
 Default is \code{1}.}
 
+\item{sd}{Standard deviation
+of initial value. Default is \code{1}.
+Can be \code{0}.}
+
 \item{along}{Name of the variable to be used
-as the "along" variable. Only used with
+as the 'along' variable. Only used with
 interactions.}
+
+\item{con}{Constraints on parameters.
+Current choices are \code{"none"} and \code{"by"}.
+Default is \code{"none"}. See below for details.}
 }
 \value{
-An object of class \code{"bage_prior_rw"}.
+An object of class \code{"bage_prior_rwrandom"}
+or \code{"bage_prior_rwzero"}.
 }
 \description{
-Use a random walk to model
+Use a random walk as a model for
 a main effect, or use multiple random walks
-to model an interaction.
-Typically used with age or time effects or with
-interactions that involve age or time.
+as a model for an interaction.
+Typically used with terms that involve age or time.
 }
 \details{
-If \code{RW()} is used with an interaction,
-separate random walks are constructed along
-the "along" variable, within each combination of the
-"by" variables.
+If \code{RW2()} is used with an interaction,
+a separate random walk is constructed
+within each combination of the
+'by' variables.
 
 Argument \code{s} controls the size of innovations.
-Smaller values for \code{s} tend to give smoother series.
+Smaller values for \code{s} tend to produce smoother series.
+
+Argument \code{sd} controls variance in
+initial values. Setting \code{sd} to \code{0} fixes initial
+values at 0.
 }
 \section{Mathematical details}{
 
 
 When \code{RW()} is used with a main effect,
 
-\deqn{\beta_j = \beta_{j-1} + \epsilon_j}
-\deqn{\epsilon_j \sim \text{N}(0, \tau^2),}
+\deqn{\beta_1 \sim \text{N}(0, \mathtt{sd}^2)}
+\deqn{\beta_j \sim \text{N}(\beta_{j-1}, \tau^2), \quad j > 1}
 
 and when it is used with an interaction,
 
-\deqn{\beta_{u,v} = \beta_{u,v-1} + \epsilon_{u,v}}
-\deqn{\epsilon_{u,v} \sim \text{N}(0, \tau^2),}
+\deqn{\beta_{u,1} \sim \text{N}(0, \mathtt{sd}^2)}
+\deqn{\beta_{u,v} \sim \text{N}(\beta_{u,v-1}, \tau^2), \quad v > 1}
 
 where
 \itemize{
 \item \eqn{\pmb{\beta}} is the main effect or interaction;
 \item \eqn{j} denotes position within the main effect;
-\item \eqn{v} denotes position within the "along" variable of the interaction; and
-\item \eqn{u} denotes position within the "by" variable(s) of the interaction.
+\item \eqn{v} denotes position within the 'along' variable of the interaction; and
+\item \eqn{u} denotes position within the 'by' variable(s) of the interaction.
 }
 
 Parameter \eqn{\tau}
 has a half-normal prior
-\deqn{\tau \sim \text{N}^+(0, \text{s}^2),}
+\deqn{\tau \sim \text{N}^+(0, \mathtt{s}^2),}
 where \code{s} is provided by the user.
+}
+
+\section{Constraints}{
+
+
+With some combinations of terms and priors, the values of
+the intercept, main effects, and interactions are
+are only weakly identified.
+For instance, it may be possible to increase the value of the
+intercept and reduce the value of the remaining terms in
+the model with no effect on predicted rates and only a tiny
+effect on prior probabilities. This weak identifiability is
+typically harmless. However, in some applications, such as
+forecasting, or when trying to obtain interpretable values
+for main effects and interactions, it can be helpful to increase
+identifiability through the use of constraints.
+
+Current options for constraints are:
+\itemize{
+\item \code{"none"} No constraints. The default.
+\item \code{"by"} Only used in interaction terms that include 'along' and
+'by' dimensions. Within each value of the 'along'
+dimension, terms across each 'by' dimension are constrained
+to sum to 0.
+}
 }
 
 \examples{
 RW()
 RW(s = 0.5)
+RW(sd = 0)
 RW(along = "cohort")
 }
 \seealso{
 \itemize{
+\item \code{\link[=RW_Seas]{RW_Seas()}} Random walk with seasonal effect
 \item \code{\link[=RW2]{RW2()}} Second-order random walk
 \item \code{\link[=AR]{AR()}} Autoregressive with order k
 \item \code{\link[=AR1]{AR1()}} Autoregressive with order 1
 \item \code{\link[=Sp]{Sp()}} Smoothing via splines
-\item \code{\link[=SVD]{SVD()}} Smoothing of age via singular value decomposition
+\item \code{\link[=SVD]{SVD()}} Smoothing over age using singular value decomposition
 \item \link{priors} Overview of priors implemented in \strong{bage}
 \item \code{\link[=set_prior]{set_prior()}} Specify prior for intercept,
 main effect, or interaction

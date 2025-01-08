@@ -12,8 +12,7 @@ test_that("'draw_vals_outcome_true' works with NULL, pois, offset complete", {
                   data = data,
                   exposure = 1)
   vals_components <- draw_vals_components_unfitted(mod = mod,
-                                                   n_sim = n_sim,
-                                                   standardize = "anova")
+                                                   n_sim = n_sim)
   vals_disp <- vals_components$.fitted[vals_components$component == "disp"]
   vals_expected <- exp(make_linpred_comp(components = vals_components,
                                          data = mod$data,
@@ -48,8 +47,7 @@ test_that("'draw_vals_outcome_true' works with pois, NULL, offset has NA", {
                   data = data,
                   exposure = popn)
   vals_components <- draw_vals_components_unfitted(mod = mod,
-                                                   n_sim = n_sim,
-                                                   standardize = "anova")
+                                                   n_sim = n_sim)
   vals_disp <- vals_components$.fitted[vals_components$component == "disp"]
   vals_expected <- exp(make_linpred_comp(components = vals_components,
                                          data = mod$data,
@@ -81,8 +79,7 @@ test_that("'draw_vals_outcome_true' works with NULL, binom, data complete", {
                    data = data,
                    size = popn)
   vals_components <- draw_vals_components_unfitted(mod = mod,
-                                                   n_sim = n_sim,
-                                                   standardize = "anova")
+                                                   n_sim = n_sim)
   vals_disp <- vals_components$.fitted[vals_components$component == "disp"]
   invlogit <- function(x) exp(x) / (1 + exp(x))
   vals_expected <- invlogit(make_linpred_comp(components = vals_components,
@@ -116,8 +113,7 @@ test_that("'draw_vals_outcome_true' works with NULL, binom, has offset has na", 
                    data = data,
                    size = popn)
   vals_components <- draw_vals_components_unfitted(mod = mod,
-                                                   n_sim = n_sim,
-                                                   standardize = "anova")
+                                                   n_sim = n_sim)
   vals_disp <- vals_components$.fitted[vals_components$component == "disp"]
   invlogit <- function(x) exp(x) / (1 + exp(x))
   vals_expected <- invlogit(make_linpred_comp(components = vals_components,
@@ -153,8 +149,7 @@ test_that("'draw_vals_outcome_true' works with NULL, norm, no na", {
                   data = data,
                   weights = wt)
   vals_components <- draw_vals_components_unfitted(mod = mod,
-                                                   n_sim = n_sim,
-                                                   standardize = "anova")
+                                                   n_sim = n_sim)
   vals_disp <- vals_components$.fitted[vals_components$component == "disp"]
   scale_outcome <- get_fun_scale_outcome(mod)
   vals_fitted <- scale_outcome(make_linpred_comp(components = vals_components,
@@ -188,8 +183,7 @@ test_that("'draw_vals_outcome_true' works with NULL, norm, has NA", {
                   data = data,
                   weights = wt)
   vals_components <- draw_vals_components_unfitted(mod = mod,
-                                                   n_sim = n_sim,
-                                                   standardize = "anova")
+                                                   n_sim = n_sim)
   vals_disp <- vals_components$.fitted[vals_components$component == "disp"]
   vals_disp <- mod$outcome_sd * vals_disp
   scale_outcome <- get_fun_scale_outcome(mod)
@@ -220,8 +214,7 @@ test_that("'draw_vals_outcome_true' method for NULL throws correct error with in
                   data = data,
                   exposure = 1)
   vals_components <- draw_vals_components_unfitted(mod = mod,
-                                                   n_sim = n_sim,
-                                                   standardize = "anova")
+                                                   n_sim = n_sim)
   vals_disp <- vals_components$.fitted[vals_components$component == "disp"]
   vals_expected <- exp(make_linpred_comp(components = vals_components,
                                          data = mod$data,
@@ -245,7 +238,7 @@ test_that("'draw_vals_outcome_true' works with rr3, pois, no na", {
   fitted <- rvec::rgamma_rvec(n = 100, shape = 2, rate = 0.4, n_draw = 100)
   offset <- rep(10, 100)
   outcome_true <- rpois(n = 100, lambda = 50)
-  outcome_obs <- rr3(outcome_true)
+  outcome_obs <- poputils::rr3(outcome_true)
   datamod <- new_bage_datamod_outcome_rr3()
   ans <- draw_vals_outcome_true(datamod = datamod,
                                 nm_distn = "pois",
@@ -263,7 +256,7 @@ test_that("'draw_vals_outcome_true' works with rr3, pois, has na", {
   offset <- rep(10, 100)
   offset[1] <- NA
   outcome_true <- rpois(n = 100, lambda = 50)
-  outcome_obs <- rr3(outcome_true)
+  outcome_obs <- poputils::rr3(outcome_true)
   outcome_obs[4] <- NA
   datamod <- new_bage_datamod_outcome_rr3()
   ans <- draw_vals_outcome_true(datamod = datamod,
@@ -281,7 +274,7 @@ test_that("'draw_vals_outcome_true' works with rr3, binom, no na", {
   fitted <- rvec::rbeta_rvec(n = 100, shape1 = 10, shape2 = 10, n_draw = 100)
   offset <- rep(100, 100)
   outcome_true <- rbinom(n = 100, size = 100, prob = 0.5)
-  outcome_obs <- rr3(outcome_true)
+  outcome_obs <- poputils::rr3(outcome_true)
   datamod <- new_bage_datamod_outcome_rr3()
   ans <- draw_vals_outcome_true(datamod = datamod,
                                 nm_distn = "binom",
@@ -299,7 +292,7 @@ test_that("'draw_vals_outcome_true' works with rr3, binom, has na", {
   offset <- rep(100, 100)
   offset[1] <- NA
   outcome_true <- rpois(n = 100, lambda = 50)
-  outcome_obs <- rr3(outcome_true)
+  outcome_obs <- poputils::rr3(outcome_true)
   outcome_obs[4] <- NA
   datamod <- new_bage_datamod_outcome_rr3()
   ans <- draw_vals_outcome_true(datamod = datamod,
@@ -317,7 +310,7 @@ test_that("'draw_vals_outcome_true' throws appropriate error with invalid nm_dis
   fitted <- rvec::rgamma_rvec(n = 100, shape = 2, rate = 0.4, n_draw = 100)
   offset <- rep(10, 100)
   outcome_true <- rpois(n = 100, lambda = 50)
-  outcome_obs <- rr3(outcome_true)
+  outcome_obs <- poputils::rr3(outcome_true)
   datamod <- new_bage_datamod_outcome_rr3()
   expect_error(draw_vals_outcome_true(datamod = datamod,
                                       nm_distn = "wrong",
@@ -348,47 +341,6 @@ test_that("'str_call_datamod' works", {
   expect_identical(str_call_datamod(new_bage_datamod_outcome_rr3()),
                    "rr3()")
 })
-
-
-## 'rr3' ----------------------------------------------------------------------
-
-test_that("rr3 rounds appropriately", {
-  x <- round(rnorm(n = 1000, mean = 5, sd = 3))
-  x[6] <- NA
-  ans <- rr3(x)
-  expect_true(all(ans[-6] %% 3 == 0))
-  expect_true(is.na(ans[6]))
-  is_mod3 <- !is.na(x) & (x %% 3 == 0)
-  expect_true(all(ans[is_mod3] == x[is_mod3]))
-})
-
-test_that("rr3 leaves type unchanged", {
-  expect_true(is.integer(rr3(c(1:5, NA))))
-  expect_true(is.double(rr3(c(1:5, NA_real_))))
-})
-
-test_that("rr3 throws correct error with non-integer", {
-  expect_error(rr3(c(1, 2, 1.1)),
-               "`x` has non-integer values.")
-})
-
-test_that("rr3 throws correct error with value too large", {
-  expect_error(rr3(c(1, 2, .Machine$integer.max + 1)),
-               "Maximum value in `x` greater than largest integer that can be represented on this machine.")
-})
-
-test_that("rr3 works with rvec", {
-  x <- matrix(round(rnorm(n = 1000, mean = 5, sd = 3)), nrow = 10)
-  x <- rvec::rvec(x)
-  ans <- rr3(x)
-  ans <- as.numeric(ans)
-  expect_true(all(ans %% 3 == 0))
-  x[2] <- NA
-  ans <- rr3(x)
-  ans <- as.numeric(ans)
-  expect_true(all(ans %% 3 == 0, na.rm = TRUE))
-})
-
 
 
 

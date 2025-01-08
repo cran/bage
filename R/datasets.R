@@ -9,7 +9,7 @@
 #' @format
 #' A [tibble][tibble::tibble-package] with 5,300 rows and the following
 #' columns:
-#' 
+#'
 #' - `age` Single year of age, up to `"105+"`
 #' - `sex` `"Female"` and `"Male"`
 #' - `time` Calendar year, 1998-2022
@@ -21,7 +21,30 @@
 #' age and sex 1998-2022 - Current municipalities",
 #' on the Statistics Iceland website. Data downloaded
 #' on 12 July 2023.
-"deaths"
+"isl_deaths"
+
+
+#' Births in South Korea
+#'
+#' Births by age of mother, region, and calendar year,
+#' 2011-2023.
+#'
+#' @format
+#' A [tibble][tibble::tibble-package] with 1,872 rows and the following
+#' columns:
+#'
+#' - `age` Five-year age groups from `"10-14" to `"50-54"`
+#' - `region` Administrative region
+#' - `time` Calendar year, 2011-2023
+#' - `births` Counts of births
+#' - `popn` Mid-year population
+#'
+#' @source Tables "Live Births by Age Group of Mother,
+#' Sex and Birth Order for Provinces",
+#' and "Resident Population in Five-Year Age Groups",
+#' on the Korean Statistical Information Service website.
+#' Data downloaded on 24 September 2024.
+"kor_births"
 
 
 #' Divorces in New Zealand
@@ -32,7 +55,7 @@
 #' @format
 #' A [tibble][tibble::tibble-package] with 242 rows
 #' and the following columns:
-#' 
+#'
 #' - `age`: 5-year age groups, `"15-19"` to `"65+"`
 #' - `sex`: `"Female"` or `"Male"`
 #' - `time`: Calendar year
@@ -51,17 +74,17 @@
 #' database Infoshare
 #' on the Statistics New Zealand website.
 #' Data downloaded on 26 March 2023.
-"divorces"
+"nzl_divorces"
 
 
 #' Per Capita Health Expenditure in the Netherlands, 2003-2011
-#' 
+#'
 #' Per capita health expenditure, in Euros,
 #' by diagnostic group, age group, and year, in the Netherlands.
 #'
 #' @format A [tibble][tibble::tibble-package] with 1,296 rows and the
 #' following columns:
-#' 
+#'
 #' - `diag` Diagnostic group
 #' - `age` 5-year age groups, with open age
 #' group of 85+
@@ -75,10 +98,10 @@
 #' and in table "Historical population data and projections
 #' (1950-2050)" from OECD database 'OECD.Stat' (downloaded
 #' 5 June 2016).
-"expenditure"
+"nld_expenditure"
 
 
-#' People in One-Person households in New Zealand
+#' People in One-Person Households in New Zealand
 #'
 #' Counts of people in one-person households, and
 #' counts of people living in any household, by
@@ -87,7 +110,7 @@
 #' @format
 #' A [tibble][tibble::tibble-package] with 528 rows and the
 #' following columns:
-#' 
+#'
 #' - `age`: 5-year age groups, with open age
 #'    group of 65+
 #' - `region`: Region within New Zealand
@@ -104,7 +127,7 @@
 #' in the online database NZ.Stat,
 #' on the Statistics New Zealand website.
 #' Data downloaded on 3 January 2023.
-"households"
+"nzl_households"
 
 
 #' Fatal Injuries in New Zealand
@@ -116,7 +139,7 @@
 #' @format
 #' A [tibble][tibble::tibble-package]
 #' with 912 rows and the following columns:
-#' 
+#'
 #' - `age`: 5-year age groups, up to age 55-59
 #' - `sex`: `"Female"` or `"Male"`
 #' - `ethnicity`: `"Maori"` or `"Non Maori"`
@@ -134,7 +157,30 @@
 #' of injury, 2000-2021" in the online database NZ.Stat,
 #' on the Statistics New Zealand website.
 #' Data downloaded on 1 January 2023.
-"injuries"
+"nzl_injuries"
+
+
+#' Infant Mortality in Sweden
+#'
+#' Counts of births and infant deaths in Sweden by county and year, 1995-2015
+#'
+#' Dataset used in Chapter 11 of the book
+#' *Bayesian Demographic Estimation and Forecasting*.
+#'
+#' @format A tibble with 441 rows and the following columns:
+#' - `county`: A factor with 21 levels, where the levels are
+#'   ordered by number of births, from `"Stockholm"` down to `"Gotland"`
+#' - `time: Calendar year
+#' - `births`: Count of births
+#' - `deaths`: Count of infant deaths
+#'
+#' @references Bryant J and Zhang J. 2018.
+#' *Bayesian Demographic Estimation and Forecasting*. CRC Press.
+#'
+#' @source Database "Live births by region, mother's age and child's sex.
+#' Year 1968 - 2017" and database "Deaths by region, age (during the year) and sex.
+#' Year 1968 - 2017" on the Statistics Sweden website. Downloaded on 13 July 2018.
+"swe_infant"
 
 
 #' Accidental Deaths in the USA
@@ -145,13 +191,13 @@
 #' @format
 #' A [tibble][tibble::tibble-package]
 #' with 72 rows and the following columns:
-#' 
+#'
 #' - `month`: Year and month.
 #' - `deaths`: Count of deaths.
 #'
 #' @source Reformatted version of
 #' `datasets::USAccDeaths`.
-"us_acc_deaths"
+"usa_deaths"
 
 
 ## SVD ------------------------------------------------------------------------
@@ -175,6 +221,28 @@
 "LFP"
 
 
+#' Components from Human Fertility Database
+#'
+#' An object of class `"bage_ssvd"`
+#' holding components extracted from mortality
+#' data from the
+#' [Human Fertility Database](https://www.humanfertility.org).
+#' The object holds 5 components.
+#'
+#' @format
+#' Object of class `"bage_ssvd"`.
+#'
+#' @source Derived from data from the
+#' Human Fertility Database.Max Planck Institute
+#' for Demographic Research (Germany) and Vienna
+#' Institute of Demography (Austria). .
+#' Code to create `HFD`
+#' is in folder 'data-raw/ssvd_hfd'
+#' in the source code for **bage**
+#' package.
+"HFD"
+
+
 #' Components from Human Mortality Database
 #'
 #' An object of class `"bage_ssvd"`
@@ -186,12 +254,11 @@
 #' @format
 #' Object of class `"bage_ssvd"`.
 #'
-#' @source Derived from data at
+#' @source Derived from data from the
 #' Human Mortality Database. Max Planck Institute for
 #' Demographic Research (Germany), University of California,
 #' Berkeley (USA), and French Institute for Demographic Studies
-#' (France). Available at www.mortality.org.
-#' Code to create `HMD`
+#' (France). Code to create `HMD`
 #' is in folder 'data-raw/ssvd_hmd'
 #' in the source code for **bage**
 #' package.

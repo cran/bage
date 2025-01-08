@@ -26,7 +26,7 @@ desired age or age-sex profile.
 If no labels are supplied, the
 most detailed profile available is used.}
 
-\item{...}{Not currently used.}
+\item{...}{Unused. Included for generic consistency only.}
 }
 \value{
 A tibble
@@ -43,6 +43,8 @@ data.
 \itemize{
 \item \code{\link{HMD}} Mortality rates from the
 \href{https://www.mortality.org}{Human Mortality Database}.
+\item \code{\link{HFD}} Fertility rates from the
+\href{https://www.humanfertility.org}{Human Fertility Database}.
 \item \code{\link{LFP}} Labor forcce participation
 rates from the \href{https://data-explorer.oecd.org}{OECD}.
 }

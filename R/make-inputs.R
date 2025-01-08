@@ -105,6 +105,54 @@ eval_offset_formula <- function(vname_offset, data) {
 
 
 ## HAS_TESTS
+#' Get a Matrix or Offset from an SVD Prior
+#'
+#' @param prior Object of class 'bage_prior'
+#' @param dimnames_term Dimnames of array representation of term
+#' @param var_age Name of age variable
+#' @param var_sexgender Name of sex/gender variable
+#'
+#' @returns A sparse matrix.
+#'
+#' @noRd
+get_matrix_or_offset_svd_prior <- function(prior,
+                                           dimnames_term,
+                                           var_age,
+                                           var_sexgender,
+                                           get_matrix) {
+  ssvd <- prior$specific$ssvd
+  indep <- prior$specific$indep
+  n_comp <- prior$specific$n_comp
+  levels_age <- dimnames_term[[var_age]]
+  has_sexgender <- !is.null(var_sexgender)
+  if (has_sexgender) {
+    levels_sexgender <- dimnames_term[[var_sexgender]]
+    nm_split <- dimnames_to_nm_split(dimnames_term)
+    term_has_sexgender <- var_sexgender %in% nm_split
+    if (term_has_sexgender)
+      joint <- !indep
+    else
+      joint <- NULL
+  }
+  else {
+    levels_sexgender <- NULL
+    joint <- NULL
+  }
+  nm <- dimnames_to_nm(dimnames_term)
+  agesex <- make_agesex(nm = nm,
+                        var_age = var_age,
+                        var_sexgender = var_sexgender)
+  get_matrix_or_offset_svd(ssvd = ssvd,
+                           levels_age = levels_age,
+                           levels_sexgender = levels_sexgender,
+                           joint = joint,
+                           agesex = agesex,
+                           get_matrix = get_matrix,
+                           n_comp = n_comp)
+}
+
+
+## HAS_TESTS
 #' Get Number of Components of Spline Prior
 #'
 #' If user did not supply number, derive one
@@ -134,7 +182,7 @@ get_n_comp_spline <- function(prior, n_along) {
 #' @returns An integer
 #'
 #' @noRd
-get_print_prior_n_offset <- function() 8L
+get_print_prior_n_offset <- function() 10L
 
 
 
@@ -287,15 +335,20 @@ make_agesex <- function(nm, var_age, var_sexgender) {
 #'
 #' @noRd
 make_const <- function(mod) {
-    priors <- mod$priors
-    ans <- lapply(priors, const)
+  priors <- mod$priors
+  ans <- lapply(priors, const)
+  if (length(ans) > 0L)
     ans <- unlist(ans)
-    ans
+  else
+    ans <- double()
+  ans
 }
 
 
 ## HAS_TESTS
 #' Make Dimnames for Terms in Model
+#'
+#' Handles case where formula does not have intercept.
 #'
 #' @param mod Object of class 'bage_mod'
 #'
@@ -303,8 +356,12 @@ make_const <- function(mod) {
 #'
 #' @noRd
 make_dimnames_terms <- function(formula, data) {
-  ans <- list("(Intercept)" = list())
-  factors <- attr(stats::terms(formula), "factors")
+  ans <- list()
+  terms_formula <- stats::terms(formula)
+  has_intercept <- attr(terms_formula, "intercept")
+  if (has_intercept)
+    ans <- c(ans, list("(Intercept)" = list()))
+  factors <- attr(terms_formula, "factors")
   if (length(factors) > 0L) {
     factors <- factors[-1L, , drop = FALSE]
     factors <- factors > 0L
@@ -339,20 +396,24 @@ make_dimnames_terms <- function(formula, data) {
 #'
 #' @noRd
 make_effectfree <- function(mod) {
-    priors <- mod$priors
-    lengths_effectfree <- make_lengths_effectfree(mod)
-    ans <- lapply(lengths_effectfree, function(n) rep(0, times = n))
-    for (i_term in seq_along(priors)) {
-        prior <- priors[[i_term]]
-        is_known <- is_known(prior)
-        if (is_known) {
-            values <- values_known(prior)
-            ans[[i_term]] <- values
-        }
+  priors <- mod$priors
+  lengths_effectfree <- make_lengths_effectfree(mod)
+  ans <- lapply(lengths_effectfree, function(n) rep(0, times = n))
+  for (i_term in seq_along(priors)) {
+    prior <- priors[[i_term]]
+    is_known <- is_known(prior)
+    if (is_known) {
+      values <- values_known(prior)
+      ans[[i_term]] <- values
     }
+  }
+  if (length(ans) > 0L) {
     ans <- unlist(ans)
     names(ans) <- rep(names(priors), times = lengths_effectfree)
-    ans
+  }
+  else
+    ans <- double()
+  ans
 }
 
 
@@ -383,7 +444,7 @@ make_hyper <- function(mod) {
 
 
 ## HAS_TESTS
-#' Make 'hyperrand'
+#' Make 'hyperrandfree'
 #'
 #' Make Vector to Hold Hyper-Parameters
 #' for Priors that can be Treated as Random Effects.
@@ -398,11 +459,11 @@ make_hyper <- function(mod) {
 #' @returns A vector of zeros, of type 'double'.
 #'
 #' @noRd
-make_hyperrand <- function(mod) {
+make_hyperrandfree <- function(mod) {
   priors <- mod$priors
   ans <- rep(0, times = length(priors))
   names(ans) <- names(priors)
-  lengths <- make_lengths_hyperrand(mod)
+  lengths <- make_lengths_hyperrandfree(mod)
   ans <- rep(ans, times = lengths)
   ans
 }
@@ -443,24 +504,28 @@ make_i_prior <- function(mod) {
 make_is_in_lik <- function(mod) {
     outcome <- mod$outcome
     offset <- mod$offset
-    ans <- (!is.na(outcome)
-        & !is.na(offset)
-        & (offset > 0))
-    as.integer(ans)
+    !is.na(outcome) & !is.na(offset) & (offset > 0)
 }
 
 
 ## HAS_TESTS
 #' Lengths of vectors of parameters
 #' 
-#' @param matrices_effect_outcome Named list of Matrix matrices
+#' @param dimnames_terms Named list with
+#' dimnames for array representation of terms
 #'
 #' @returns A named integer vector.
 #'
 #' @noRd
-make_lengths_effect <- function(matrices_effect_outcome) {
-    matrices <- lapply(matrices_effect_outcome, Matrix::as.matrix)
-    vapply(matrices, ncol, 1L)
+make_lengths_effect <- function(dimnames_terms) {
+  ans <- lapply(dimnames_terms, lengths)
+  ans <- vapply(ans, prod, 1)
+  ans <- vapply(ans, as.integer, 1L)
+  nms <- names(dimnames_terms)
+  i_intercept <- match("(Intercept)", nms, nomatch = 0L)
+  if (i_intercept > 0L)
+    ans[[i_intercept]] <- 1L
+  ans
 }
 
 
@@ -473,12 +538,9 @@ make_lengths_effect <- function(matrices_effect_outcome) {
 #'
 #' @noRd
 make_lengths_effectfree <- function(mod) {
-    priors <- mod$priors
-    matrices <- make_matrices_effectfree_effect(mod)
-    matrices <- lapply(matrices, Matrix::as.matrix)
-    ans <- vapply(matrices, ncol, 1L)
-    names(ans) <- names(priors)
-    ans
+  priors <- mod$priors
+  matrices <- make_matrices_effectfree_effect(mod)
+  vapply(matrices, n_col, 1L)
 }
 
 
@@ -508,41 +570,21 @@ make_lengths_hyper <- function(mod) {
 #' @returns A named integer vector
 #'
 #' @noRd
-make_lengths_hyperrand <- function(mod) {
+make_lengths_hyperrandfree <- function(mod) {
   priors <- mod$priors
   var_time <- mod$var_time
   var_age <- mod$var_age
+  var_sexgender <- mod$var_sexgender
   dimnames_terms <- mod$dimnames_terms
-  levels_effect <- mod$levels_effect
-  terms_effect <- mod$terms_effect
-  levels_effect <- split(levels_effect, terms_effect)
-  levels <- .mapply(levels_hyperrand,
-                    dots = list(prior = priors,
-                                dimnames_term = dimnames_terms,
-                                levels_effect = levels_effect),
-                    MoreArgs = list(var_time = var_time,
-                                    var_age = var_age))
-  ans <- lengths(levels)
+  ans <- .mapply(length_hyperrandfree,
+                 dots = list(prior = priors,
+                             dimnames_term = dimnames_terms),
+                 MoreArgs = list(var_time = var_time,
+                                 var_age = var_age,
+                                 var_sexgender = var_sexgender))
+  ans <- unlist(ans)
   names(ans) <- names(priors)
   ans
-}
-
-
-## HAS_TESTS
-#' Extract Age Labels
-#'
-#' @param mod Object of class 'bage_mod'
-#'
-#' @returns A character vector or NULL
-#'
-#' @noRd
-make_levels_age <- function(mod) {
-  data <- mod$data
-  var_age <- mod$var_age
-  if (is.null(var_age))
-    NULL
-  else
-    unique(data[[var_age]])
 }
 
 
@@ -555,17 +597,18 @@ make_levels_age <- function(mod) {
 #' ensure that the levels are correct (rather than
 #' relying on undocumented properties of 'xtabs' etc),
 #'
-#' @param matrices_effect_outcome List of matrices mapping
+#' @param dimnames_terms List with dimnames from
+#' array representation of terms
 #'
 #' @returns A character vector.
 #'
 #' @noRd
-make_levels_effect <- function(matrices_effect_outcome) {
-  ans <- lapply(matrices_effect_outcome, colnames)
-  nms <- names(matrices_effect_outcome)
-  if (identical(nms[[1L]], "(Intercept)"))
-    ans[[1L]] <- "(Intercept)"
-  ans <- unlist(ans, use.names = FALSE)
+make_levels_effects <- function(dimnames_terms) {
+  ans <- lapply(dimnames_terms, dimnames_to_levels)
+  if (length(ans) > 0L)
+    ans <- unlist(ans, use.names = FALSE)
+  else
+    ans <- character()
   ans
 }
 
@@ -588,8 +631,12 @@ make_levels_forecast_all <- function(mod, labels_forecast) {
   formula <- mod$formula
   data <- mod$data
   var_time <- mod$var_time
-  ans <- list("(Intercept)" = NULL)
-  factors <- attr(stats::terms(formula), "factors")
+  ans <- list()
+  terms_formula <- stats::terms(formula)
+  has_intercept <- attr(terms_formula, "intercept")
+  if (has_intercept)
+    ans <- c(ans, list("(Intercept)" = NULL))
+  factors <- attr(terms_formula, "factors")
   if (length(factors) > 0L) {
     factors <- factors[-1L, , drop = FALSE]
     factors <- factors > 0L
@@ -613,24 +660,6 @@ make_levels_forecast_all <- function(mod, labels_forecast) {
     ans <- c(ans, ans_terms)
   }
   ans
-}
-
-
-## HAS_TESTS
-#' Extract Sex/Gender Labels
-#'
-#' @param mod Object of class 'bage_mod'
-#'
-#' @returns A character vector or NULL
-#'
-#' @noRd
-make_levels_sexgender <- function(mod) {
-  data <- mod$data
-  var_sexgender <- mod$var_sexgender
-  if (is.null(var_sexgender))
-    NULL
-  else
-    unique(data[[var_sexgender]])
 }
 
 
@@ -694,37 +723,6 @@ make_map_effectfree_fixed <- function(mod) {
 
 
 ## HAS_TESTS
-#' Convert 'matrix_agesex' or 'matrix_along_by'
-#' to Sparse Index Matrix
-#'
-#' @param m Matrix produced by
-#' 'make_matrix_agesex' or 'make_matrix_along_by'
-#'
-#' @returns A sparse matrix consisting of
-#' 1s and 0s
-#'
-#' @noRd
-make_index_matrix <- function(m) {
-  n <- length(m)
-  i <- as.integer(m) + 1L
-  j <- seq_len(n)
-  x <- rep.int(1L, times = n)
-  ans <- Matrix::sparseMatrix(i = i,
-                              j = j,
-                              x = x)
-  rn_old <- rownames(m)
-  cn_old <- colnames(m)
-  if (is.null(cn_old))
-    cn_new <- rep(rn_old, times = ncol(m))
-  else
-    cn_new <- paste(rn_old, rep(cn_old, each = length(rn_old)), sep = ".")
-  rn_new <- cn_new[match(seq_len(n), m + 1L)]
-  dimnames(ans) <- list(rn_new, cn_new)
-  ans
-}
-
-
-## HAS_TESTS
 #' Make Matrices Mapping Free Parameters to Along and By Dimensions
 #'
 #' Similar to 'matrix_along_by', but only to free parameters
@@ -778,8 +776,12 @@ make_matrices_along_by_forecast <- function(mod, labels_forecast) {
   formula <- mod$formula
   data <- mod$data
   var_time <- mod$var_time
-  ans <- list("(Intercept)" = NULL)
-  factors <- attr(stats::terms(formula), "factors")
+  ans <- list()
+  terms_formula <- stats::terms(formula)
+  has_intercept <- attr(terms_formula, "intercept")
+  if (has_intercept)
+    ans <- c(ans, list("(Intercept)" = NULL))
+  factors <- attr(terms_formula, "factors")
   if (length(factors) > 1L) {
     factors <- factors[-1L, , drop = FALSE]
     factors <- factors > 0L
@@ -826,20 +828,23 @@ make_matrices_effect_outcome <- function(data, dimnames_terms) {
   n_term <- length(dimnames_terms)
   ans <- vector(mode = "list", length = n_term)
   names(ans) <- names(dimnames_terms)
-  ## make intercept
-  n_data <- nrow(data)
-  i <- seq_len(n_data)
-  j <- rep.int(1L, times = n_data)
-  x <- rep.int(1L, times = n_data)
-  ans[[1L]] <- Matrix::sparseMatrix(i = i, j = j, x = x)
-  ## make other terms
-  if (n_term > 1L) {
-    for (i_term in seq.int(from = 2L, to = n_term)) {
-      dimnames_term <- dimnames_terms[[i_term]]
+  for (i_term in seq_len(n_term)) {
+    dimnames_term <- dimnames_terms[[i_term]]
+    nm <- dimnames_to_nm(dimnames_term)
+    is_intercept <- nm == "(Intercept)"
+    if (is_intercept) {
+      n_data <- nrow(data)
+      i <- seq_len(n_data)
+      j <- rep.int(1L, times = n_data)
+      x <- rep.int(1L, times = n_data)
+      m_term <- Matrix::sparseMatrix(i = i, j = j, x = x)
+    }
+    else {
       nm_split <- dimnames_to_nm_split(dimnames_term)
-      nm <- dimnames_to_nm(dimnames_term)
       data_term <- data[nm_split]
-      data_term[] <- lapply(data_term, to_factor)
+      data_term[] <- .mapply(factor,
+                             dots = list(x = data_term, levels = dimnames_term),
+                             MoreArgs = list())
       contrasts_term <- lapply(data_term, stats::contrasts, contrast = FALSE)
       formula_term <- paste0("~", nm, "-1")
       formula_term <- stats::as.formula(formula_term)
@@ -848,8 +853,8 @@ make_matrices_effect_outcome <- function(data, dimnames_terms) {
                                             contrasts.arg = contrasts_term,
                                             row.names = FALSE)
       colnames(m_term) <- dimnames_to_levels(dimnames_term)
-      ans[[i_term]] <- m_term
     }
+    ans[[i_term]] <- m_term
   }
   ans        
 }
@@ -882,166 +887,6 @@ make_matrices_effectfree_effect <- function(mod) {
                                  var_sexgender = var_sexgender))
   names(ans) <- names(priors)
   ans    
-}
-
-
-## HAS_TESTS
-#' Create along-by Matrix for a Single Dimension
-#' of a Main Effect or Interaction
-#'
-#' Create a matrix where entry (i,j) is
-#' the position in an array (using
-#' zero-based indexing) of 'along'
-#' value i and 'by' value j.
-#'
-#' @param i_along Index of the along dimension(s)
-#' @param dim Dimensions of the array
-#'
-#' @returns A matrix of integers.
-#'
-#' @noRd
-make_matrix_along_by <- function(i_along, dim, dimnames) {
-  n_dim <- length(dim)
-  i <- seq.int(from = 0L, length.out = prod(dim))
-  a <- array(i, dim = dim)
-  s <- seq_along(dim)
-  perm <- c(i_along, s[-i_along])
-  ans <- aperm(a, perm = perm)
-  ans <- matrix(ans, nrow = prod(dim[i_along]))
-  rownames <- expand.grid(dimnames[i_along])
-  rownames <- Reduce(paste_dot, rownames)
-  rownames(ans) <- rownames
-  names(dimnames(ans))[[1L]] <- paste(names(dimnames)[i_along], collapse = ".")
-  if (length(dim) > 1L) {
-    colnames <- expand.grid(dimnames[-i_along])
-    colnames <- Reduce(paste_dot, colnames)
-    colnames(ans) <- colnames
-    names(dimnames(ans))[[2L]] <- paste(names(dimnames)[-i_along], collapse = ".")
-  }
-  ans
-}
-
-
-## HAS_TESTS
-#' Make Matrix Mapping Effectfree to Effect for Priors with SVD
-#'
-#' Make matrices mapping free parameters
-#' for main effects or interactions to
-#' full parameter vectors for priors with SVDs
-#' 
-#' @param prior Object of class 'bage_prior'
-#' @param dimnames_term Dimnames of array representation of term
-#' @param var_time Name of time variable
-#' @param var_age Name of age variable
-#' @param var_sexgender Name of sex/gender variable
-#'
-#' @returns A sparse matrix.
-#'
-#' @noRd
-make_matrix_effectfree_effect_svd <- function(prior,
-                                              dimnames_term,
-                                              var_time,
-                                              var_age,
-                                              var_sexgender) {
-  ssvd <- prior$specific$ssvd
-  indep <- prior$specific$indep
-  n_comp <- prior$specific$n_comp
-  nm <- dimnames_to_nm(dimnames_term)
-  nm_split <- dimnames_to_nm_split(dimnames_term)
-  has_age <- !is.null(var_age)
-  has_sexgender <- !is.null(var_sexgender)
-  agesex <- make_agesex(nm = nm,
-                        var_age = var_age,
-                        var_sexgender = var_sexgender)
-  matrix_agesex <- make_matrix_agesex(dimnames_term = dimnames_term,
-                                      var_age = var_age,
-                                      var_sexgender = var_sexgender)
-  n_by <- ncol(matrix_agesex) ## special meaning of 'by': excludes age and sex
-  levels_age <- if (is.null(var_age)) NULL else dimnames_term[[var_age]]
-  levels_sexgender <- if (is.null(var_sexgender)) NULL else dimnames_term[[var_sexgender]]
-  levels_effect <- dimnames_to_levels(dimnames_term)
-  if (has_sexgender) {
-    term_has_sexgender <- var_sexgender %in% nm_split
-    if (term_has_sexgender)
-      joint <- !indep
-    else
-      joint <- NULL
-  }
-  else
-    joint <- NULL
-  m <- get_matrix_or_offset_svd(ssvd = ssvd,
-                                levels_age,
-                                levels_sexgender,
-                                joint = joint,
-                                agesex = agesex,
-                                get_matrix = TRUE,
-                                n_comp = n_comp)
-  I <- Matrix::.sparseDiagonal(n_by)
-  m_all_by <- Matrix::kronecker(I, m)
-  agesex_to_standard <- make_index_matrix(matrix_agesex)
-  agesex_to_standard %*% m_all_by
-}
-
-
-## HAS_TESTS
-#' Make Offset used in converting effectfree to effect for SVD Priors
-#'
-#' @param prior Object of class 'bage_prior'
-#' @param dimnames_term Dimnames of array representation of term
-#' @param var_time Name of time variable
-#' @param var_age Name of age variable
-#' @param var_sexgender Name of sex/gender variable
-#'
-#' @returns A vector.
-#'
-#' @noRd
-make_offset_effectfree_effect_svd <- function(prior,
-                                              dimnames_term,
-                                              var_time,
-                                              var_age,
-                                              var_sexgender) {
-  ssvd <- prior$specific$ssvd
-  indep <- prior$specific$indep
-  n_comp <- prior$specific$n_comp
-  nm <- dimnames_to_nm(dimnames_term)
-  nm_split <- dimnames_to_nm_split(dimnames_term)
-  has_age <- !is.null(var_age)
-  has_sexgender <- !is.null(var_sexgender)
-  agesex <- make_agesex(nm = nm,
-                        var_age = var_age,
-                        var_sexgender = var_sexgender)
-  matrix_agesex <- make_matrix_agesex(dimnames_term = dimnames_term,
-                                      var_age = var_age,
-                                      var_sexgender = var_sexgender)
-  n_by <- ncol(matrix_agesex)  ## special meaning of 'n_by': excludes age and sex
-  levels_age <- if (has_age) dimnames_term[[var_age]] else NULL
-  levels_sexgender <- if (has_sexgender) dimnames_term[[var_sexgender]] else NULL
-  levels_effect <- dimnames_to_levels(dimnames_term)
-  if (has_sexgender) {
-    term_has_sexgender <- var_sexgender %in% nm_split
-    if (term_has_sexgender)
-      joint <- !indep
-    else
-      joint <- NULL
-  }
-  else
-    joint <- NULL
-  b <- get_matrix_or_offset_svd(ssvd = ssvd,
-                                levels_age,
-                                levels_sexgender,
-                                joint = joint,
-                                agesex = agesex,
-                                get_matrix = FALSE,
-                                n_comp = n_comp)
-  ones <- Matrix::sparseMatrix(i = seq_len(n_by),
-                               j = rep.int(1L, times = n_by),
-                               x = rep.int(1L, times = n_by))
-  b_all_by <- Matrix::kronecker(ones, b)
-  agesex_to_standard <- make_index_matrix(matrix_agesex)
-  ans <- agesex_to_standard %*% b_all_by
-  ans <- Matrix::drop(ans)
-  names(ans) <- levels_effect
-  ans
 }
 
 
@@ -1165,6 +1010,23 @@ make_priors <- function(formula, var_age, var_time, lengths_effect) {
 }        
 
 
+#' Make Data Frame Giving the Class of Each Prior in a Model
+#'
+#' @param mod Object of class 'bage_mod'
+#'
+#' @returns A tibble
+#'
+#' @noRd
+make_prior_class <- function(mod) {
+  priors <- mod$priors
+  nms <- names(priors)
+  get_class <- function(x) class(x)[[1L]]
+  class <- vapply(priors, get_class, "bage_prior_norm", USE.NAMES = FALSE)
+  tibble::tibble(term = nms,
+                 class = class)
+}
+
+
 ## HAS_TESTS
 #' Make 'random' argument to MakeADFun function
 #'
@@ -1178,13 +1040,13 @@ make_priors <- function(formula, var_age, var_time, lengths_effect) {
 make_random <- function(mod) {
   priors <- mod$priors
   has_hyper <- any(make_lengths_hyper(mod) > 0L)
-  has_hyperrand <- any(vapply(priors, has_hyperrand, FALSE))
-  if (!has_hyper && !has_hyperrand)
+  has_hyperrandfree <- any(vapply(priors, has_hyperrandfree, FALSE))
+  if (!has_hyper && !has_hyperrandfree)
     ans <- NULL
   else {
     ans <- "effectfree"
-    if (has_hyperrand)
-      ans <- c(ans, "hyperrand")
+    if (has_hyperrandfree)
+      ans <- c(ans, "hyperrandfree")
   }
   ans
 }
@@ -1199,37 +1061,6 @@ make_random <- function(mod) {
 #' @noRd
 make_seed <- function()
     sample.int(n = .Machine$integer.max, size = 1L)
-
-
-## HAS_TESTS
-#' Make a matrix of B-spline basis functions
-#'
-#' Based on Eilers and Marx (1996). Flexible Smoothing
-#' with B-splines and Penalties.
-#' Statistical Science, 11(2), 89-121.
-#'
-#' @param n_along Number of elements of dimension being modelled
-#' @param n_comp Number of columns in spline matrix
-#'
-#' @returns Matrix with 'n_along' rows and 'n_comp' columns
-#'
-#' @noRd
-make_spline_matrix <- function(n_along, n_comp) {
-  n_interval <- n_comp - 3L
-  interval_length <- (n_along - 1L) / n_interval
-  start <- 1 - 3 * interval_length
-  end <- n_along + 3 * interval_length
-  x <- seq(from = start, to = end, by = 0.001)
-  base <- splines::bs(x = x, df = n_comp + 5L)
-  i_keep <- findInterval(seq_len(n_along), x)
-  j_keep <- seq.int(from = 3L, length.out = n_comp)
-  ans <- base[i_keep, j_keep]
-  colmeans <- colMeans(ans)
-  ans <- ans - rep(colmeans, each = nrow(ans))
-  Matrix::sparseMatrix(i = row(ans),
-                       j = col(ans),
-                       x = as.double(ans))
-}
 
 
 ## HAS_TESTS
@@ -1273,18 +1104,18 @@ make_terms_const <- function(mod) {
 #' giving the name of the term
 #' that the each element belongs to.
 #'
-#' @param matrices_effect_outcome Named list of Matrix objects
+#' @param dimnames_terms Named list with
+#' dimnames for array representation of terms
 #'
 #' @returns A factor.
 #'
 #' @noRd
-make_terms_effect <- function(matrices_effect_outcome) {
-    nms <- names(matrices_effect_outcome)
-    matrices_effect_outcome <- lapply(matrices_effect_outcome, Matrix::as.matrix)
-    lengths <- vapply(matrices_effect_outcome, ncol, 1L)
-    ans <- rep(nms, times = lengths)
-    ans <- factor(ans, levels = nms)
-    ans
+make_terms_effects <- function(dimnames_terms) {
+  nms <- names(dimnames_terms)
+  lengths <- make_lengths_effect(dimnames_terms)
+  ans <- rep(nms, times = lengths)
+  ans <- factor(ans, levels = nms)
+  ans
 }
 
 
@@ -1304,8 +1135,7 @@ make_terms_effect <- function(matrices_effect_outcome) {
 make_terms_effectfree <- function(mod) {
     priors <- mod$priors
     matrices <- make_matrices_effectfree_effect(mod)
-    matrices <- lapply(matrices, Matrix::as.matrix)
-    lengths <- vapply(matrices, ncol, 1L)
+    lengths <- vapply(matrices, n_col, 1L)
     nms <- names(priors)
     ans <- rep(nms, times = lengths)
     ans <- factor(ans, levels = nms)
@@ -1344,17 +1174,18 @@ make_terms_hyper <- function(mod) {
 }
 
 
+
 ## HAS_TESTS
-#' Make Factor Identifying Components of 'hyperrand'
+#' Make Factor Identifying Components of 'hyperrandfree'
 #'
-#' Make factor the same length as 'hyperrand',
+#' Make factor the same length as 'hyperrandfree',
 #' giving the name of the term
 #' that the each element belongs to.
 #' Note that the levels of the factor
 #' includes all priors, not just those
-#' with hyperrand.
+#' with hyperrandfree.
 #'
-#' We generate 'terms_hyperrand' when function 'fit'
+#' We generate 'terms_hyperrandfree' when function 'fit'
 #' is called, rather than storing it in the
 #' 'bage_mod' object, to avoid having to update
 #' it when priors change  via 'set_prior'.
@@ -1362,15 +1193,62 @@ make_terms_hyper <- function(mod) {
 #' @param mod Object of class "bage_mod"
 #'
 #' @returns A factor, the same length
-#' as 'hyperrand'.
+#' as 'hyperrandfree'.
 #'
 #' @noRd
-make_terms_hyperrand <- function(mod) {
+make_terms_hyperrandfree <- function(mod) {
   priors <- mod$priors
   nms_terms <- names(priors)
-  lengths <- make_lengths_hyperrand(mod)
+  lengths <- make_lengths_hyperrandfree(mod)
   ans <- rep(nms_terms, times = lengths)
   ans <- factor(ans, levels = nms_terms)
+  ans
+}
+
+
+## HAS_TESTS
+#' Use 'vars_inner' to Construct 'use_term'
+#'
+#' @param mod Object of class 'bage_mod'
+#' @param vars_inner Character vectors with
+#' names of variables
+#'
+#' @returns A logical vector
+#'
+#' @noRd
+make_use_term <- function(mod, vars_inner) {
+  check_vars_inner(vars_inner)
+  formula <- mod$formula
+  priors <- mod$priors
+  nms_priors <- names(priors)
+  terms_formula <- stats::terms(formula) 
+  factors <- attr(terms_formula, "factors")
+  factors <- factors[-1L, ] ## drop response
+  vars <- rownames(factors)
+  in_vars <- vars_inner %in% vars
+  n_not_in_mod <- sum(!in_vars)
+  if (n_not_in_mod > 0L) {
+    cli::cli_abort(c(paste("{.arg vars_inner} has {cli::qty(n_not_in_mod)} variable{?s}",
+                           "not found in model."),
+                     i = "{.arg vars_inner}: {.val {vars_inner}}.",
+                     i = "Variables in model: {.val {vars}}."))
+  }
+  ans <- apply(factors > 0, 2L, function(i) all(vars[i] %in% vars_inner))
+  terms_model <- setdiff(nms_priors, "(Intercept)")
+  if (!any(ans))
+    cli::cli_abort(c("No terms in model can be formed from {.arg vars_inner}.",
+                     i = "Terms in model: {.val {terms_model}}.",
+                     i = "{.arg var_inner}: {.val {vars_inner}}."))
+  if (all(ans))
+    cli::cli_abort(c("All terms in model can be formed from {.arg vars_inner}.",
+                     i = "No terms left over to use in 'outer' model.",
+                     i = "Terms in model: {.val {terms_model}}.",
+                     i = "{.arg var_inner}: {.val {vars_inner}}."))
+  has_intercept <- attr(terms_formula, "intercept")
+  if (has_intercept)
+    ans <- c(TRUE, ans)
+    ## ans <- c(FALSE, ans)
+  names(ans) <- nms_priors
   ans
 }
 
@@ -1402,9 +1280,9 @@ make_uses_hyper <- function(mod) {
 #' @returns An integer vector
 #'
 #' @noRd
-make_uses_hyperrand <- function(mod) {
+make_uses_hyperrandfree <- function(mod) {
   priors <- mod$priors
-  1L * vapply(priors, uses_hyperrand, FALSE)
+  1L * vapply(priors, uses_hyperrandfree, FALSE)
 }
 
 
@@ -1446,6 +1324,133 @@ make_uses_offset_effectfree_effect <- function(mod) {
 
 
 ## HAS_TESTS
+#' Create Aggregated Version of Outcome, Offset, and
+#' 'matrices_effect_outcome'
+#'
+#' @param mod Object of class 'bage_mod'
+#'
+#' @returns A named list
+#'
+#' @noRd    
+make_vals_ag <- function(mod) {
+  formula <- mod$formula
+  data <- mod$data
+  nm_outcome <- get_nm_outcome(mod)
+  nm_offset <- mod$vname_offset
+  has_offset <- !is.null(nm_offset)
+  dimnames_terms <- mod$dimnames_terms
+  fun_ag_outcome <- get_fun_ag_outcome(mod)
+  vars <- rownames(attr(stats::terms(formula), "factors"))[-1L]
+  data[[nm_outcome]] <- mod$outcome
+  if (has_offset)
+    data[[nm_offset]] <- mod$offset
+  is_in_lik <- make_is_in_lik(mod)
+  data <- data[is_in_lik, , drop = FALSE]
+  outcome_df <- stats::aggregate(data[nm_outcome], data[vars], fun_ag_outcome)
+  if (has_offset) {
+    fun_ag_offset <- get_fun_ag_offset(mod)
+    offset_df <- stats::aggregate(data[nm_offset], data[vars], fun_ag_offset)
+    data_ag <- merge(outcome_df, offset_df, by = vars)
+    offset <- data_ag[[nm_offset]]
+  }
+  else {
+    data_ag <- outcome_df
+    offset <- rep(1, times = nrow(data_ag))
+  }
+  outcome <- data_ag[[nm_outcome]]
+  matrices_effect_outcome <- make_matrices_effect_outcome(data = data_ag,
+                                                          dimnames_terms = dimnames_terms)
+  list(outcome = outcome,
+       offset = offset,
+       matrices_effect_outcome = matrices_effect_outcome)
+}
+
+
+## HAS_TESTS
+#' Create Version of Outcome, Offset, and
+#' 'matrices_effect_outcome' Where Observations
+#' Not Contributing to Likelihood Removed
+#'
+#' @param mod Object of class 'bage_mod'
+#'
+#' @returns A named list
+#'
+#' @noRd    
+make_vals_in_lik <- function(mod) {
+  data <- mod$data
+  outcome <- mod$outcome
+  offset <- mod$offset
+  dimnames_terms <- mod$dimnames_terms
+  is_in_lik <- make_is_in_lik(mod)
+  data <- data[is_in_lik, , drop = FALSE]
+  outcome <- outcome[is_in_lik]
+  offset <- offset[is_in_lik]
+  matrices_effect_outcome <- make_matrices_effect_outcome(data = data,
+                                                          dimnames_terms = dimnames_terms)
+  list(outcome = outcome,
+       offset = offset,
+       matrices_effect_outcome = matrices_effect_outcome)
+}
+
+
+## HAS_TESTS
+#' Construct Value for 'vars_inner' Argument
+#'
+#' Use values for var_age, var_sexgender, and var_time.
+#' Alert users if some or all of these not available.
+#'
+#' @param mod Object of class 'bage_mod'.
+#'
+#' @returns A character vector.
+#'
+#' @noRd
+make_vars_inner <- function(mod) {
+  var_age <- mod$var_age
+  var_sexgender <- mod$var_sexgender
+  var_time <- mod$var_time
+  dimnames_terms <- mod$dimnames_terms
+  ans <- c(var_age,
+           var_sexgender,
+           var_time)
+  if (is.null(ans)) {
+    nms_terms <- names(dimnames_terms)
+    cli::cli_abort(c("Unable to infer {.arg vars_inner}.",
+                     i = "Model term{?s}: {.val {nms_terms}}.",
+                     i = paste("Use {.fun set_var_age}, {.fun set_var_sexgender}",
+                               "{.fun set_var_time} to specify age, sex/gender,",
+                               "and time variables?"),
+                     i = "Or use other variables?"))
+  }
+  if (length(ans) < 3L)
+    cli::cli_alert("Setting {.arg vars_inner} to {.val {ans}}.")
+  ans
+}
+
+
+## HAS_TESTS
+#' Number of Columns of Matrix
+#'
+#' Alternative to 'ncol' that works on sparse
+#' matrices, and does not require converting
+#' to a dense matrix, or loading the Matrix
+#' package. Note that 'Matrix' does not export
+#' a method for 'ncol' or 'dim', hence the
+#' need to explicitly access the 'Dim' slot.
+#'
+#' @param x A matrix, possibly sparse
+#'
+#' @returns An integer
+#'
+#' @noRd
+n_col <- function(x) {
+  if (methods::.hasSlot(x, "Dim"))
+    x@Dim[[2L]]
+  else
+    ncol(x)
+}
+
+
+## HAS_TESTS
 #' Prepare Number of Components Argument for SVD Prior
 #'
 #' @param n_comp Value for number provided by user
@@ -1460,17 +1465,51 @@ n_comp_svd <- function(n_comp, nm_n_comp, ssvd) {
   if (is.null(n_comp))
     n_comp <- ceiling(n_comp_ssvd / 2)
   else {
-    check_n(n = n_comp,
-            nm_n = nm_n_comp,
-            min = 1L,
-            max = NULL,
-            null_ok = FALSE)
+    poputils::check_n(n = n_comp,
+                      nm_n = nm_n_comp,
+                      min = 1L,
+                      max = NULL,
+                      divisible_by = NULL)
     if (n_comp > n_comp_ssvd)
       cli::cli_abort(c("{.arg {nm_n_comp}} larger than number of components of {.arg ssvd}.",
                        i = "{.arg {nm_n_comp}}: {.val {n_comp}}.",
                        i = "Number of components: {.val {n_comp_ssvd}}."))
   }
   as.integer(n_comp)
+}
+
+
+## HAS_TESTS
+#' Discard Terms from a Model
+#'
+#' Discard terms for which 'use_term' is FALSE.
+#'
+#' @param mod Object of class `bage_mod`
+#' @param use_term Logical vector
+#'
+#' @returns Modified version of 'mod'
+#' 
+#' @noRd
+reduce_model_terms <- function(mod, use_term) {
+  mod <- unfit(mod)
+  mod$priors <- mod$priors[use_term]
+  mod$dimnames_terms <- mod$dimnames_terms[use_term]
+  formula <- mod$formula
+  nms_terms <- names(mod$priors)
+  has_intercept <- "(Intercept)" %in% nms_terms
+  nms_terms <- setdiff(nms_terms, "(Intercept)")
+  n_nm <- length(nms_terms)
+  if (n_nm == 0L)
+    formula_new <- ". ~ 1"
+  else {
+    formula_new <- paste(". ~", paste(nms_terms, collapse = " + "))
+    if (!has_intercept)
+      formula_new <- paste(formula_new, "- 1")
+  }
+  formula_new <- stats::as.formula(formula_new)
+  formula <- stats::update(formula, formula_new)
+  mod$formula <- formula
+  mod
 }
 
 
@@ -1505,6 +1544,7 @@ print_prior <- function(prior, nms, slots) {
 print_prior_header <- function(prior)
   cat(" ", str_call_prior(prior), "\n")
 
+
 ## HAS_TESTS
 #' Print Single Slot from Prior
 #'
@@ -1522,6 +1562,30 @@ print_prior_slot <- function(prior, nm, slot) {
     val_slot <- "NULL"
   cat(sprintf("% *s: %s\n", n_offset, nm, val_slot))
 }  
+
+
+## HAS_TESTS
+#' Replace Existing Priors with "Known" Priors
+#'
+#' @param mod Object of class 'bage_mod'
+#' @param prior_values Named list with 'values'
+#' vectors for priors
+#'
+#' @returns A modified version of 'mod'
+#'
+#' @noRd
+set_priors_known <- function(mod, prior_values) {
+  mod <- unfit(mod)
+  priors <- mod$priors
+  nms <- names(prior_values)
+  for (nm in nms) {
+    values <- prior_values[[nm]]
+    priors[[nm]] <- Known(values)
+  }
+  mod$priors <- priors
+  mod
+}
+
 
 ## HAS_TESTS
 #' Compile Args for 'along' Part of Prior for 'str_call_prior'
@@ -1552,29 +1616,54 @@ str_call_args_along <- function(prior) {
 str_call_args_ar <- function(prior) {
   specific <- prior$specific
   n_coef <- specific$n_coef
+  scale <- specific$scale
+  shape1 <- specific$shape1
+  shape2 <- specific$shape2
   min <- specific$min
   max <- specific$max
-  scale <- specific$scale
-  along <- prior$specific$along
   nm <- specific$nm
   is_ar1 <- grepl("AR1", nm)
   if (is_ar1) {
-    ans <- character(3L)
-    if (min != 0.8)
-      ans[[1L]] <- sprintf("min=%s", min)
-    if (max != 0.98)
-      ans[[2L]] <- sprintf("max=%s", max)
+    ans <- character(5L)
     if (scale != 1)
-      ans[[3L]] <- sprintf("s=%s", scale)
+      ans[[1L]] <- sprintf("s=%s", scale)
+    if (shape1 != 5)
+      ans[[2L]] <- sprintf("shape1=%s", shape1)
+    if (shape2 != 5)
+      ans[[3L]] <- sprintf("shape2=%s", shape2)
+    if (min != 0.8)
+      ans[[4L]] <- sprintf("min=%s", min)
+    if (max != 0.98)
+      ans[[5L]] <- sprintf("max=%s", max)
   }
   else {
-    ans <- character(2L)
+    ans <- character(4L)
     if (n_coef != 2L)
       ans[[1L]] <- sprintf("n_coef=%d", n_coef)
     if (scale != 1)
       ans[[2L]] <- sprintf("s=%s", scale)
+    if (shape1 != 5)
+      ans[[3L]] <- sprintf("shape1=%s", shape1)
+    if (shape2 != 5)
+      ans[[4L]] <- sprintf("shape2=%s", shape2)
   }
   ans
+}
+
+## HAS_TESTS
+#' Compile Args for 'con' Part of Prior for 'str_call_prior'
+#'
+#' @param prior Prior with 'con' 
+#'
+#' @returns A character vector
+#'
+#' @noRd
+str_call_args_con <- function(prior) {
+  con <- prior$specific$con
+  if (con == "by")
+    sprintf('con="%s"', con)
+  else
+    ""
 }
 
 ## HAS_TESTS
@@ -1582,17 +1671,20 @@ str_call_args_ar <- function(prior) {
 #'
 #' Does not include 'along'.
 #'
-#' @param prior Prior with AR components
+#' @param prior Prior with linear components
 #'
 #' @returns A character vector
 #'
 #' @noRd
 str_call_args_lin <- function(prior) {
+  mean_slope <- prior$specific$mean_slope
   sd_slope <- prior$specific$sd_slope
-  if (identical(sd_slope, 1))
-    ""
-  else
-    sprintf("sd=%s", sd_slope)
+  args <- character(2L)
+  if (!identical(mean_slope, 0))
+    args[[1L]] <- sprintf("mean_slope=%s", mean_slope)
+  if (!identical(sd_slope, 1))
+    args[[2L]] <- sprintf("sd_slope=%s", sd_slope)
+  args
 }
 
 ## HAS_TESTS
@@ -1637,11 +1729,9 @@ str_call_args_n_seas <- function(prior) {
 #' @noRd
 str_call_args_s_seas <- function(prior) {
   scale_seas <- prior$specific$scale_seas
-  if (identical(scale_seas, 1))
-    ""
-  else
-    sprintf("s_seas=%s", scale_seas)
+  sprintf("s_seas=%s", scale_seas)
 }
+
 
 ## HAS_TESTS
 #' Compile Args for 'scale' Part of Prior for 'str_call_prior'
@@ -1658,6 +1748,58 @@ str_call_args_scale <- function(prior) {
   else
     sprintf("s=%s", scale)
 }
+
+
+## HAS_TESTS
+#' Compile Args for 'sd' Part of Prior for 'str_call_prior'
+#'
+#' @param prior Prior with 'sd' parameter
+#'
+#' @returns A character vector
+#'
+#' @noRd
+str_call_args_sd <- function(prior) {
+  sd <- prior$specific$sd
+  if (identical(sd, 1))
+    ""
+  else
+    sprintf("sd=%s", sd)
+}
+
+
+## HAS_TESTS
+#' Compile Args for 'sd_seas' Part of Prior for 'str_call_prior'
+#'
+#' @param prior Prior with 'sd_seas' parameter
+#'
+#' @returns A character vector
+#'
+#' @noRd
+str_call_args_sd_seas <- function(prior) {
+  sd_seas <- prior$specific$sd_seas
+  if (identical(sd_seas, 1))
+    ""
+  else
+    sprintf("sd_seas=%s", sd_seas)
+}
+
+
+## HAS_TESTS
+#' Compile Args for sd_slope Part of Prior for 'str_call_prior'
+#'
+#' @param prior Prior with sd_slope'
+#'
+#' @returns A character vector
+#'
+#' @noRd
+str_call_args_sd_slope <- function(prior) {
+  sd_slope <- prior$specific$sd_slope
+  if (identical(sd_slope, 1))
+    ""
+  else
+    sprintf("sd_slope=%s", sd_slope)
+}
+
 
 ## HAS_TESTS
 #' Compile Args for SVD Part of Prior for 'str_call_prior'

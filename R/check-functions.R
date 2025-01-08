@@ -67,6 +67,45 @@ check_bage_mod <- function(x, nm_x) {
 
 
 ## HAS_TESTS
+#' Check that 'con' is Only "by" When 'n_by' is Greater Than 1
+#'
+#' @param con Constraints
+#' @param n_by Number of 'by' dimensions.
+#'
+#' @returns TRUE, invisibly.
+#'
+#' @noRd
+check_con_n_by <- function(con, n_by, nm) {
+  if ((con == "by") && (n_by == 1L))
+    cli::cli_abort(c("{.arg con} is {.val {con}} but {.var {nm}} term is a main effect.",
+                     i = paste("{.arg con} should only equal {.val {con}}",
+                               "in a prior for an interaction.")))
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
+#' Check that 'est' Object Returned by TMB has No NAs
+#'
+#' @param est Named list
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd
+check_est <- function(est) {
+  is_na <- is.na(unlist(est, use.names = FALSE))
+  if (any(is_na)) {
+    index_term <- which(is_na)
+    nm_term <- get_term_from_est(est = est, index_term = index_term)
+    cli::cli_abort(c("Problem deriving posterior distribution.",
+                     i = "Estimation of posterior mean for {.val {nm_term}} term{?s} failed.",
+                     i = "You may need to change the specification of your model."))
+  }
+  invisible(TRUE)
+}
+    
+    
+## HAS_TESTS
 #' Check a Logical Flag
 #'
 #' @param x TRUE or FALSE
@@ -215,6 +254,34 @@ check_has_disp_if_condition_on_expected <- function(x) {
 }
 
 
+## NO_TESTS
+#' Check That No Arguments Absorbed By Dots in Function
+#'
+#' @param dots Arguments absorbed
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd
+check_has_no_dots <- function(...) {
+  dots <- list(...)
+  n_dot <- length(dots)
+  if (n_dot > 0L) {
+    nms <- names(dots)
+    if (is.null(nms)) {
+      if (n_dot == 1L)
+        cli::cli_abort("Invalid unnamed argument.")
+      else
+        cli::cli_abort("{n_dot} invalid unnamed arguments.")
+    }
+    else {
+      i_nonblank <- match(TRUE, nzchar(nms))
+      cli::cli_abort("{.arg {nms[i_nonblank]}} is not a valid argument.")
+    }
+  }
+  invisible(TRUE)
+}
+
+
 ## HAS_TESTS
 #' Check that an Object is a Data Frame
 #'
@@ -303,7 +370,7 @@ check_is_ssvd <- function(x, nm_x) {
 ## HAS_TESTS
 #' Check that Along Dimension of Interaction has at Least 'min' Elements
 #'
-#' @param length_along Number of elements
+#' @param n_along Number of elements
 #' @param min Minimum number of elements
 #' @param nm Name of term
 #' @param prior Object of class 'bage_prior'
@@ -311,14 +378,14 @@ check_is_ssvd <- function(x, nm_x) {
 #' @returns TRUE, invisibly
 #'
 #' @noRd
-check_length_along_ge <- function(length_along, min, nm, prior) {
-    if (length_along < min)
-        cli::cli_abort(c(paste("{.var {str_call_prior(prior)}} prior cannot be",
-                               "used for {.var {nm}} term."),
-                         i = paste("{.var {str_call_prior(prior)}} prior can only be",
-                                   "used with interactions where the 'along' dimension has at least {min} element{?s}."),
-                         i = "The 'along' dimension of {.var {nm}} has {length_along} element{?s}."))
-    invisible(TRUE)
+check_n_along_ge <- function(n_along, min, nm, prior) {
+  if (n_along < min)
+    cli::cli_abort(c(paste("{.var {str_call_prior(prior)}} prior cannot be",
+                           "used for {.var {nm}} term."),
+                     i = paste("{.var {str_call_prior(prior)}} prior can only be",
+                               "used with interactions where the 'along' dimension has at least {min} element{?s}."),
+                     i = "The 'along' dimension of {.var {nm}} has {n_along} element{?s}."))
+  invisible(TRUE)
 }
 
 
@@ -433,39 +500,55 @@ check_mod_est_sim_compatible <- function(mod_est, mod_sim) {
 
 
 ## HAS_TESTS
-#' Check 'n' argument
+#' Check that Model Data Includes at Least One Valid Observation
 #'
-#' @param n A whole number
-#' @param nm_n Name for 'n' to be used in error messages
-#' @param min,max Minimum and maximum values 'n' can take
-#' @param null_ok Whether passing NULL (and skipping tests) is allowed
+#' @param mod Object of class 'bage_mod'
 #'
-#' @returns TRUE, invisibly
+#' @returns TRUE, invisbly
 #'
 #' @noRd
-check_n <- function(n, nm_n, min, max, null_ok) {
-    if (null_ok && is.null(n)) 
-        return(invisible(TRUE))
-    if (!is.numeric(n))
-        cli::cli_abort(c("{.arg {nm_n}} is non-numeric.",
-                         i = "{.arg {nm_n}} has class {.cls {class(n)}}."))
-    if (length(n) != 1L)
-        cli::cli_abort(c("{.arg {nm_n}} does not have length 1.",
-                         i = "{.arg {nm_n}} has length {length(n)}."))
-    if (is.na(n))
-        cli::cli_abort("{.arg {nm_n}} is {.val {NA}}.")
-    if (is.infinite(n))
-        cli::cli_abort("{.arg {nm_n}} is {.val {Inf}}.")
-    if (!isTRUE(all.equal(round(n), n)))
-        cli::cli_abort(c("{.arg {nm_n}} is not an integer.",
-                         i = "{.arg {nm_n}} is {.val {n}}."))
-    if (n < min)
-        cli::cli_abort(c("{.arg {nm_n}} is less than {min}.",
-                         i = "{.arg {nm_n}} is {.val {n}}."))
-    if (!is.null(max) && (n > max))
-        cli::cli_abort(c("{.arg {nm_n}} is greater than {max}.",
-                         i = "{.arg {nm_n}} is {.val {n}}."))
-    invisible(TRUE)
+check_mod_has_obs <- function(mod) {
+  is_in_lik <- make_is_in_lik(mod)
+    msg1 <- "No data for fitting model."
+  if (length(is_in_lik) == 0L)
+    cli::cli_abort(msg1)
+  if (!any(is_in_lik)) {
+    has_offset <- !is.null(mod$vname_offset)
+    if (has_offset) {
+      nm_offset <- nm_offset(mod)
+      msg2 <- paste("Every case has {nm_offset} {.val {0}},",
+                    "{nm_offset} {.val {NA}}, or outcome {.val {NA}}.")
+    }
+    else
+      msg2 <- "Every case has outcome {.val {NA}}."
+    message <- c(msg1, i = msg2)
+    cli::cli_abort(message)
+  }
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
+#' Check that Object is Numeric, Length 1, Non-NA, Finite
+#'
+#' @param x An object
+#' @param nm_x Name to be used in error messages
+#'
+#' @returns TRUE, invisibly
+#' 
+#' @noRd
+check_number <- function(x, nm_x) {
+  if (!is.numeric(x))
+    cli::cli_abort(c("{.arg {nm_x}} is non-numeric.",
+                     i = "{.arg {nm_x}} has class {.cls {class(x)}}."))
+  if (length(x) != 1L)
+    cli::cli_abort(c("{.arg {nm_x}} has length {length(x)}.",
+                     i = "Should have length 1."))
+  if (is.na(x))
+    cli::cli_abort("{.arg {nm_x}} is {.val {NA}}.")
+  if (any(is.infinite(x)))
+    cli::cli_abort("{.arg {nm_x}} is non-finite.")
+  invisible(TRUE)
 }
 
 
@@ -549,6 +632,79 @@ check_offset_nonneg <- function(vname_offset, nm_offset, data) {
   if (n_neg > 0L)
     cli::cli_abort(c("{.arg {nm_offset}} has negative {cli::qty(n_neg)} value{?s}.",
                      i = "{nm_offset}: {.val {vname_offset}}."))
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
+#' Raise Error of Model Object Created Using Old Version of 'bage'
+#'
+#' @param mod Object of class 'bage_mod'
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd 
+check_old_version <- function(x, nm_x) {
+  check_bage_mod(x = x, nm_x = nm_x)
+  is_old_version <- !("draws_hyperrandfree" %in% names(x))
+  if (is_old_version) {
+    cli::cli_abort(c("{.arg {nm_x}} appears to have been created with an old version of {.pkg bage}.",
+                     i = "Please recreate the object using the current version.",
+                     i = paste("Alternatively, install the old version using, for instance,",
+                               '{.code devtools::install_version("bage", version = "0.7.4")}')))
+  }
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
+#' Check that Prior has Age Dimension
+#'
+#' @param prior Object of class 'bage_prior'
+#' @param nm Name of term
+#' @param vname_age Name of age dimension, or NULL
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd
+check_prior_age <- function(prior, nm, var_age) {
+  str_nm_prior <- str_nm_prior(prior)
+  msg1 <- "Problem with {.var {str_nm_prior}} prior for term {.var {nm}}."
+  if (is.null(var_age))
+    cli::cli_abort(c(msg1,
+                     i = paste("Can't use {.var {str_nm_prior}} prior when",
+                               "age variable not yet identified."),
+                     i = "Use function {.fun set_var_age} to identify age variable?"))
+  nm_split <- strsplit(nm, split = ":")[[1L]]
+  if (!(var_age %in% nm_split))
+    cli::cli_abort(c(msg1,
+                     i = "{.var {str_nm_prior}} prior only used with terms involving age."))
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
+#' Check that Prior has Time Dimension
+#'
+#' @param prior Object of class 'bage_prior'
+#' @param nm Name of term
+#' @param vname_time Name of time dimension, or NULL
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd
+check_prior_time <- function(prior, nm, var_time) {
+  str_nm_prior <- str_nm_prior(prior)
+  msg1 <- "Problem with {.var {str_nm_prior}} prior for term {.var {nm}}."
+  if (is.null(var_time))
+    cli::cli_abort(c(msg1,
+                     i = paste("Can't use {.var {str_nm_prior}} prior when",
+                               "time variable not yet identified."),
+                     i = "Use function {.fun set_var_time} to identify time variable?"))
+  nm_split <- strsplit(nm, split = ":")[[1L]]
+  if (!(var_time %in% nm_split))
+    cli::cli_abort(c(msg1,
+                     i = "{.var {str_nm_prior}} prior only used with terms involving time."))
   invisible(TRUE)
 }
 
@@ -798,29 +954,59 @@ check_svd_agesex <- function(prior,
 
 
 ## HAS_TESTS
-#' Check that Term with SVD+Time Prior has Time Dimension
+#' Check that Variance or Precision Returned by TMB has No NAs
 #'
-#' @param prior Object of class 'bage_prior'
-#' @param nm Name of term
-#' @param vname_time Name of time dimension, or NULL
+#' @param x Variance or precision matrix
+#' @param est object returned by TMB (a named list)
 #'
 #' @returns TRUE, invisibly
 #'
 #' @noRd
-check_svd_time <- function(prior, nm, var_time) {
-  str_nm_prior <- str_nm_prior(prior)
-  msg1 <- "Problem with {.var {str_nm_prior}} prior for term {.var {nm}}."
-  if (is.null(var_time))
-    cli::cli_abort(c(msg1,
-                     i = paste("Can't use {.var {str_nm_prior}} prior when",
-                               "time variable not yet identified."),
-                     i = "Use function {.fun set_var_time} to identify time variable?"))
-  nm_split <- strsplit(nm, split = ":")[[1L]]
-  if (!(var_time %in% nm_split))
-    cli::cli_abort(c(msg1,
-                     i = "{.var {str_nm_prior}} prior only used with terms involving time."))
+check_var_prec <- function(x, est) {
+  has_na <- is.na(Matrix::diag(x))
+  if (any(has_na)) {
+    index_term <- which(has_na)
+    nm_term <- get_term_from_est(est = est, index_term = index_term)
+    cli::cli_abort(c("Problem deriving posterior distribution.",
+                     i = "Estimation of posterior variance for {.val {nm_term}} term{?s} failed.",
+                     i = "You may need to change the specification of your model."))
+  }
   invisible(TRUE)
 }
+
+
+## HAS_TESTS
+#' Check 'vars_inner' Argument
+#'
+#' @param vars_inner
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd
+check_vars_inner <- function(vars_inner) {
+  ## is character
+  if (!is.character(vars_inner))
+    cli::cli_abort(c("{.arg vars_inner} is not a character vector.",
+                     i = "{.arg vars_inner} has class {.cls {class(vars_inner)}}."))
+  ## not length 0
+  if (identical(length(vars_inner), 0L))
+    cli::cli_abort("{.arg vars_inner} has length 0.")
+  ## no NAs
+  n_na <- sum(is.na(vars_inner))
+  if (n_na > 0L)
+    cli::cli_abort("{.arg vars_inner} has {cli::qty(n_na)} NA{?s}.")
+  ## blanks
+  n_blank <- sum(!nzchar(vars_inner))
+  if (n_blank > 0L)
+    cli::cli_abort("{.arg vars_inner} has {cli::qty(n_blank)} blank{?s}.")
+  ## duplicated
+  n_dup <- sum(duplicated(vars_inner))
+  if (n_dup > 0L)
+    cli::cli_abort("{.arg vars_inner} has {cli::qty(n_dup)} duplicate{?s}.")
+  ## return
+  invisible(TRUE)
+}
+
 
 
 ## HAS_TESTS
@@ -846,3 +1032,5 @@ check_widths <- function(widths) {
                          i = "{.arg widths}: {.val {widths}}"))
     invisible(TRUE)
 }
+
+

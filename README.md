@@ -10,6 +10,8 @@ experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](h
 [![R-CMD-check](https://github.com/bayesiandemography/bage/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/bayesiandemography/bage/actions/workflows/R-CMD-check.yaml)
 [![Codecov test
 coverage](https://codecov.io/gh/bayesiandemography/bage/branch/main/graph/badge.svg)](https://app.codecov.io/gh/bayesiandemography/bage?branch=main)
+[![CRAN
+status](https://www.r-pkg.org/badges/version/bage)](https://CRAN.R-project.org/package=bage)
 <!-- badges: end -->
 
 Fast Bayesian estimation and forecasting of age-specific rates.
@@ -17,38 +19,44 @@ Fast Bayesian estimation and forecasting of age-specific rates.
 ## Installation
 
 ``` r
-devtools::install_github("bayesiandemography/bage")
+install.packages("bage") ## CRAN version
+devtools::install_github("bayesiandemography/bage") ## development version
 ```
 
 ## Example
 
-Fit Poisson model to data on injuries.
+Fit Poisson model to data on injuries
 
 ``` r
 library(bage)
 mod <- mod_pois(injuries ~ age:sex + ethnicity + year,
-                data = injuries,
+                data = nzl_injuries,
                 exposure = popn) |>
   fit()
 mod
-#> -- Fitted Poisson model --
+#> 
+#>     ------ Fitted Poisson model ------
 #> 
 #>    injuries ~ age:sex + ethnicity + year
 #> 
-#> (Intercept) ~ NFix()
-#>   ethnicity ~ NFix()
-#>        year ~ RW()
-#>     age:sex ~ RW()
+#>   exposure = popn
 #> 
-#>      dispersion: mean=1
-#>        exposure: popn
-#>         var_age: age
-#>   var_sexgender: sex
-#>        var_time: year
-#>          n_draw: 1000
+#>         term  prior along n_par n_par_free std_dev
+#>  (Intercept) NFix()     -     1          1       -
+#>    ethnicity NFix()     -     2          2    0.45
+#>         year   RW()  year    19         19    0.09
+#>      age:sex   RW()   age    24         24    0.88
+#> 
+#>  disp: mean = 1
+#> 
+#>  n_draw var_time var_age var_sexgender optimizer
+#>    1000     year     age           sex     multi
+#> 
+#>  time_total time_optim time_report iter converged                    message
+#>        1.04       0.31        0.30   11      TRUE   relative convergence (4)
 ```
 
-Extract model-based and direct estimates.
+Extract model-based and direct estimates
 
 ``` r
 augment(mod)

@@ -1,3 +1,226 @@
+# bage 0.9.0
+
+* From 0.9.0 onwards we will use a formal deprecation make any
+  breaking changes
+* Tweaks to printing of `"bage_mod"` objects
+* Started vignette replicating analyses from the book *Bayesian
+  Demographic Estimation and Forecasting*
+
+# bage 0.8.6
+
+## Changes to interface
+
+* Added `"multi"` option for `optimizer` argument to `fit()`. With
+  `"multi"`, the `fit()` function first tries `nlminb()` and if that
+  fails switches to `optim()` with method `"BFGS"`. 
+* Added a warning if the calculations do not converge
+* Modified the printout for `"bage_mod"` objects to show the time
+  spent by `TMB::sdreport` rather than the time spent by drawing from
+  the multivariate normal (which, since **bage** started using
+  **sparseMVN**, is very short).
+* Finished vignette 1.
+* Corrected error in help for `kor_births`.
+
+
+# bage 0.8.5
+
+## Changes to internal calculations
+
+* `report_sim()` excludes comparisons of `"hyper"` parameters (eg
+  standard deviations) if the simulation model and estimation model
+  use different priors with different classes for that term. For
+  instance if the simulation model uses a `RW()` prior for age and the
+  estimation model uses a `RW2()` prior for age, then `report_sim()`
+  will not report on the standard deviation parameter for age.
+* Added warning to documentation for `report_sim()` stating that the
+  interface is still under development.
+
+# bage 0.8.4
+
+## Changes to interface
+
+* Changed `zero_sum` argument to `con` (short for "constraint"). `con
+  = "none"` corresponds to `zero_sum = FALSE`, and `con = "by"`
+  corresponds to `zero_sum = TRUE`. Additional options will be added
+  in future.
+* Added `sd` argument to `RW()`, `RW2()`, `SVD_RW()` and
+  `SVD_RW2()`. The initial value of the random walks are drawn from a
+  `N(0, sd^2)` prior. By default `sd` equals `1`, but it can be set to
+  0.
+* Loosened restrictions in `AR()` and `Lin_AR()` priors so that the
+  coefficients no longer need to be consistent with stationarity. The
+  Stan user guide recommends against building in stationarity:
+  https://mc-stan.org/docs/stan-users-guide/time-series.html#autoregressive.section
+  Also, testing for stationarity often causes numerical problems.
+
+
+# bage 0.8.3
+
+## Changes to internal calculations
+
+* Corrected bug in forecasting of `AR()` and `Lin_AR()` priors. 
+* Modified prior for coefficients of `AR()` and `Lin_AR()` priors, so
+  that partical autocorrelation function (PACF), rather than the AR
+  coefficients themselves, are restricted to (-1, 1). Restricting the
+  PACF to (-1,1) ensures stationarity.
+
+
+# bage 0.8.2
+
+## Changes to interface
+
+* Check to see that model object was created using current version of
+  'bage'.
+* Added `optimizer` argument to `fit()`, giving choice between three
+  ways of optimizing
+* Modifed behaviour of `quiet` argument to `fit()` so that when it is
+  `TRUE`, trace output from the optimizer is shown.
+* Added `start_oldpar` argument to `fit()`, to allow calculations to
+  be restarted on a model that has already been fitted.
+* Modified printing of `"bage_mod"` object.
+
+
+# bage 0.8.1
+
+## Changes to interface
+
+* Modified construction of `computations` part of models so that it
+  works with models fitted using the "inner-outer" method. Extended
+  the `print()` method for `"bage_mod"` so that it shows extra output
+  for models fitted using the `"inner-outer"` method.
+
+
+# bage 0.8.0
+
+## Changes to interface
+
+* Added 'along' column to tidy and print methods for `"bage_mod"`
+  objects. (Thank you to Andrew Taylor for suggesting this.)
+* Allow `s = 0` in `Lin()` priors
+* Added `zero_sum` argument to priors with an `along` dimension. When
+  `zero_sum` is `TRUE`, values for each combination of a `by` variable
+  and the `along` variable are constrained to sum to zero. This can
+  allow better identification of higher-level terms in complicated
+  models. It can also slow computations, and has virtually no effect on
+  estimates of the lowest-level rates, probabilities, and means.
+* Removed post-estimation standardization. We now rely on explicit
+  constraints instead to give interpretable values for main effects
+  and interactions.
+* Added `RW2_Infant()` prior for modelling age-patterns of mortality
+  rates.
+* The `s_seas` parameter in `RW_Seas()` and `RW2_Seas()` now defaults
+  to 0, rather than 1, so that seasonal effects are by default fixed
+  over time rather than varying. Using varying seasonal effects can
+  greatly increase computation times.
+* Moved **rvec** from Imports to Depends, so that it loads when
+  **bage** is loaded. Manipulating results from **bage** models
+  without **rvec** loaded can lead to strange errors.
+* Added information on computations to printout from fitted model
+  objects.
+* Added function `computations()`, which can be used to extract this
+  information from fitted model objects.
+* Added `quiet` argument to `fit()`. When `quiet` is `TRUE` (the
+  default), warnings generated by `nlminb()` are suppressed. (These
+  warnings are virtually always about NAs early in the optimization
+  process and are nothing to worry about.)
+
+## Changes to internal calculations
+
+* Removed some unnecessary coercion of sparse matrices to dense
+  matrices (which could sometimes cause memory problems)
+* Added extra constraints to some priors - eg the first element of
+  random walks is now zero. This often (but not always) helps make raw
+  estimates of main effects and interactions more interpretable, and
+  can speed up computations slightly.
+* In the normal model, we now rescale the weights so that they have a
+  mean of 1. This allows us to use the same default prior
+  for dispersion (an exponential prior with mean 1), regardless of the
+  original weights. The rescaling of the weights affects the estimated
+  value for dispersion, but does not affect the estimates for any
+  other parameters.
+* Generation of posterior sample now using fast methods from package
+  **sparseMVN** where possible.
+  
+
+# bage 0.7.8
+
+## Datasets
+
+* Added `HFD`, a scaled SVD object holding data from the Human
+  Fertiltiy Database
+* Changed names of data objects:
+  - `deaths` --> `isl_deaths`
+  - `expenditure` --> `nld_expenditure`
+  - `divorces` --> `nzl_divorces`
+  - `injuries` --> `nzl_injuries`
+  - `us_acc_deaths` --> `usa_deaths`
+* Added new data object `kor_births`, births in South Korea
+
+
+# bage 0.7.7
+
+## Bug fixes
+
+* `report_sim()` now works on fitted models. Thank you to Ollie Pike
+  for pointing out that it previously did not.
+* Removed redundant levels from `age` variable in `divorces`.
+
+## Changes to internal calculations
+
+* Removed internal **bage** function `rr3()`. Call **poputils**
+  function `rr3()` instead.
+
+
+# bage 0.7.6
+
+## Changes to interface
+
+* Added `newdata` argument to `forecast()`.
+* Added minimum version numbers for **rvec** and **poputils**.
+
+
+# bage 0.7.5.1
+
+## Bug fixes
+
+* Fixed bug in code for simulating from `Lin()` and `Lin_AR()` priors.
+
+
+# bage 0.7.5
+
+## Changes to interface
+
+* Added arguments `method` and `vars_inner` to `fit()`. When
+  `method` is `"standard"` (the default) `fit()` uses the existing
+  calculation methods. When `method` is `"inner-outer"`, `fit()` uses
+  a new, somewhat experimental calculation method that involves
+  fitting an inner model using a subset of variables, and then an
+  outer model using the remaining variables. With big datasets,
+  `"inner-outer"` can be faster, and use less memory, but give very
+  similar results.
+* Added information on numbers of parameters, and standard deviations
+  to output for print. Thank you to Duncan Elliot for suggesting
+  printing numbers of parameters.
+  
+## Changes to calculations
+
+* `fit()` now internally aggregates input data before fitting, so that
+  cells with the same combinations of predictor variables are
+  combined. This increases speed and reduces memory usage.
+  
+## Changes to documentation
+
+* Added help for `print.bage_mod`
+
+# bage 0.7.4
+
+## Changes to interface
+
+* Function `ssvd()` no longer exported. Will export once package
+  **bssvd** matures.
+* **bage** released on to CRAN
+
+
 # bage 0.7.3
 
 ## Changes to data and examples

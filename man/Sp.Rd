@@ -4,7 +4,14 @@
 \alias{Sp}
 \title{P-Spline Prior}
 \usage{
-Sp(n_comp = NULL, s = 1, along = NULL)
+Sp(
+  n_comp = NULL,
+  s = 1,
+  sd = 1,
+  sd_slope = 1,
+  along = NULL,
+  con = c("none", "by")
+)
 }
 \arguments{
 \item{n_comp}{Number of spline basis functions (components)
@@ -13,24 +20,34 @@ to use.}
 \item{s}{Scale for the prior for the innovations.
 Default is \code{1}.}
 
+\item{sd}{Standard deviation in prior for first
+element of random walk.}
+
+\item{sd_slope}{Standard deviation in prior
+for initial slope of random walk. Default is \code{1}.}
+
 \item{along}{Name of the variable to be used
-as the "along" variable. Only used with
+as the 'along' variable. Only used with
 interactions.}
+
+\item{con}{Constraints on parameters.
+Current choices are \code{"none"} and \code{"by"}.
+Default is \code{"none"}. See below for details.}
 }
 \value{
 An object of class \code{"bage_prior_spline"}.
 }
 \description{
-Use a p-spline (penalised spine) to model main
+Use a p-spline (penalised spline) to model main
 effects or interactions. Typically used with age,
 but can be used with any variable where outcomes are
 expected to vary smoothly from one element to the next.
 }
 \details{
 If \code{Sp()} is used with an interaction,
-separate splines are used for the "along" variable within
+separate splines are used for the 'along' variable within
 each combination of the
-"by" variables.
+'by' variables.
 }
 \section{Mathematical details}{
 
@@ -46,8 +63,8 @@ and when it is used with an interaction,
 where
 \itemize{
 \item \eqn{\pmb{\beta}} is the main effect or interaction, with \eqn{J} elements;
-\item \eqn{\pmb{beta}_u} is a subvector of \eqn{\pmb{\beta}} holding
-values for the  \eqn{u}th combination of the "by" variables;
+\item \eqn{\pmb{\beta}_u} is a subvector of \eqn{\pmb{\beta}} holding
+values for the  \eqn{u}th combination of the 'by' variables;
 \item \eqn{J} is the number of elements of \eqn{\pmb{\beta}};
 \item \eqn{U} is the number of elements of \eqn{\pmb{\beta}_u};
 \item \eqn{X} is a \eqn{J \times n} or \eqn{V \times n} matrix of
@@ -55,8 +72,33 @@ spline basis functions; and
 \item \eqn{n} is \code{n_comp}.
 }
 
-The elements of \eqn{\pmb{\alpha}} or \eqn{\pmb{alpha}_u} are assumed
+The elements of \eqn{\pmb{\alpha}} or \eqn{\pmb{\alpha}_u} are assumed
 to follow a \link[=RW2]{second-order random walk}.
+}
+
+\section{Constraints}{
+
+
+With some combinations of terms and priors, the values of
+the intercept, main effects, and interactions are
+are only weakly identified.
+For instance, it may be possible to increase the value of the
+intercept and reduce the value of the remaining terms in
+the model with no effect on predicted rates and only a tiny
+effect on prior probabilities. This weak identifiability is
+typically harmless. However, in some applications, such as
+forecasting, or when trying to obtain interpretable values
+for main effects and interactions, it can be helpful to increase
+identifiability through the use of constraints.
+
+Current options for constraints are:
+\itemize{
+\item \code{"none"} No constraints. The default.
+\item \code{"by"} Only used in interaction terms that include 'along' and
+'by' dimensions. Within each value of the 'along'
+dimension, terms across each 'by' dimension are constrained
+to sum to 0.
+}
 }
 
 \examples{
@@ -78,7 +120,7 @@ Statistical Science. 11 (2): 89–121.
 \item \link{priors} Overview of priors implemented in \strong{bage}
 \item \code{\link[=set_prior]{set_prior()}} Specify prior for intercept,
 main effect, or interaction
-\item \strong{bage} uses function \code{\link[splines:bs]{splines::bs()}} to construct
+\item \code{\link[splines:bs]{splines::bs()}} Function used by \strong{bage} to construct
 spline basis functions
 }
 }

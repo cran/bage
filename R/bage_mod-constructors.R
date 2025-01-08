@@ -88,17 +88,17 @@
 #' @examples
 #' ## specify a model with exposure
 #' mod <- mod_pois(injuries ~ age:sex + ethnicity + year,
-#'                 data = injuries,
+#'                 data = nzl_injuries,
 #'                 exposure = popn)
 #'
 #' ## specify a model without exposure
 #' mod <- mod_pois(injuries ~ age:sex + ethnicity + year,
-#'                 data = injuries,
+#'                 data = nzl_injuries,
 #'                 exposure = 1)
 #'
 #' ## use a formula to specify exposure
 #' mod <- mod_pois(injuries ~ age:sex + ethnicity + year,
-#'                 data = injuries,
+#'                 data = nzl_injuries,
 #'                 exposure = ~ pmax(popn, 1))
 #' @export
 mod_pois <- function(formula, data, exposure) {
@@ -226,7 +226,7 @@ mod_pois <- function(formula, data, exposure) {
 #'
 #' @examples
 #' mod <- mod_binom(oneperson ~ age:region + age:year,
-#'                  data = households,
+#'                  data = nzl_households,
 #'                  size = total)
 #'
 #' ## use formula to specify size
@@ -361,12 +361,12 @@ mod_binom <- function(formula, data, size) {
 #'
 #' @examples
 #' mod <- mod_norm(value ~ diag:age + year,
-#'                 data = expenditure,
+#'                 data = nld_expenditure,
 #'                 weights = 1)
 #'
 #' ## use formula to specify weights
 #' mod <- mod_norm(value ~ diag:age + year,
-#'                 data = expenditure,
+#'                 data = nld_expenditure,
 #'                 weights = ~sqrt(value))
 #' @export
 mod_norm <- function(formula, data, weights) {
@@ -394,6 +394,8 @@ mod_norm <- function(formula, data, weights) {
   }
   else
     offset <- make_offset_ones(data)
+  offset_mean <- mean(offset, na.rm = TRUE)
+  offset <- offset / offset_mean
   ## process outcome
   outcome <- args[["outcome"]]
   n_obs <- sum(!is.na(outcome))
@@ -449,11 +451,7 @@ mod_helper <- function(formula, data, n_draw) {
   var_age <- infer_var_age(formula)
   var_sexgender <- infer_var_sexgender(formula)
   var_time <- infer_var_time(formula)
-  matrices_effect_outcome <- make_matrices_effect_outcome(data = data,
-                                                          dimnames_terms = dimnames_terms)
-  levels_effect <- make_levels_effect(matrices_effect_outcome)
-  lengths_effect <- make_lengths_effect(matrices_effect_outcome)
-  terms_effect <- make_terms_effect(matrices_effect_outcome)
+  lengths_effect <- make_lengths_effect(dimnames_terms)
   priors <- make_priors(formula = formula,
                         var_age = var_age,
                         var_time = var_time,
@@ -473,24 +471,23 @@ mod_helper <- function(formula, data, n_draw) {
        var_age = var_age,
        var_sexgender = var_sexgender,
        var_time = var_time,
-       matrices_effect_outcome = matrices_effect_outcome,
-       levels_effect = levels_effect,
-       lengths_effect = lengths_effect,
-       terms_effect = terms_effect,
        mean_disp = 1,
-       est = NULL,
-       is_fixed = NULL,
-       R_prec = NULL,
-       scaled_eigen = NULL,
        n_draw = n_draw,
+       vars_inner = NULL,
        draws_effectfree = NULL,
        draws_hyper = NULL,
-       draws_hyperrand = NULL,
+       draws_hyperrandfree = NULL,
        draws_disp = NULL,
-       store_draws = TRUE,
+       point_effectfree = NULL,
+       point_hyper = NULL,
+       point_hyperrandfree = NULL,
+       point_disp = NULL,
        seed_stored_draws = seed_stored_draws,
        seed_components = seed_components,
        seed_augment = seed_augment,
        seed_forecast_components = seed_forecast_components,
-       seed_forecast_augment = seed_forecast_augment)
+       seed_forecast_augment = seed_forecast_augment,
+       optimizer = NULL,
+       computations = NULL,
+       oldpar = NULL)
 }

@@ -4,69 +4,96 @@
 \alias{RW_Seas}
 \title{Random Walk Prior with Seasonal Effect}
 \usage{
-RW_Seas(n_seas, s = 1, s_seas = 1, along = NULL)
+RW_Seas(
+  n_seas,
+  s = 1,
+  sd = 1,
+  s_seas = 0,
+  sd_seas = 1,
+  along = NULL,
+  con = c("none", "by")
+)
 }
 \arguments{
 \item{n_seas}{Number of seasons}
 
 \item{s}{Scale for prior for innovations in
-the random walk. Default is \code{1}.}
+random walk. Default is \code{1}.}
 
-\item{s_seas}{Scale for prior for innovations
-in the seasonal effect. Default is \code{1}.
+\item{sd}{Standard deviation
+of initial value. Default is \code{1}.
 Can be \code{0}.}
 
+\item{s_seas}{Scale for innovations
+in seasonal effects. Default is \code{0}.}
+
+\item{sd_seas}{Standard deviation for
+initial values of seasonal effects.
+Default is \code{1}.}
+
 \item{along}{Name of the variable to be used
-as the "along" variable. Only used with
+as the 'along' variable. Only used with
 interactions.}
+
+\item{con}{Constraints on parameters.
+Current choices are \code{"none"} and \code{"by"}.
+Default is \code{"none"}. See below for details.}
 }
 \value{
-Object of class \code{"bage_prior_rwseasvary"}
-or \code{"bage_prior_rwseasfix"}.
+Object of class
+\code{"bage_prior_rwrandomseasvary"},
+\code{"bage_prior_rwrandomseasfix"},
+\code{"bage_prior_rwzeroseasvary"}, or
+\code{"bage_prior_rwzeroseasfix"}.
 }
 \description{
-Use a random walk with seasonal effects to model
+Use a random walk with seasonal effects as a model for
 a main effect, or use multiple random walks,
 each with their own seasonal effects,
-to model an interaction.
-Typically used with main effects or interactions
-that involve time.
+as a model for an interaction.
+Typically used with terms that involve time.
 }
 \details{
 If \code{RW_Seas()} is used with an interaction,
-separate series are used for
-the "along" variable within
-each combination of the
-"by" variables.
+a separate series is constructed
+within each combination of the
+'by' variables.
 
 Argument \code{s} controls the size of innovations in the random walk.
-Smaller values for \code{s} tend to give smoother series.
+Smaller values for \code{s} tend to produce smoother series.
 
-Argument \code{n_seas} controls the number of \code{seasons}.
+Argument \code{sd} controls variance in
+initial values of the random walk. \code{sd} can be \code{0}.
+
+Argument \code{n_seas} controls the number of seasons.
 When using quarterly data, for instance,
-\code{n_seas} should be \code{4}, and when using
-monthly data, \code{n_seas} should be \code{12}.
+\code{n_seas} should be \code{4}.
 
 By default, the magnitude of seasonal effects
-can change over time. However, setting \code{s_seas}
-to \code{0} produces seasonal effects that are fixed,
-eg where "January" effect is the same every year,
-the "Feburary" effect is the same every year, and so on.
+is fixed. However, setting \code{s_seas} to a value
+greater than zero produces seasonal effects
+that evolve over time.
 }
 \section{Mathematical details}{
 
 
 When \code{RW_Seas()} is used with a main effect,
 
-\deqn{\beta_j = \alpha_j + \lambda_j}
-\deqn{\alpha_j \sim \text{N}(\alpha_{j-1}, \tau^2)}
-\deqn{\lambda_j \sim \text{N}(\lambda_{j-n}, \omega^2),}
+\deqn{\beta_j = \alpha_j + \lambda_j, \quad j = 1, \cdots, J}
+\deqn{\alpha_1 \sim \text{N}(0, \mathtt{sd}^2)}
+\deqn{\alpha_j \sim \text{N}(\alpha_{j-1}, \tau^2), \quad j = 2, \cdots, J}
+\deqn{\lambda_j \sim \text{N}(0, \mathtt{sd\_seas}^2), \quad j = 1, \cdots, \mathtt{n\_seas} - 1}
+\deqn{\lambda_j = -\sum_{s=1}^{\mathtt{n\_seas} - 1} \lambda_{j - s}, \quad j = \mathtt{n\_seas}, 2 \mathtt{n\_seas}, \cdots}
+\deqn{\lambda_j \sim \text{N}(\lambda_{j-\mathtt{n\_seas}}, \omega^2), \quad \text{otherwise},}
 
 and when it is used with an interaction,
 
-\deqn{\beta_{u,v} = \alpha_{u,v} + \lambda_{u,v}}
-\deqn{\alpha_{u,v} \sim \text{N}(\alpha_{u,v-1}, \tau^2),}
-\deqn{\lambda_{u,v} \sim \text{N}(\lambda_{u,v-n}, \omega^2)}
+\deqn{\beta_{u,v} = \alpha_{u,v} + \lambda_{u,v}, \quad v = 1, \cdots, V}
+\deqn{\alpha_{u,1} \sim \text{N}(0, \mathtt{sd}^2)}
+\deqn{\alpha_{u,v} \sim \text{N}(\alpha_{u,v-1}, \tau^2), \quad v = 2, \cdots, V}
+\deqn{\lambda_{u,v} \sim \text{N}(0, \mathtt{sd\_seas}^2), \quad v = 1, \cdots, \mathtt{n\_seas} - 1}
+\deqn{\lambda_{u,v} = -\sum_{s=1}^{\mathtt{n\_seas} - 1} \lambda_{u,v - s}, \quad v = \mathtt{n\_seas}, 2 \mathtt{n\_seas}, \cdots}
+\deqn{\lambda_{u,v} \sim \text{N}(\lambda_{u,v-\mathtt{n\_seas}}, \omega^2), \quad \text{otherwise},}
 
 where
 \itemize{
@@ -74,30 +101,53 @@ where
 \item \eqn{\alpha_j} or \eqn{\alpha_{u,v}} is an element of the random walk;
 \item \eqn{\lambda_j} or \eqn{\lambda_{u,v}} is an element of the seasonal effect;
 \item \eqn{j} denotes position within the main effect;
-\item \eqn{v} denotes position within the "along" variable of the interaction;
-\item \eqn{u} denotes position within the "by" variable(s) of the interaction; and
-\item \eqn{n} is \code{n_seas}.
+\item \eqn{v} denotes position within the 'along' variable of the interaction; and
+\item \eqn{u} denotes position within the 'by' variable(s) of the interaction.
 }
 
 Parameter \eqn{\omega} has a half-normal prior
-\deqn{\omega \sim \text{N}^+(0, \text{s\_seas}^2),}
-where \code{s_seas} is provided by the user. If
-\code{s_seas} is set to 0, then \eqn{\omega} is 0,
-and the seasonal effects are fixed over time.
+\deqn{\omega \sim \text{N}^+(0, \mathtt{s\_seas}^2).}
+If \code{s_seas} is set to 0, then \eqn{\omega} is 0,
+and seasonal effects are time-invariant.
 
 Parameter \eqn{\tau} has a half-normal prior
-\deqn{\tau \sim \text{N}^+(0, \text{s}^2),}
-where \code{s} is provided by the user.
+\deqn{\tau \sim \text{N}^+(0, \mathtt{s}^2).}
+}
+
+\section{Constraints}{
+
+
+With some combinations of terms and priors, the values of
+the intercept, main effects, and interactions are
+are only weakly identified.
+For instance, it may be possible to increase the value of the
+intercept and reduce the value of the remaining terms in
+the model with no effect on predicted rates and only a tiny
+effect on prior probabilities. This weak identifiability is
+typically harmless. However, in some applications, such as
+forecasting, or when trying to obtain interpretable values
+for main effects and interactions, it can be helpful to increase
+identifiability through the use of constraints.
+
+Current options for constraints are:
+\itemize{
+\item \code{"none"} No constraints. The default.
+\item \code{"by"} Only used in interaction terms that include 'along' and
+'by' dimensions. Within each value of the 'along'
+dimension, terms across each 'by' dimension are constrained
+to sum to 0.
+}
 }
 
 \examples{
-RW_Seas(n_seas = 4)             ## seasonal effects evolve
-RW_Seas(n_seas = 4, s_seas = 0) ## seasonal effects fixed
+RW_Seas(n_seas = 4)               ## seasonal effects fixed
+RW_Seas(n_seas = 4, s_seas = 0.5) ## seasonal effects evolve
+RW_Seas(n_seas = 4, sd = 0)       ## first term in random walk fixed at 0
 }
 \seealso{
 \itemize{
 \item \code{\link[=RW]{RW()}} Random walk without seasonal effect
-\item \code{\link[=RW2_Seas]{RW2_Seas()}} Second-order random walk, with seasonal effect
+\item \code{\link[=RW2_Seas]{RW2_Seas()}} Second-order random walk with seasonal effect
 \item \link{priors} Overview of priors implemented in \strong{bage}
 \item \code{\link[=set_prior]{set_prior()}} Specify prior for intercept,
 main effect, or interaction

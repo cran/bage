@@ -19,7 +19,8 @@ details.}
 Default is 19.}
 }
 \value{
-A tibble with the following structure:\tabular{ll}{
+A \link[tibble:tibble-package]{tibble}
+with the following structure:\tabular{ll}{
    \code{.replicate} \tab data \cr
    \code{"Original"} \tab Original data supplied to \code{\link[=mod_pois]{mod_pois()}}, \code{\link[=mod_binom]{mod_binom()}}, \code{\link[=mod_norm]{mod_norm()}} \cr
    \code{"Replicate 1"} \tab Simulated data. \cr
@@ -92,7 +93,7 @@ the outcomes to base 3.
 
 \examples{
 mod <- mod_pois(injuries ~ age:sex + ethnicity + year,
-                data = injuries,
+                data = nzl_injuries,
                 exposure = 1) |>
   fit()
 
@@ -107,7 +108,7 @@ rep_data |>
 ## when the overall model includes an rr3 data model,
 ## replicate data are rounded to base 3
 mod_pois(injuries ~ age:sex + ethnicity + year,
-         data = injuries,
+         data = nzl_injuries,
          exposure = popn) |>
   set_datamod_outcome_rr3() |>
   fit() |>

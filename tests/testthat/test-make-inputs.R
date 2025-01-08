@@ -1,3 +1,4 @@
+
 ## 'default_prior' ------------------------------------------------------------
 
 test_that("'default_prior' works with ordinary term", {
@@ -183,6 +184,66 @@ test_that("'eval_offset_formula' works with valid inputs - ifelse", {
 })
 
 
+## 'get_matrix_offset_svd_prior' ----------------------------------------------
+
+
+test_that("'get_matrix_or_offset_svd_prior' works with age main effect, type is total, matrix", {
+  ssvd <- sim_ssvd()
+  prior <- SVD(ssvd, n_comp = 3)
+  ans_obtained <- get_matrix_or_offset_svd_prior(prior = prior,
+                                                 dimnames_term = list(age = c("0-4", "5-9")),
+                                                 var_age = "age",
+                                                 var_sexgender = "sex",
+                                                 get_matrix = TRUE)
+  ans_expected <- Matrix::Matrix(1, nr = 2, nc = 3, 
+                                 dimnames = list(c("0-4", "5-9"), NULL))
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'get_matrix_or_offset_svd_prior' works with age main effect, type is total, offset", {
+  ssvd <- sim_ssvd()
+  prior <- SVD(ssvd, n_comp = 3)
+  ans_obtained <- get_matrix_or_offset_svd_prior(prior = prior,
+                                                 dimnames_term = list(age = c("0-4", "5-9")),
+                                                 var_age = "age",
+                                                 var_sexgender = "sex",
+                                                 get_matrix = FALSE)
+  ans_expected <- c("0-4" = 1, "5-9" = 2)
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'get_matrix_or_offset_svd_prior' works with sex-age interaction, type is joint, offset", {
+  ssvd <- sim_ssvd()
+  prior <- SVD(ssvd, indep = FALSE)
+  dimnames_term <- list(age = c("0-4", "5-9"),
+                        sex = c("Male", "Female"))
+  ans_obtained <- get_matrix_or_offset_svd_prior(prior = prior,
+                                                 dimnames_term = dimnames_term,
+                                                 var_age = "age",
+                                                 var_sexgender = "sex",
+                                                 get_matrix = FALSE)
+  ans_expected <- c("Male.0-4" = 3, "Male.5-9" = 4, "Female.0-4" = 1, "Female.5-9" = 2)
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'get_matrix_or_offset_svd_prior' works with age-sex interaction, type is indep, matrix", {
+  ssvd <- sim_ssvd()
+  prior <- SVD(ssvd)
+  dimnames_term <- list(sex = c("Female", "Male"),
+                        age = c("0-4", "5-9"))
+  ans_obtained <- get_matrix_or_offset_svd_prior(prior,
+                                                 dimnames_term = dimnames_term,
+                                                 var_age = "age",
+                                                 var_sexgender = "sex",
+                                                 get_matrix = TRUE)
+  ans_expected <- Matrix::Matrix(3, nr = 4, nc = 10,
+                                 dimnames = list(c("Female.0-4", "Male.0-4",
+                                                   "Female.5-9", "Male.5-9"),
+                                                 NULL))
+  expect_identical(ans_obtained, ans_expected)
+})
+
+
 ## 'get_n_comp_spline' --------------------------------------------------------
 
 test_that("'get_n_comp_spline' works with n_comp supplied", {
@@ -197,7 +258,7 @@ test_that("'get_n_comp_spline' works with n_comp supplied", {
 ## 'get_print_prior_n_offset' -------------------------------------------------
 
 test_that("'get_print_prior_n_offset' works", {
-  expect_identical(get_print_prior_n_offset(), 8L)
+  expect_identical(get_print_prior_n_offset(), 10L)
 })
 
   
@@ -358,14 +419,31 @@ test_that("'make_const' works with valid inputs", {
     ans_obtained <- make_const(mod)
     ans_expected <- c("(Intercept)" = 0,
                       agegp.scale = 1,
+                      agegp.sd = 1,
                       SEX.sd = 1)
+    expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'make_const' works with valid inputs - no terms", {
+    set.seed(0)
+    data <- expand.grid(agegp = 0:2,
+                        SEX = c("F", "M"))
+    data$popn <- rpois(n = nrow(data), lambda = 100)
+    data$deaths <- rpois(n = nrow(data), lambda = 10)
+    formula <- deaths ~ agegp + SEX
+    mod <- mod_pois(formula = formula,
+                    data = data,
+                    exposure = popn)
+    mod <- reduce_model_terms(mod, use_term = rep(F, 3))
+    ans_obtained <- make_const(mod)
+    ans_expected <- double()
     expect_identical(ans_obtained, ans_expected)
 })
 
 
 ## 'make_dimnames_terms' ------------------------------------------------------
 
-test_that("'make_dimnames_terms' works", {
+test_that("'make_dimnames_terms' works - includes intercept", {
     set.seed(0)
     data <- expand.grid(age = 0:9,
                         time = 2000:2005,
@@ -376,6 +454,22 @@ test_that("'make_dimnames_terms' works", {
     ans_obtained <- make_dimnames_terms(data = data, formula = formula)
     ans_expected <- list("(Intercept)" = list(),
                          age = list(age = as.character(0:9)),
+                         sex = list(sex = c("F", "M")),
+                         time = list(time = as.character(2000:2005)),
+                         "age:sex" = list(age = as.character(0:9), sex = c("F", "M")))
+    expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'make_dimnames_terms' works - no intercept", {
+    set.seed(0)
+    data <- expand.grid(age = 0:9,
+                        time = 2000:2005,
+                        sex = c("F", "M"))
+    data$popn <- rpois(n = nrow(data), lambda = 100)
+    data$deaths <- rpois(n = nrow(data), lambda = 10)
+    formula <- deaths ~ age * sex + time - 1
+    ans_obtained <- make_dimnames_terms(data = data, formula = formula)
+    ans_expected <- list(age = list(age = as.character(0:9)),
                          sex = list(sex = c("F", "M")),
                          time = list(time = as.character(2000:2005)),
                          "age:sex" = list(age = as.character(0:9), sex = c("F", "M")))
@@ -403,6 +497,22 @@ test_that("'make_effectfree' works with valid inputs", {
     expect_identical(ans_obtained, ans_expected)
 })
 
+test_that("'make_effectfree' works with valid inputs", {
+    set.seed(0)
+    data <- expand.grid(agegp = 0:2,
+                        SEX = c("F", "M"))
+    data$popn <- rpois(n = nrow(data), lambda = 100)
+    data$deaths <- rpois(n = nrow(data), lambda = 10)
+    formula <- deaths ~ agegp + SEX
+    mod <- mod_pois(formula = formula,
+                    data = data,
+                    exposure = popn)
+    mod <- reduce_model_terms(mod, use_term = rep(F, 3))
+    ans_obtained <- make_effectfree(mod)
+    ans_expected <- double()
+    expect_identical(ans_obtained, ans_expected)
+})
+
 
 ## 'make_hyper' ---------------------------------------------------------------
 
@@ -422,9 +532,9 @@ test_that("'make_hyper' works with valid inputs", {
 })
 
 
-## 'make_hyperrand' ---------------------------------------------------------------
+## 'make_hyperrandfree' -------------------------------------------------------
 
-test_that("'make_hyperrand' works with valid inputs - no hyperrand", {
+test_that("'make_hyperrandfree' works with valid inputs - no hyperrandfree", {
   set.seed(0)
   data <- expand.grid(agegp = 0:2,
                       SEX = c("F", "M"))
@@ -434,13 +544,13 @@ test_that("'make_hyperrand' works with valid inputs - no hyperrand", {
   mod <- mod_pois(formula = formula,
                   data = data,
                   exposure = popn)
-  ans_obtained <- make_hyperrand(mod)
+  ans_obtained <- make_hyperrandfree(mod)
   ans_expected <- numeric()
   names(ans_expected) <- character()
   expect_identical(ans_obtained, ans_expected)
 })
 
-test_that("'make_hyperrand' works with valid inputs - has hyperrand", {
+test_that("'make_hyperrandfree' works with valid inputs - has hyperrandfree", {
   set.seed(0)
   data <- expand.grid(agegp = 0:2,
                       SEX = c("F", "M"),
@@ -452,8 +562,8 @@ test_that("'make_hyperrand' works with valid inputs - has hyperrand", {
                   data = data,
                   exposure = popn)
   mod <- set_prior(mod, SEX:time ~ Lin())
-  ans_obtained <- make_hyperrand(mod)
-  ans_expected <- rep(c("SEX:time" = 0), 4)
+  ans_obtained <- make_hyperrandfree(mod)
+  ans_expected <- rep(c("SEX:time" = 0), 2)
   expect_identical(ans_obtained, ans_expected)
 })
 
@@ -463,7 +573,7 @@ test_that("'make_hyperrand' works with valid inputs - has hyperrand", {
 test_that("'make_i_prior' works with valid inputs", {
     mod <- list(priors = list(a = N(), b = RW(), c = N()))
     ans_obtained <- make_i_prior(mod)
-    ans_expected <- c(a = 4L, b = 6L, c = 4L)
+    ans_expected <- c(a = 4L, b = 19L, c = 4L)
     expect_identical(ans_obtained, ans_expected)
 })
 
@@ -474,7 +584,7 @@ test_that("'make_is_in_lik' works with no NAs", {
     mod <- list(outcome = c(0, 1, 5),
                 offset = c(1, 0, 3))
     ans_obtained <- make_is_in_lik(mod)
-    ans_expected <- c(1L, 0L, 1L)
+    ans_expected <- c(TRUE, FALSE, TRUE)
     expect_identical(ans_obtained, ans_expected)
 })
 
@@ -482,20 +592,46 @@ test_that("'make_is_in_lik' works with NAs", {
     mod <- list(outcome = c(0, 1, NA, 7),
                 offset = c(1, 0, 3, NA))
     ans_obtained <- make_is_in_lik(mod)
-    ans_expected <- c(1L, 0L, 0L, 0L)
+    ans_expected <- c(TRUE, FALSE, FALSE, FALSE)
     expect_identical(ans_obtained, ans_expected)
 })
 
 
 ## 'make_lengths_effect' ---------------------------------------------------------
 
-test_that("'make_lengths_effect' works with valid inputs", {
-    matrices_effect_outcome = list(a = matrix(nr = 100, nc = 1),
-                                b = matrix(nr = 100, nc = 5),
-                                c = matrix(nr = 100, nc = 5))
-    ans_obtained <- make_lengths_effect(matrices_effect_outcome)
-    ans_expected <- c(a = 1L, b = 5L, c = 5L)
-    expect_identical(ans_obtained, ans_expected)
+test_that("'make_lengths_effect' works with valid inputs - has intercept", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      time = 2000:2005,
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex + time
+  dimnames_terms <- make_dimnames_terms(data = data, formula = formula)
+  ans_obtained <- make_lengths_effect(dimnames_terms)
+  ans_expected <- c("(Intercept)" = 1L,
+                    age = 10L,
+                    sex = 2L,
+                    time = 6L,
+                    "age:sex" = 20L)
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'make_lengths_effect' works with valid inputs - no intercept", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      time = 2000:2005,
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex + time - 1
+  dimnames_terms <- make_dimnames_terms(data = data, formula = formula)
+  ans_obtained <- make_lengths_effect(dimnames_terms)
+  ans_expected <- c(age = 10L,
+                    sex = 2L,
+                    time = 6L,
+                    "age:sex" = 20L)
+  expect_identical(ans_obtained, ans_expected)
 })
 
 
@@ -547,9 +683,9 @@ test_that("'make_lengths_hyper' works with valid inputs", {
 })
 
 
-## 'make_lengths_hyperrand' -------------------------------------------------------
+## 'make_lengths_hyperrandfree' -----------------------------------------------
 
-test_that("'make_lengths_hyperrand' works with valid inputs", {
+test_that("'make_lengths_hyperrandfree' works with valid inputs", {
   set.seed(0)
   data <- expand.grid(age = 0:9,
                       region = 1:2,
@@ -562,61 +698,26 @@ test_that("'make_lengths_hyperrand' works with valid inputs", {
                   exposure = popn)
   mod <- set_prior(mod, age:sex ~ Lin())
   mod <- set_prior(mod, sex ~ NFix())
-  ans_obtained <- make_lengths_hyperrand(mod)
+  ans_obtained <- make_lengths_hyperrandfree(mod)
   ans_expected <- c("(Intercept)" = 0L,
                     age = 0L,
                     sex = 0L,
                     region = 0L,
-                    "age:sex" = 4L)
+                    "age:sex" = 2L)
   expect_identical(ans_obtained, ans_expected)
 })
 
 
-## 'make_levels_age' ----------------------------------------------------------
+## 'make_levels_effects' ----------------------------------------------------------
 
-test_that("'make_levels_age' works when data has age variable", {
-  set.seed(0)
-  data <- expand.grid(age = c("infant", "1 to 4", "5-9", "10 plus"),
-                      time = 2000:2005,
-                      sex = c("F", "M"))
-  data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rpois(n = nrow(data), lambda = 10)
-  mod <- mod_pois(deaths ~ age * sex + time,
-                  data = data,
-                  exposure = popn)
-  ans_obtained <- make_levels_age(mod)
-  ans_expected <- unique(data$age)
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'make_levels_age' works when data has no age variable", {
-  set.seed(0)
-  data <- expand.grid(bla = c("infant", "1 to 4", "5-9", "10 plus"),
-                      time = 2000:2005,
-                      sex = c("F", "M"))
-  data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rpois(n = nrow(data), lambda = 10)
-  mod <- mod_pois(deaths ~ bla * sex + time,
-                  data = data,
-                  exposure = popn)
-  ans_obtained <- make_levels_age(mod)
-  ans_expected <- NULL
-  expect_identical(ans_obtained, ans_expected)
-})
-
-
-## 'make_levels_effect' ----------------------------------------------------------
-
-test_that("'make_levels_effect' works with valid inputs - pois, complete levels", {
+test_that("'make_levels_effects' works with valid inputs - pois, complete levels", {
     set.seed(0)
     data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
     data$popn <- rpois(n = nrow(data), lambda = 100)
     data$deaths <- rpois(n = nrow(data), lambda = 10)
     formula <- deaths ~ age * sex + time
     dimnames_terms <- make_dimnames_terms(formula = formula, data = data)
-    matrices_effect_outcome <- make_matrices_effect_outcome(data = data,
-                                                            dimnames_terms = dimnames_terms)
-    ans_obtained <- make_levels_effect(matrices_effect_outcome = matrices_effect_outcome)
+    ans_obtained <- make_levels_effects(dimnames_terms)
     ans_expected <- c("(Intercept)",
                       0:9,
                       c("F", "M"),
@@ -627,7 +728,7 @@ test_that("'make_levels_effect' works with valid inputs - pois, complete levels"
     expect_identical(ans_obtained, ans_expected)                      
 })
 
-test_that("'make_levels_effect' works with valid inputs - pois, incomplete levels", {
+test_that("'make_levels_effects' works with valid inputs - pois, incomplete levels", {
     set.seed(0)
     data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
     data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -635,9 +736,7 @@ test_that("'make_levels_effect' works with valid inputs - pois, incomplete level
     data <- data[-3, ]
     formula <- deaths ~ age * sex + time
     dimnames_terms <- make_dimnames_terms(formula = formula, data = data)
-    matrices_effect_outcome <- make_matrices_effect_outcome(data = data,
-                                                            dimnames_terms = dimnames_terms)
-    ans_obtained <- make_levels_effect(matrices_effect_outcome = matrices_effect_outcome)
+    ans_obtained <- make_levels_effects(dimnames_terms)
     ans_expected <- c("(Intercept)",
                       0:9,
                       c("F", "M"),
@@ -648,16 +747,14 @@ test_that("'make_levels_effect' works with valid inputs - pois, incomplete level
     expect_identical(ans_obtained, ans_expected)                      
 })
 
-test_that("'make_levels_effect' works with valid inputs - norm", {
+test_that("'make_levels_effects' works with valid inputs - norm", {
     set.seed(0)
     data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
     data$popn <- rpois(n = nrow(data), lambda = 100)
     data$income <- rnorm(n = nrow(data))
     formula <- income ~ age * sex + time
     dimnames_terms <- make_dimnames_terms(formula = formula, data = data)
-    matrices_effect_outcome <- make_matrices_effect_outcome(data = data,
-                                                            dimnames_terms = dimnames_terms)
-    ans_obtained <- make_levels_effect(matrices_effect_outcome = matrices_effect_outcome)
+    ans_obtained <- make_levels_effects(dimnames_terms)
     ans_expected <- c("(Intercept)",
                       0:9,
                       c("F", "M"),
@@ -665,6 +762,12 @@ test_that("'make_levels_effect' works with valid inputs - norm", {
                       paste(rep(0:9, times = 2),
                             rep(c("F", "M"), each = 10),
                             sep = "."))
+    expect_identical(ans_obtained, ans_expected)                      
+})
+
+test_that("'make_levels_effects' works with valid inputs - no terms", {
+    ans_obtained <- make_levels_effects(list())
+    ans_expected <- character()
     expect_identical(ans_obtained, ans_expected)                      
 })
 
@@ -689,7 +792,7 @@ test_that("'make_levels_forecast_all' works with single time dimension", {
   expect_identical(ans_obtained, ans_expected)
 })
 
-test_that("'make_levels_forecast_all' works with single time dimension", {
+test_that("'make_levels_forecast_all' works with time interaction", {
   set.seed(0)
   data <- expand.grid(age = 0:2,
                       time = 2000:2005,
@@ -708,36 +811,21 @@ test_that("'make_levels_forecast_all' works with single time dimension", {
   expect_identical(ans_obtained, ans_expected)
 })
 
-
-## 'make_levels_sexgender' ----------------------------------------------------------
-
-test_that("'make_levels_sexgender' works when data has sexgender variable", {
+test_that("'make_levels_forecast_all' works with no intercept", {
   set.seed(0)
-  data <- expand.grid(age = c("infant", "1 to 4", "5-9", "10 plus"),
+  data <- expand.grid(age = 0:2,
                       time = 2000:2005,
                       sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
   data$deaths <- rpois(n = nrow(data), lambda = 10)
-  mod <- mod_pois(deaths ~ age * sex + time,
+  mod <- mod_pois(deaths ~ age + sex + time,
                   data = data,
                   exposure = popn)
-  ans_obtained <- make_levels_sexgender(mod)
-  ans_expected <- unique(data$sex)
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'make_levels_sexgender' works when data has no sexgender variable", {
-  set.seed(0)
-  data <- expand.grid(age = c("infant", "1 to 4", "5-9", "10 plus"),
-                      time = 2000:2005,
-                      bla = c("F", "M"))
-  data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rpois(n = nrow(data), lambda = 10)
-  mod <- mod_pois(deaths ~ age * bla + time,
-                  data = data,
-                  exposure = popn)
-  ans_obtained <- make_levels_sexgender(mod)
-  ans_expected <- NULL
+  mod <- reduce_model_terms(mod, use_term = c(F, T, T, T))
+  ans_obtained <- make_levels_forecast_all(mod, labels_forecast = 2006:2007)
+  ans_expected <- list(age = NULL,
+                       sex = NULL,
+                       time = as.character(2006:2007))
   expect_identical(ans_obtained, ans_expected)
 })
 
@@ -816,24 +904,23 @@ test_that("'make_map' works when effectfree has known values", {
     formula <- deaths ~ time * SEX
     mod <- mod_pois(formula = formula,
                     data = data,
-                    exposure = popn)
+                    exposure = popn) |>
+      set_prior(time ~ RW(sd = 0)) |>
+      set_prior(time:SEX ~ RW(sd = 0))
     mod <- set_prior(mod, SEX ~ Known(c(0.1, -0.1)))
     ans_obtained <- make_map(mod)
     ans_expected <- list(effectfree = factor(c("(Intercept)" = 1,
                                             time = 2,
                                             time = 3,
                                             time = 4,
-                                            time = 5,
                                             SEX = NA,
                                             SEX = NA,
+                                            "time:SEX" = 5,
                                             "time:SEX" = 6,
                                             "time:SEX" = 7,
                                             "time:SEX" = 8,
                                             "time:SEX" = 9,
-                                            "time:SEX" = 10,
-                                            "time:SEX" = 11,
-                                            "time:SEX" = 12,
-                                            "time:SEX" = 13)))
+                                            "time:SEX" = 10)))
     expect_identical(ans_obtained, ans_expected)
 })
 
@@ -903,7 +990,7 @@ test_that("'make_matrices_along_by_effectfree' works - with SVD", {
 
 ## 'make_matrices_along_by_forecast' ------------------------------------------
 
-test_that("'make_matrices_along_by_forecast' works with valid inputs", {
+test_that("'make_matrices_along_by_forecast' works with intercept", {
     set.seed(0)
     data <- expand.grid(age = 0:9,
                         time = 1:2,
@@ -930,10 +1017,33 @@ test_that("'make_matrices_along_by_forecast' works with valid inputs", {
     expect_identical(ans_obtained, ans_expected)
 })
 
+test_that("'make_matrices_along_by_forecast' works with no intercept", {
+    set.seed(0)
+    data <- expand.grid(age = 0:9,
+                        time = 1:2,
+                        sex = c("F", "M"))
+    data$popn <- rpois(n = nrow(data), lambda = 100)
+    data$deaths <- rpois(n = nrow(data), lambda = 10)
+    formula <- deaths ~ age * sex  + age * time
+    mod <- mod_pois(formula = formula,
+                    data = data,
+                    exposure = popn)
+    mod <- reduce_model_terms(mod, use_term = c(F, T, T, T, F, F))
+    ans_obtained <- make_matrices_along_by_forecast(mod = mod,
+                                                    labels_forecast = 3:4)
+    time <- matrix(0:1, nr = 2)
+    rownames(time) <- 3:4
+    names(dimnames(time)) <- "time"
+    ans_expected <- list(age = NULL,
+                         sex = NULL,
+                         time = time)
+    expect_identical(ans_obtained, ans_expected)
+})
+
 
 ## 'make_matrices_effect_outcome' --------------------------------------------
 
-test_that("'make_matrices_effect_outcome' works with valid inputs", {
+test_that("'make_matrices_effect_outcome' works with valid inputs - has intercept", {
     data <- expand.grid(age = 0:5, time = 2000:2001, sex = 1:2)
     data$val <- 1
     data <- data[-c(3, 5), ]
@@ -954,6 +1064,27 @@ test_that("'make_matrices_effect_outcome' works with valid inputs", {
     expect_identical(names(ans_obtained), c("(Intercept)", "time", "age:sex"))
 })
 
+test_that("'make_matrices_effect_outcome' works with valid inputs - no intercept", {
+    data <- expand.grid(age = 0:5, time = 2000:2001, sex = 1:2)
+    data$val <- 1
+    data <- data[-c(3, 5), ]
+    formula <- deaths ~ age:sex + time - 1
+    dimnames_terms <- make_dimnames_terms(formula = formula, data = data)
+    ans_obtained <- make_matrices_effect_outcome(data = data, dimnames_terms = dimnames_terms)
+    data_fac <- data[1:3]
+    data_fac[] <- lapply(data_fac, factor)
+    ans_expected <- Matrix::sparse.model.matrix(~age:sex + time - 1,
+                                                data = data_fac,
+                                                contrasts.arg = lapply(data_fac,
+                                                                       contrasts,
+                                                                       contrast = FALSE),
+                                                row.names = FALSE)
+    v <- rnorm(n = ncol(ans_expected))
+    expect_equal(do.call(cbind, ans_obtained) %*% v,
+                 ans_expected %*% v)
+    expect_identical(names(ans_obtained), c("time", "age:sex"))
+})
+
 
 ## 'make_matrices_effectfree_effect' ------------------------------------------------
 
@@ -964,247 +1095,18 @@ test_that("'make_matrices_effectfree_effect' works with valid inputs", {
                         SEX = c("F", "M"))
     data$popn <- rpois(n = nrow(data), lambda = 100)
     data$deaths <- rpois(n = nrow(data), lambda = 10)
-    formula <- deaths ~ agegp * SEX + region
+    formula <- deaths ~ agegp + SEX + region
     mod <- mod_pois(formula = formula,
                     data = data,
-                    exposure = popn)
+                    exposure = popn) |>
+      set_prior(agegp ~ RW(sd = 0))
     ans_obtained <- make_matrices_effectfree_effect(mod)
+    agegp <- rbind(0,Matrix::.sparseDiagonal(9))
     ans_expected <- list("(Intercept)" = Matrix::.sparseDiagonal(1),
-                         agegp = Matrix::.sparseDiagonal(10),
+                         agegp = agegp,
                          SEX = Matrix::.sparseDiagonal(2),
-                         region = Matrix::.sparseDiagonal(2),
-                         "agegp:SEX" = Matrix::.sparseDiagonal(20))
+                         region = Matrix::.sparseDiagonal(2))
     expect_identical(ans_obtained, ans_expected)
-})
-
-
-## 'make_index_matrix' -------------------------------------------------
-
-test_that("'make_index_matrix' works with valid inputs", {
-  set.seed(0)
-  data <- expand.grid(sex = c("F", "M"),
-                      age = 0:3,
-                      reg = c("A", "B"))
-  data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rpois(n = nrow(data), lambda = 10)
-  mod <- mod_pois(deaths ~ reg * age * sex,
-                  data = data,
-                  exposure = popn)
-  matrix_agesex <- make_matrix_agesex(dimnames_term = mod$dimnames_terms[["reg:age:sex"]],
-                                      var_age = mod$var_age,
-                                      var_sexgender = mod$var_sexgender)
-  ans_obtained <- make_index_matrix(matrix_agesex)
-  cn <- paste(0:3, rep(c("F", "M"), each = 4), rep(c("A", "B"), each = 8), sep = ".")
-  rn <- paste(rep(0:3, each = 2), rep(c("F", "M"), each = 8), c("A", "B"), sep = ".")
-  ans_expected <- Matrix::sparseMatrix(i = c(1L, 3L, 5L, 7L, 9L, 11L, 13L, 15L,
-                                             2L, 4L, 6L, 8L, 10L, 12L, 14L, 16L),
-                                       j = 1:16,
-                                       x = rep(1L, 16),
-                                       dimnames = list(rn, cn))
-  expect_identical(ans_obtained, ans_expected)
-})
-
-
-## 'make_matrix_along_by' -----------------------------------------------------
-
-test_that("'make_matrix_along_by' works when 'i_along' is 1", {
-  i_along <- 1L
-  dim <- 2:4
-  dimnames <- list(a = 1:2, b = 1:3, c = 1:4)
-  ans_obtained <- make_matrix_along_by(i_along = i_along,
-                                       dim = dim,
-                                       dimnames = dimnames)
-  ans_expected <- matrix(0:23,
-                         nr = 2,
-                         dimnames = list(a = 1:2,
-                                         b.c = paste(1:3, rep(1:4, each = 3), sep = ".")))
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'make_matrix_along_by' works when 'i_along' is 2", {
-  i_along <- 2L
-  dim <- 2:4
-  dimnames <- list(a = 1:2, b = 1:3, c = 1:4)
-  ans_obtained <- make_matrix_along_by(i_along = i_along,
-                                       dim = dim,
-                                       dimnames = dimnames)
-  ans_expected <- matrix(c(0L, 2L, 4L,
-                           1L, 3L, 5L,
-                           6L, 8L, 10L,
-                           7L, 9L, 11L,
-                           12L, 14L, 16L,
-                           13L, 15L, 17L,
-                           18L, 20L, 22L,
-                           19L, 21L, 23L),
-                         nr = 3,
-                         dimnames = list(b = 1:3,
-                                         a.c = paste(1:2, rep(1:4, each = 2), sep = ".")))
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'make_matrix_along_by' works when 'i_along' is 3", {
-  i_along <- 3L
-  dim <- 2:4
-  dimnames <- list(a = 1:2, b = 1:3, c = 1:4)
-  ans_obtained <- make_matrix_along_by(i_along = i_along,
-                                       dim = dim,
-                                       dimnames = dimnames)
-  ans_expected <- matrix(c(0L, 6L, 12L, 18L,
-                           1L, 7L, 13L, 19L,
-                           2L, 8L, 14L, 20L,
-                           3L, 9L, 15L, 21L,
-                           4L, 10L, 16L, 22L,
-                           5L, 11L, 17L, 23L),
-                         nrow = 4,
-                         dimnames = list(c = 1:4,
-                                         a.b = paste(1:2, rep(1:3, each = 2), sep = ".")))
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'make_matrix_along_by' works when only one dimension", {
-  i_along <- 1L
-  dim <- 3L
-  dimnames <- list(a = 1:3)
-  ans_obtained <- make_matrix_along_by(i_along = i_along,
-                                       dim = dim,
-                                       dimnames = dimnames)
-  ans_expected <- matrix(0:2, nr = 3)
-  rownames(ans_expected) <- 1:3
-  names(dimnames(ans_expected))[1] <- "a"
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'make_matrix_along_by' works when only one element", {
-  i_along <- 1L
-  dim <- 1L
-  dimnames <- list(a = 1)
-  ans_obtained <- make_matrix_along_by(i_along = i_along,
-                                       dim = dim,
-                                       dimnames = dimnames)
-  ans_expected <- matrix(0L, nr = 1)
-  rownames(ans_expected) <- 1
-  names(dimnames(ans_expected))[1] <- "a"
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'make_matrix_along_by' works when 'i_along' is 1:2", {
-  i_along <- 1:2
-  dim <- 2:4
-  dimnames <- list(a = 1:2, b = 1:3, c = 1:4)
-  ans_obtained <- make_matrix_along_by(i_along = i_along,
-                                       dim = dim,
-                                       dimnames = dimnames)
-  ans_expected <- matrix(0:23,
-                         nr = 6,
-                         dimnames = list(a.b = paste(1:2, rep(1:3, each = 2), sep = "."),
-                                         c = 1:4))
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'make_matrix_along_by' works when 'i_along' is 1:2", {
-  i_along <- c(1L, 3L)
-  dim <- 2:4
-  dimnames <- list(a = 1:2, b = 1:3, c = 1:4)
-  ans_obtained <- make_matrix_along_by(i_along = i_along,
-                                       dim = dim,
-                                       dimnames = dimnames)
-  ans_expected <- matrix(c(0L, 1L, 6L, 7L, 12L, 13L, 18L, 19L,
-                           2L, 3L, 8L, 9L, 14L, 15L, 20L, 21L,
-                           4L, 5L, 10L, 11L, 16L, 17L, 22L, 23L),
-                         nr = 8,
-                         dimnames = list(a.c = paste(1:2, rep(1:4, each = 2), sep = "."),
-                                         b = 1:3))
-  expect_identical(ans_obtained, ans_expected)
-})
-
-
-## 'make_matrix_effectfree_effect_svd' ----------------------------------------
-
-test_that("'make_matrix_effectfree_effect_svd' works with bage_prior_svd - age main effect", {
-  s <- sim_ssvd()
-  prior <- SVD(ssvd = s, n_comp = 3)
-  dimnames_term <- list(age = c("0-4", "5-9"))
-  var_time <- "time"
-  var_age <- "age"
-  var_sexgender <- "sex"
-  ans_obtained <- make_matrix_effectfree_effect_svd(prior = prior,
-                                                    dimnames_term = dimnames_term,
-                                                    var_time = var_time,
-                                                    var_age = var_age,
-                                                    var_sexgender = var_sexgender)
-  ans_expected <- s$data$matrix[s$data$type == "total"][[1L]][,1:3]
-  ans_expected <- Matrix::sparseMatrix(i = row(ans_expected),
-                                       j = col(ans_expected),
-                                       x = as.double(ans_expected),
-                                       dimnames = dimnames(ans_expected))
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'make_matrix_effectfree_effect_svd' works with bage_prior_svd - age-sex interaction, joint", {
-  s <- sim_ssvd()
-  prior <- SVD(ssvd = s, n_comp = 3, indep = FALSE)
-  dimnames_term <- list(sex = c("Female", "Male"),
-                        age = c("0-4", "5-9"))
-  var_time <- "time"
-  var_age <- "age"
-  var_sexgender <- "sex"
-  ans_obtained <- make_matrix_effectfree_effect_svd(prior = prior,
-                                                    dimnames_term = dimnames_term,
-                                                    var_time = var_time,
-                                                    var_age = var_age,
-                                                    var_sexgender = var_sexgender)
-  ans_expected <- s$data$matrix[s$data$type == "joint"][[1L]][c(1,3,2,4),1:3]
-  ans_expected <- Matrix::sparseMatrix(i = row(ans_expected),
-                                       j = col(ans_expected),
-                                       x = as.double(ans_expected))
-  rownames(ans_expected) <- c("Female.0-4", "Male.0-4", "Female.5-9", "Male.5-9")
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'make_matrix_effectfree_effect_svd' works with bage_prior_svd - age x reg interaction", {
-  s <- sim_ssvd()
-  prior <- SVD(ssvd = s, n_comp = 3)
-  dimnames_term <- list(age = c("0-4", "5-9"),
-                        x = 1:2)
-  var_time <- "time"
-  var_age <- "age"
-  var_sexgender <- "sex"
-  ans_obtained <- make_matrix_effectfree_effect_svd(prior = prior,
-                                                    dimnames_term = dimnames_term,
-                                                    var_time = var_time,
-                                                    var_age = var_age,
-                                                    var_sexgender = var_sexgender)
-  m2 <- s$data$matrix[s$data$type == "total"][[1L]][,1:3]
-  m2 <- Matrix::kronecker(Matrix::.sparseDiagonal(2), m2)
-  matrix_agesex <- make_matrix_agesex(dimnames_term = dimnames_term,
-                                      var_age = var_age,
-                                      var_sexgender = var_sexgender)
-  m1 <- make_index_matrix(matrix_agesex)
-  ans_expected <- m1 %*% m2
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'make_matrix_effectfree_effect_svd' works with bage_prior_svd - sex x reg x age interaction", {
-  prior <- SVD(HMD)
-  dimnames_term = list(sex = c("F", "M"),
-                       age = c(0, "1-4", paste(seq(5, 55, 5), seq(9, 59, 5), sep = "--"), "60+"),
-                       reg <- c("A", "B"))
-  var_time <- "time"
-  var_age <- "age"
-  var_sexgender <- "sex"
-  ans_obtained <- make_matrix_effectfree_effect_svd(prior = prior,
-                                                    dimnames_term = dimnames_term,
-                                                    var_time = var_time,
-                                                    var_age = var_age,
-                                                    var_sexgender = var_sexgender)
-  m2 <- HMD$data$matrix[[35]][as.integer(t(matrix(1:28,nr=14))), c(1:3, 6:8)]
-  m2 <- Matrix::kronecker(Matrix::.sparseDiagonal(2), m2)
-  matrix_agesex <- make_matrix_agesex(dimnames_term = dimnames_term,
-                                      var_age = var_age,
-                                      var_sexgender = var_sexgender)
-  m1 <- make_index_matrix(matrix_agesex)
-  ans_expected <- m1 %*% m2
-  expect_identical(ans_obtained, ans_expected)
 })
 
 
@@ -1238,128 +1140,6 @@ test_that("'make_offset' works with valid inputs - no NA", {
                                 data = data)
     ans_expected <- as.double(data$wt) + 1
     expect_identical(ans_obtained, ans_expected)
-})
-
-
-
-## 'make_offset_effectfree_effect_svd' ----------------------------------------
-
-test_that("'make_offset_effectfree_effect_svd' works with bage_prior_svd - age x time interaction", {
-  s <- sim_ssvd()
-  prior <- SVD(ssvd = s, n_comp = 2)
-  dimnames_term <- list(age = c("0-4", "5-9"),
-                        time = 2001:2003)
-  var_time <- "time"
-  var_age <- "age"
-  var_sexgender <- "sex"
-  ans_obtained <- make_offset_effectfree_effect_svd(prior = prior,
-                                                    dimnames_term = dimnames_term,
-                                                    var_time = var_time,
-                                                    var_age = var_age,
-                                                    var_sexgender = var_sexgender)
-  ans_expected <- s$data$offset[s$data$type == "total"][[1L]]
-  ans_expected <- rep(ans_expected, 3)
-  levels_effect = c("0-4.2001", "5-9.2001", "0-4.2002", "5-9.2002", "0-4.2003", "5-9.2003")
-  names(ans_expected) <- levels_effect
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'make_offset_effectfree_effect_svd' works with bage_prior_svd - age x time interaction", {
-  s <- sim_ssvd()
-  prior <- SVD_AR1(ssvd = s, n_comp = 2)
-  dimnames_term <- list(age = c("0-4", "5-9"),
-                        time = 2001:2003)
-  var_time <- "time"
-  var_age <- "age"
-  var_sexgender <- "sex"
-  levels_effect = c("0-4.2001", "5-9.2001", "0-4.2002", "5-9.2002", "0-4.2003", "5-9.2003")
-  ans_obtained <- make_offset_effectfree_effect_svd(prior = prior,
-                                                    dimnames_term = dimnames_term,
-                                                    var_time = var_time,
-                                                    var_age = var_age,
-                                                    var_sexgender = var_sexgender)
-  ans_expected <- s$data$offset[s$data$type == "total"][[1L]]
-  ans_expected <- rep(ans_expected, 3)
-  names(ans_expected) <- levels_effect
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'make_offset_effectfree_effect_svd' works with bage_prior_svd - age x time interaction", {
-  s <- sim_ssvd()
-  prior <- SVD_RW(ssvd = s, n_comp = 2)
-  dimnames_term <- list(age = c("0-4", "5-9"),
-                        time = 2001:2003)
-  var_time <- "time"
-  var_age <- "age"
-  var_sexgender <- "sex"
-  levels_effect = c("0-4.2001", "5-9.2001", "0-4.2002", "5-9.2002", "0-4.2003", "5-9.2003")
-  ans_obtained <- make_offset_effectfree_effect_svd(prior = prior,
-                                                    dimnames_term = dimnames_term,
-                                                    var_time = var_time,
-                                                    var_age = var_age,
-                                                    var_sexgender = var_sexgender)
-  ans_expected <- s$data$offset[s$data$type == "total"][[1L]]
-  ans_expected <- rep(ans_expected, 3)
-  names(ans_expected) <- levels_effect
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'make_offset_effectfree_effect_svd' works with bage_prior_svd - age x time interaction", {
-  s <- sim_ssvd()
-  prior <- SVD_RW2(ssvd = s, n_comp = 2)
-  levels_effect = c("0-4.2001", "5-9.2001", "0-4.2002", "5-9.2002", "0-4.2003", "5-9.2003")
-  dimnames_term <- list(age = c("0-4", "5-9"),
-                        time = 2001:2003)
-  var_time <- "time"
-  var_age <- "age"
-  var_sexgender <- "sex"
-  ans_obtained <- make_offset_effectfree_effect_svd(prior = prior,
-                                                    dimnames_term = dimnames_term,
-                                                    var_time = var_time,
-                                                    var_age = var_age,
-                                                    var_sexgender = var_sexgender)
-  ans_expected <- s$data$offset[s$data$type == "total"][[1L]]
-  ans_expected <- rep(ans_expected, 3)
-  names(ans_expected) <- levels_effect
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'make_offset_effectfree_effect_svd' works with bage_prior_svd - sex x age interaction", {
-  s <- sim_ssvd()
-  prior <- SVD(ssvd = s, n_comp = 2)
-  levels_effect = c("F.0-4", "M.0-4", "F.5-9", "M.5-9")
-  dimnames_term <- list(sex = c("F", "M"),
-                        age = c("0-4", "5-9"))
-  var_time <- "time"
-  var_age <- "age"
-  var_sexgender <- "sex"
-  ans_obtained <- make_offset_effectfree_effect_svd(prior = prior,
-                                                    dimnames_term = dimnames_term,
-                                                    var_time = var_time,
-                                                    var_age = var_age,
-                                                    var_sexgender = var_sexgender)
-  ans_expected <- s$data$offset[s$data$type == "indep"][[1L]][c(1,3,2,4)]
-  names(ans_expected) <- levels_effect
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'make_offset_effectfree_effect_svd' works with bage_prior_svd - sex x age interaction", {
-  s <- sim_ssvd()
-  prior <- SVD(ssvd = s, n_comp = 2, indep = FALSE)
-  levels_effect = c("F.0-4", "M.0-4", "F.5-9", "M.5-9")
-  dimnames_term <- list(sex = c("F", "M"),
-                        age = c("0-4", "5-9"))
-  var_time <- "time"
-  var_age <- "age"
-  var_sexgender <- "sex"
-  ans_obtained <- make_offset_effectfree_effect_svd(prior = prior,
-                                                    dimnames_term = dimnames_term,
-                                                    var_time = var_time,
-                                                    var_age = var_age,
-                                                    var_sexgender = var_sexgender)
-  ans_expected <- s$data$offset[s$data$type == "joint"][[1L]][c(1,3,2,4)]
-  names(ans_expected) <- levels_effect
-  expect_identical(ans_obtained, ans_expected)
 })
 
 
@@ -1411,6 +1191,29 @@ test_that("'make_outcome' works with valid inputs", {
 })
 
 
+## 'make_prior_class' ---------------------------------------------------------
+
+test_that("'make_prior_class' works with valid inputs", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = 1:5,
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  mod <- mod_pois(deaths ~ age * sex + region,
+                  data = data,
+                  exposure = popn)
+  ans_obtained <- make_prior_class(mod)
+  ans_expected <- tibble::tibble(term = c("(Intercept)", "age", "sex", "region", "age:sex"),
+                                 class = c("bage_prior_normfixed",
+                                           "bage_prior_rwrandom",
+                                           "bage_prior_normfixed",
+                                           "bage_prior_norm",
+                                           "bage_prior_rwrandom"))
+  expect_identical(ans_obtained, ans_expected)
+})
+                                             
+
 ## 'make_priors' --------------------------------------------------------------
 
 test_that("'make_priors' works with valid inputs - has intercept", {
@@ -1428,19 +1231,19 @@ test_that("'make_priors' works with valid inputs - has intercept", {
 
 ## 'make_random' --------------------------------------------------------------
 
-test_that("'make_random' works when no hyper, no hyperrand", {
+test_that("'make_random' works when no hyper, no hyperrandfree", {
     mod <- structure(.Data = list(priors = list(NFix(), Known(c(2, 3)))))
     expect_identical(make_random(mod), NULL)
 })
 
-test_that("'make_random' works when hyper, no hyperrand", {
+test_that("'make_random' works when hyper, no hyperrandfree", {
     mod <- structure(.Data = list(priors = list(N(), RW2())))
     expect_identical(make_random(mod), "effectfree")
 })
 
 test_that("'make_random' works when hyper, hyperrand", {
     mod <- structure(.Data = list(priors = list(N(), RW2(), Lin())))
-    expect_identical(make_random(mod), c("effectfree", "hyperrand"))
+    expect_identical(make_random(mod), c("effectfree", "hyperrandfree"))
 })
 
 
@@ -1454,16 +1257,6 @@ test_that("'make_seed' returns a single unique integer", {
     expect_identical(length(ans1), 1L)
     expect_false(ans1 == ans2)
 })
-
-
-## 'make_spline_matrix' -------------------------------------------------------
-
-test_that("'make_spline_matrix' works", {
-    set.seed(0)
-    m <- make_spline_matrix(n_along = 10, n_comp = 5)
-    expect_equal(dim(m), c(10L, 5L))
-    expect_equal(colSums(as.matrix(m)), rep(0, times = 5))
-})        
 
 
 ## 'make_terms_const' ---------------------------------------------------------
@@ -1481,22 +1274,32 @@ test_that("'make_terms_const' works with valid inputs", {
                     exposure = popn)
     mod <- set_prior(mod, agegp ~ AR1())
     ans_obtained <- make_terms_const(mod)
-    ans_expected <- factor(c("(Intercept)", rep("agegp", 5), "SEX", "region", "agegp:SEX"),
+    ans_expected <- factor(c("(Intercept)", rep("agegp", 5),
+                             "SEX", "region", "agegp:SEX", "agegp:SEX"),
                            levels = c("(Intercept)", "agegp", "SEX", "region", "agegp:SEX"))
     expect_identical(ans_obtained, ans_expected)
 })
 
 
-## 'make_terms_effect' -----------------------------------------------------------
+## 'make_terms_effects' -----------------------------------------------------------
 
-test_that("'make_terms_effect' works with valid inputs", {
-    matrices_effect_outcome = list(a = matrix(nr = 100, nc = 1),
-                                b = matrix(nr = 100, nc = 5),
-                                c = matrix(nr = 100, nc = 5))
-    ans_obtained <- make_terms_effect(matrices_effect_outcome)
-    ans_expected <- factor(rep(c("a", "b", "c"),
-                               times = c(1, 5, 5)))
-    expect_identical(ans_obtained, ans_expected)
+test_that("'make_terms_effects' works with valid inputs", {
+  set.seed(0)
+  data <- expand.grid(agegp = 0:9,
+                      region = 1:2,
+                      SEX = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ agegp * SEX + region
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_prior(mod, agegp ~ AR1())
+  ans_obtained <- make_terms_effects(mod$dimnames_terms)
+  ans_expected <- factor(c("(Intercept)", rep("agegp", 10), rep("SEX", 2),
+                           rep("region", 2), rep("agegp:SEX", 20)),
+                         levels = c("(Intercept)", "agegp", "SEX", "region", "agegp:SEX"))
+  expect_identical(ans_obtained, ans_expected)
 })
 
 
@@ -1512,10 +1315,11 @@ test_that("'make_terms_effectfree' works with valid inputs", {
     formula <- deaths ~ agegp * SEX + region
     mod <- mod_pois(formula = formula,
                     data = data,
-                    exposure = popn)
+                    exposure = popn) |>
+      set_prior(agegp ~ RW(sd = 0))
     ans_obtained <- make_terms_effectfree(mod)
     ans_expected <- factor(c("(Intercept)",
-                             rep("agegp", times = 10),
+                             rep("agegp", times = 9),
                              rep("SEX", times = 2),
                              rep("region", times = 2),
                              rep("agegp:SEX", times = 20)),
@@ -1548,26 +1352,91 @@ test_that("'make_terms_hyper' works with valid inputs", {
 })
 
 
-## 'make_terms_hyperrand' ---------------------------------------------------------
+## 'make_terms_hyperrandfree' -------------------------------------------------
 
-test_that("'make_terms_hyperrand' works", {
-    set.seed(0)
-    data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
-    data$popn <- rpois(n = nrow(data), lambda = 100)
-    data$deaths <- rpois(n = nrow(data), lambda = 10)
-    formula <- deaths ~ age + sex*time
-    mod <- mod_pois(formula = formula,
-                    data = data,
-                    exposure = popn)
-    mod <- set_prior(mod, sex:time ~ Lin())
-    ans_obtained <- make_terms_hyperrand(mod)
-    ans_expected <- factor(rep("sex:time", 4),
-                           levels = c("(Intercept)",
-                                      "age",
-                                      "sex",
-                                      "time",
-                                      "sex:time"))
-    expect_identical(ans_obtained, ans_expected)                      
+test_that("'make_terms_hyperrandfree' works", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age + sex*time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_prior(mod, sex:time ~ Lin())
+  ans_obtained <- make_terms_hyperrandfree(mod)
+  ans_expected <- factor(rep("sex:time", 2),
+                         levels = c("(Intercept)",
+                                    "age",
+                                    "sex",
+                                    "time",
+                                    "sex:time"))
+  expect_identical(ans_obtained, ans_expected)                      
+})
+
+
+## 'make_use_term' ------------------------------------------------------------
+
+test_that("'make_use_term' works", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = 1:3,
+                      sex = c("F", "M"),
+                      time = 1:3,
+                      deaths = 3)
+  mod <- mod_pois(deaths ~ age * sex + age * region + sex * time,
+                  data = data,
+                  exposure = 1)
+  vars_inner <- c("sex", "age")
+  ans_obtained <- make_use_term(mod = mod, vars_inner = vars_inner)
+  ans_expected <- c(T, T, T, F, F, T, F, F)
+  names(ans_expected) <- names(mod$priors)
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'make_use_term' throws correct error when 'vars_inner' has invalid variable", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = 1:3,
+                      sex = c("F", "M"),
+                      time = 1:3,
+                      deaths = 3)
+  mod <- mod_pois(deaths ~ age * sex + age * region + sex * time,
+                  data = data,
+                  exposure = 1)
+  vars_inner <- c("sex", "wrong")
+  expect_error(make_use_term(mod = mod, vars_inner = vars_inner),
+               "`vars_inner` has variable not found in model.")
+})
+
+test_that("'make_use_term' throws correct error when cannot form term from 'vars_inner'", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = 1:3,
+                      sex = c("F", "M"),
+                      time = 1:3,
+                      deaths = 3)
+  mod <- mod_pois(deaths ~ age : sex + age : region + sex * time,
+                  data = data,
+                  exposure = 1)
+  vars_inner <- "age"
+  expect_error(make_use_term(mod = mod, vars_inner = vars_inner),
+               "No terms in model can be formed from `vars_inner`.")
+})
+
+test_that("'make_use_term' throws correct error when can form all terms from 'vars_inner'", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = 1:3,
+                      sex = c("F", "M"),
+                      time = 1:3,
+                      deaths = 3)
+  mod <- mod_pois(deaths ~ age : sex + age : region + sex * time,
+                  data = data,
+                  exposure = 1)
+  vars_inner <- c("age", "sex", "region", "time")
+  expect_error(make_use_term(mod = mod, vars_inner = vars_inner),
+               "All terms in model can be formed from `vars_inner`.")
 })
 
 
@@ -1595,9 +1464,9 @@ test_that("'make_uses_hyper' works with valid inputs", {
 })
 
 
-## 'make_uses_hyperrand' ------------------------------------------------------
+## 'make_uses_hyperrandfree' --------------------------------------------------
 
-test_that("'make_uses_hyperrand' works", {
+test_that("'make_uses_hyperrandfree' works", {
     set.seed(0)
     data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
     data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -1607,7 +1476,7 @@ test_that("'make_uses_hyperrand' works", {
                     data = data,
                     exposure = popn)
     mod <- set_prior(mod, sex:time ~ Lin())
-    ans_obtained <- make_uses_hyperrand(mod)
+    ans_obtained <- make_uses_hyperrandfree(mod)
     ans_expected <- c("(Intercept)" = 0L,
                       age = 0L,
                       sex = 0L,
@@ -1636,7 +1505,7 @@ test_that("'make_uses_matrix_effectfree_effect' works with valid inputs", {
                       agegp = 1L,
                       SEX = 0L,
                       region = 0L,
-                      "agegp:SEX" = 0L)
+                      "agegp:SEX" = 1L)
     expect_identical(ans_obtained, ans_expected)
 })
 
@@ -1663,6 +1532,165 @@ test_that("'make_uses_offset_effectfree_effect' works with valid inputs", {
                       "agegp:SEX" = 0L)
     expect_identical(ans_obtained, ans_expected)
 })
+
+
+## 'make_vals_ag' -------------------------------------------------------------
+
+test_that("'make_vals_ag' works with model with offset", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = 1:2,
+                      sex = c("F", "M"),
+                      time = 1:2)
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex + region
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  ans_obtained <- make_vals_ag(mod)
+  data_ag <- aggregate(data[c("deaths", "popn")], data[c("age", "region", "sex")], sum)
+  data_ag <- data_ag[with(data_ag, order(age, sex, region)), ]
+  ans_expected <- list(outcome = data_ag[["deaths"]],
+                       offset = data_ag[["popn"]],
+                       matrices_effect_outcome = make_matrices_effect_outcome(data_ag,
+                                                                              mod$dimnames_terms))
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_vals_ag' works with model without offset", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = 1:2,
+                      sex = c("F", "M"),
+                      time = 1:2)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex + region
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = 1)
+  ans_obtained <- make_vals_ag(mod)
+  data_ag <- aggregate(data["deaths"], data[c("age", "sex", "region")], sum)
+  ans_expected <- list(outcome = data_ag[["deaths"]],
+                       offset = rep(1, times = nrow(data_ag)),
+                       matrices_effect_outcome = make_matrices_effect_outcome(data_ag,
+                                                                              mod$dimnames_terms))
+  expect_equal(ans_obtained, ans_expected)
+})
+
+
+## 'make_vals_in_lik' -------------------------------------------------------------
+
+test_that("'make_vals_in_lik' works with model with offset", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = 1:2,
+                      sex = c("F", "M"),
+                      time = 1:2)
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$popn[1] <- 0
+  data$deaths[1] <- 0
+  formula <- deaths ~ age * sex + region
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  ans_obtained <- make_vals_in_lik(mod)
+  ans_expected <- list(outcome = mod$outcome[-1],
+                       offset = mod$offset[-1],
+                       matrices_effect_outcome = make_matrices_effect_outcome(data[-1,],
+                                                                              mod$dimnames_terms))
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_vals_in_lik' works with model with offset", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = 1:2,
+                      sex = c("F", "M"),
+                      time = 1:2)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$deaths[1] <- NA
+  formula <- deaths ~ age * sex + region
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = 1)
+  ans_obtained <- make_vals_in_lik(mod)
+  ans_expected <- list(outcome = mod$outcome[-1],
+                       offset = mod$offset[-1],
+                       matrices_effect_outcome = make_matrices_effect_outcome(data[-1,],
+                                                                              mod$dimnames_terms))
+  expect_equal(ans_obtained, ans_expected)
+})
+
+
+## 'make_vars_inner' ----------------------------------------------------------
+
+test_that("'make_vars_inner' works with age, sex, time present", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = 1:2,
+                      sex = c("F", "M"),
+                      time = 1:2)
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex + region + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  ans_obtained <- make_vars_inner(mod)
+  ans_expected <- c("age", "sex", "time")
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'make_vars_inner' works with age, sex present", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = 1:2,
+                      sex = c("F", "M"),
+                      time = 1:2)
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex + region
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  expect_message(make_vars_inner(mod),
+                 "Setting `vars_inner` to \"age\" and \"sex\".")
+  ans_obtained <- suppressMessages(make_vars_inner(mod))
+  ans_expected <- c("age", "sex")
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'make_vars_inner' throws correct error with age, sex, time not present", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = 1:2,
+                      sex = c("F", "M"),
+                      time = 1:2)
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ region
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  expect_error(make_vars_inner(mod),
+               "Unable to infer `vars_inner`.")
+})
+
+
+## 'n_col' --------------------------------------------------------------------
+
+test_that("'n_col' works with ordinary matrix", {
+  m <- matrix(1:6, nr = 2)
+  expect_identical(n_col(m), 3L)
+})
+
+test_that("'n_col' works with Matrix matrix", {
+  m <- Matrix::Matrix(1:6, nr = 2)
+  expect_identical(n_col(m), 3L)
+})
+
 
 
 ## 'n_comp_svd' ---------------------------------------------------------------
@@ -1708,6 +1736,94 @@ test_that("'print_prior_slot' works", {
 })
 
 
+## 'reduce_model_terms' -------------------------------------------------------
+
+test_that("'reduce_model' works with excluding non-intercept terms", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = 1:3,
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  set.seed(1)
+  mod <- mod_pois(deaths ~ age * sex + sex * region,
+                  data = data,
+                  exposure = popn)
+  use_term <- make_use_term(mod, vars_inner = c("age", "sex"))
+  ans_obtained <- reduce_model_terms(mod, use_term = use_term)
+  set.seed(1) ## needed because mod_pois sets random seed
+  ans_expected <- mod_pois(deaths ~ age * sex,
+                           data = data,
+                           exposure = popn)
+  expect_identical(ans_expected$formula, deaths ~ age * sex)
+  ans_expected$formula <- ans_obtained$formula
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'reduce_model' works with excluding intercept", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = 1:3,
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  set.seed(1)
+  mod <- mod_pois(deaths ~ age * sex + sex * region,
+                  data = data,
+                  exposure = popn)
+  use_term <- make_use_term(mod, vars_inner = c("age", "sex"))
+  use_term[[1]] <- FALSE
+  set.seed(1)
+  ans_no_intercept <- reduce_model_terms(mod, use_term = use_term)
+  expect_false("(Intercept)" %in% names(ans_no_intercept$priors))
+  expect_identical(deparse(ans_no_intercept$formula), "deaths ~ age + sex + age:sex - 1")
+})
+
+test_that("'reduce_model' works intercept is only term", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = 1:3,
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  set.seed(1)
+  mod <- mod_pois(deaths ~ age * sex + sex * region,
+                  data = data,
+                  exposure = popn)
+  use_term <- make_use_term(mod, vars_inner = c("age", "sex"))
+  use_term[[1]] <- TRUE
+  use_term[-1] <- FALSE
+  set.seed(1)
+  ans_intercept_only <- reduce_model_terms(mod, use_term = use_term)
+  expect_identical(names(ans_intercept_only$priors), "(Intercept)")
+  expect_identical(deparse(ans_intercept_only$formula), "deaths ~ 1")
+})
+
+
+## 'set_priors_known' ---------------------------------------------------------
+
+test_that("'set_priors_known' works with valid inputs", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- fit(mod)
+  prior_values <- make_point_est_effects(mod)
+  ans_obtained <- set_priors_known(mod, prior_values = prior_values)
+  ans_expected <- unfit(mod)
+  ans_expected$priors[[1]] <- Known(prior_values[["(Intercept)"]])
+  ans_expected$priors[[2]] <- Known(prior_values[["age"]])
+  ans_expected$priors[[3]] <- Known(prior_values[["sex"]])
+  ans_expected$priors[[4]] <- Known(prior_values[["age:sex"]])
+  expect_equal(ans_obtained, ans_expected)
+})
+
+
 ## 'str_call_args_along' ---------------------------------------------------------
 
 test_that("'str_call_args_along' works - no along", {
@@ -1730,31 +1846,48 @@ test_that("'str_call_args_along' works - has along", {
 test_that("'str_call_args_ar' works - AR1", {
   prior <- AR1(s = 0.5)
   ans_obtained <- str_call_args_ar(prior)
-  ans_expected <- c("", "", "s=0.5")
+  ans_expected <- c("s=0.5", "", "", "", "")
   expect_identical(ans_obtained, ans_expected)
 })
 
 test_that("'str_call_args_svd' works - AR", {
-  prior <- AR(n_coef = 3)
+  prior <- AR(n_coef = 3, shape1 = 2, shape2 = 2)
   ans_obtained <- str_call_args_ar(prior)
-  ans_expected <- c("n_coef=3", "")
+  ans_expected <- c("n_coef=3", "", "shape1=2", "shape2=2")
+  expect_identical(ans_obtained, ans_expected)
+})
+
+
+## 'str_call_args_con' --------------------------------------------------------
+
+test_that("'str_call_args_con' works - con is 'none'", {
+  prior <- RW()
+  ans_obtained <- str_call_args_con(prior)
+  ans_expected <- ""
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'str_call_args_con' works - con is 'by'", {
+  prior <- RW(con = "by")
+  ans_obtained <- str_call_args_con(prior)
+  ans_expected <- 'con="by"'
   expect_identical(ans_obtained, ans_expected)
 })
 
 
 ## 'str_call_args_lin' --------------------------------------------------------
 
-test_that("'str_call_args_lin' works - sd_slope = 1", {
+test_that("'str_call_args_lin' works - mean_slope = 0, sd_slope = 1", {
   prior <- Lin()
   ans_obtained <- str_call_args_lin(prior)
-  ans_expected <- ""
+  ans_expected <- c("", "")
   expect_identical(ans_obtained, ans_expected)
 })
 
 test_that("'str_call_args_lin' works - sd_slope not 1", {
-  prior <- Lin(sd = 0.3)
+  prior <- Lin(sd = 0.3, mean_slope = -0.02)
   ans_obtained <- str_call_args_lin(prior)
-  ans_expected <- "sd=0.3"
+  ans_expected <- c("mean_slope=-0.02", "sd_slope=0.3")
   expect_identical(ans_obtained, ans_expected)
 })
 
@@ -1788,14 +1921,7 @@ test_that("'str_call_args_n_seas' works", {
 
 ## 'str_call_args_s_seas' ------------------------------------------------------
 
-test_that("'str_call_args_s_seas' works - s_seas = 1", {
-  prior <- RW_Seas(n=3)
-  ans_obtained <- str_call_args_s_seas(prior)
-  ans_expected <- ""
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'str_call_args_s_seas' works - s_seas not 1", {
+test_that("'str_call_args_s_seas' works", {
   prior <- RW_Seas(n=2,s_seas = 0.3)
   ans_obtained <- str_call_args_s_seas(prior)
   ans_expected <- "s_seas=0.3"
@@ -1816,6 +1942,57 @@ test_that("'str_call_args_scale' works - scale not 1", {
   prior <- N(s = 0.3)
   ans_obtained <- str_call_args_scale(prior)
   ans_expected <- "s=0.3"
+  expect_identical(ans_obtained, ans_expected)
+})
+
+
+## 'str_call_args_sd' -----------------------------------------------------
+
+test_that("'str_call_args_sd' works - sd = 1", {
+  prior <- RW_Seas(n=3)
+  ans_obtained <- str_call_args_sd(prior)
+  ans_expected <- ""
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'str_call_args_sd' works - sd not 1", {
+  prior <- RW_Seas(n=2,sd = 0.3)
+  ans_obtained <- str_call_args_sd(prior)
+  ans_expected <- "sd=0.3"
+  expect_identical(ans_obtained, ans_expected)
+})
+
+
+## 'str_call_args_sd_seas' -----------------------------------------------------
+
+test_that("'str_call_args_sd_seas' works - sd_seas = 1", {
+  prior <- RW_Seas(n=3)
+  ans_obtained <- str_call_args_sd_seas(prior)
+  ans_expected <- ""
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'str_call_args_sd_seas' works - sd_seas not 1", {
+  prior <- RW_Seas(n=2,sd_seas = 0.3)
+  ans_obtained <- str_call_args_sd_seas(prior)
+  ans_expected <- "sd_seas=0.3"
+  expect_identical(ans_obtained, ans_expected)
+})
+
+
+## 'str_call_args_sd_slope' ---------------------------------------------------
+
+test_that("'str_call_args_sd_slope' works - sd_slope = 1", {
+  prior <- RW2()
+  ans_obtained <- str_call_args_sd_slope(prior)
+  ans_expected <- ""
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'str_call_args_sd_slope' works - non-default", {
+  prior <- RW2(sd_slope = 0.2)
+  ans_obtained <- str_call_args_sd_slope(prior)
+  ans_expected <- "sd_slope=0.2"
   expect_identical(ans_obtained, ans_expected)
 })
 

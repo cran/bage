@@ -7,13 +7,40 @@
 \alias{SVD_RW2}
 \title{Dynamic SVD-Based Priors for Age Profiles or Age-Sex Profiles}
 \usage{
-SVD_AR(ssvd, n_comp = NULL, indep = TRUE, n_coef = 2, s = 1)
+SVD_AR(
+  ssvd,
+  n_comp = NULL,
+  indep = TRUE,
+  n_coef = 2,
+  s = 1,
+  shape1 = 5,
+  shape2 = 5,
+  con = c("none", "by")
+)
 
-SVD_AR1(ssvd, n_comp = NULL, indep = TRUE, min = 0.8, max = 0.98, s = 1)
+SVD_AR1(
+  ssvd,
+  n_comp = NULL,
+  indep = TRUE,
+  min = 0.8,
+  max = 0.98,
+  s = 1,
+  shape1 = 5,
+  shape2 = 5,
+  con = c("none", "by")
+)
 
-SVD_RW(ssvd, n_comp = NULL, indep = TRUE, s = 1)
+SVD_RW(ssvd, n_comp = NULL, indep = TRUE, s = 1, sd = 1, con = c("none", "by"))
 
-SVD_RW2(ssvd, n_comp = NULL, indep = TRUE, s = 1)
+SVD_RW2(
+  ssvd,
+  n_comp = NULL,
+  indep = TRUE,
+  s = 1,
+  sd = 1,
+  sd_slope = 1,
+  con = c("none", "by")
+)
 }
 \arguments{
 \item{ssvd}{Object of class \code{"bage_ssvd"}
@@ -33,9 +60,24 @@ See below for details.}
 
 \item{s}{Scale for standard deviations terms.}
 
+\item{shape1, shape2}{Parameters for prior
+for coefficients in \code{SVD_AR()}.
+Defaults are \code{5} and \code{5}.}
+
+\item{con}{Constraints on parameters.
+Current choices are \code{"none"} and \code{"by"}.
+Default is \code{"none"}. See below for details.}
+
 \item{min, max}{Minimum and maximum values
-for autocorrelation coefficient in \code{SVD_AR()}.
+for autocorrelation coefficient in \code{SVD_AR1()}.
 Defaults are \code{0.8} and \code{0.98}.}
+
+\item{sd}{Standard deviation
+of initial value for random walks. Default is \code{1}.
+Can be \code{0}.}
+
+\item{sd_slope}{Standard deviation in prior
+for initial slope. Default is \code{1}.}
 }
 \value{
 An object of class \code{"bage_prior_svd_ar"},
@@ -82,18 +124,13 @@ values for period \eqn{t};
 \item \eqn{\pmb{\beta}_{u,t}} is a subvector of \eqn{\pmb{\beta}_t} holding
 values for the  \eqn{u}th combination of the non-age, non-time,
 non-sex/gender variables for period \eqn{t};
-\item \eqn{J} is the number of elements of \eqn{\pmb{\beta}_t};
-\item \eqn{V} is the number of elements of \eqn{\pmb{\beta}_{u,t}};
-\item \eqn{n} is \code{n_coef};
-\item \eqn{\pmb{F}} is a known matrix with dimension \eqn{J \times n}
-or \eqn{V \times n};
-\item \eqn{\pmb{g}} is a known vector with \eqn{J} or \eqn{V}
-elements.
+\item \eqn{\pmb{F}} is a known matrix; and
+\item \eqn{\pmb{g}} is a known vector.
 }
 
 \eqn{\pmb{F}} and \eqn{\pmb{g}} are constructed from
 a large database of age-specific demographic estimates
-by performing an SVD and standardizing.
+by applying the singular value decomposition, and then standardizing.
 
 With \code{SVD_AR()}, the prior for the \eqn{k}th element
 of \eqn{\pmb{\alpha}_t} or \eqn{\pmb{\alpha}_{u,t}} is
@@ -128,8 +165,33 @@ or
 
 \deqn{\alpha_{k,u,t} = 2 \alpha_{k,u,t-1} - \alpha_{k,u,t-2} + \epsilon_{k,u,t}.}
 
-For more on the \eqn{\phi} and \eqn{\epsilon}, see \code{\link[=AR]{AR()}}, \code{\link[=AR1]{AR1()}},
+For details, see \code{\link[=AR]{AR()}}, \code{\link[=AR1]{AR1()}},
 \code{\link[=RW]{RW()}}, and \code{\link[=RW2]{RW2()}}.
+}
+
+\section{Constraints}{
+
+
+With some combinations of terms and priors, the values of
+the intercept, main effects, and interactions are
+are only weakly identified.
+For instance, it may be possible to increase the value of the
+intercept and reduce the value of the remaining terms in
+the model with no effect on predicted rates and only a tiny
+effect on prior probabilities. This weak identifiability is
+typically harmless. However, in some applications, such as
+forecasting, or when trying to obtain interpretable values
+for main effects and interactions, it can be helpful to increase
+identifiability through the use of constraints.
+
+Current options for constraints are:
+\itemize{
+\item \code{"none"} No constraints. The default.
+\item \code{"by"} Only used in interaction terms that include 'along' and
+'by' dimensions. Within each value of the 'along'
+dimension, terms across each 'by' dimension are constrained
+to sum to 0.
+}
 }
 
 \section{Scaled SVDs of demographic databases in bage}{
@@ -137,6 +199,8 @@ For more on the \eqn{\phi} and \eqn{\epsilon}, see \code{\link[=AR]{AR()}}, \cod
 \itemize{
 \item \code{\link{HMD}} Mortality rates from the
 \href{https://www.mortality.org}{Human Mortality Database}.
+\item \code{\link{HFD}} Fertility rates from the
+\href{https://www.humanfertility.org}{Human Fertility Database}.
 \item \code{\link{LFP}} Labor forcce participation
 rates from the \href{https://data-explorer.oecd.org}{OECD}.
 }

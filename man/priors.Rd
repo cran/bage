@@ -15,29 +15,48 @@ or age and time.
 
 The intercept, main effects, and interactions
 all have prior models that capture the expected
-behavior of the term. Current choices of prior
-models are summarised here.
+behavior of the term. Current choices for priors
+summarised in the table below.
+
+Priors where 'forecast' is yes can be used
+in forecasts for a time-varying
+terms such as an age-time interactions.
+
+Priors where 'along' is yes distinguish
+between 'along' and 'by' dimensions.
 }
 \details{
-\tabular{llll}{
-   \strong{Prior} \tab \strong{Description} \tab \strong{Uses} \tab \strong{Forecast} \cr
-   \code{\link[=N]{N()}} \tab Elements drawn from normal distribution \tab Term with no natural order \tab Yes \cr
-   \code{\link[=NFix]{NFix()}} \tab As for \code{N()}, but standard deviation fixed \tab Term with few elements \tab Yes \cr
-   \code{\link[=RW]{RW()}} \tab Random walk \tab Smoothing \tab Yes \cr
-   \code{\link[=RW2]{RW2()}} \tab Second-order random walk \tab Like \code{RW()}, but smoother \tab Yes \cr
-   \code{\link[=RW_Seas]{RW_Seas()}} \tab Random walk, with seasonal effect \tab Terms involving time \tab Yes \cr
-   \code{\link[=RW2_Seas]{RW2_Seas()}} \tab Second-order random walk, with seasonal effect \tab Term involving time \tab Yes \cr
-   \code{\link[=AR]{AR()}} \tab Auto-regressive prior of order \emph{k} \tab Mean reversion \tab Yes \cr
-   \code{\link[=AR1]{AR1()}} \tab Auto-regressive prior of order 1 Special case of \code{AR()} \tab Mean reversion \tab Yes \cr
-   \code{\link[=Known]{Known()}} \tab Values  treated as known \tab Simulations,  prior knowledge \tab No \cr
-   \code{\link[=Lin]{Lin()}} \tab Linear trend, with independent normal \tab Parsimonious model for time \tab Yes \cr
-   \code{\link[=Lin_AR]{Lin_AR()}} \tab Linear trend, with autoregressive errors \tab Term involving time \tab Yes \cr
-   \code{\link[=Lin_AR1]{Lin_AR1()}} \tab Linear trend, with AR1 errors \tab Terms involving time \tab Yes \cr
-   \code{\link[=Sp]{Sp()}} \tab P-Spline (penalised spline) \tab Smoothing, eg over age \tab No \cr
-   \code{\link[=SVD]{SVD()}} \tab Age or age-sex profile based on SVD of database \tab Age or age-sex \tab No \cr
-   \code{\link[=SVD_AR]{SVD_AR()}} \tab \code{SVD()}, but coefficients follow \code{AR()} \tab Age or age-sex and time \tab Yes \cr
-   \code{\link[=SVD_AR1]{SVD_AR1()}} \tab \code{SVD()}, but coefficients follow \code{AR1()} \tab Age or age-sex and time \tab Yes \cr
-   \code{\link[=SVD_RW]{SVD_RW()}} \tab \code{SVD()}, but coefficients follow \code{RW()} \tab Age or age-sex and time \tab Yes \cr
-   \code{\link[=SVD_RW2]{SVD_RW2()}} \tab \code{SVD()}, but coefficients follow \code{RW2()} \tab Age or age-sex and time \tab Yes \cr
+\tabular{lllll}{
+   \strong{Prior} \tab \strong{Description} \tab \strong{Uses} \tab \strong{Forecast} \tab \strong{Along} \cr
+   \code{\link[=N]{N()}} \tab Elements drawn from normal distribution \tab Term with no natural order \tab Yes \tab No \cr
+   \code{\link[=NFix]{NFix()}} \tab As for \code{N()}, but standard deviation fixed \tab Term with few elements \tab Yes \tab No \cr
+   \code{\link[=Known]{Known()}} \tab Values  treated as known \tab Simulations,  prior knowledge \tab No \tab No \cr
+   \code{\link[=RW]{RW()}} \tab Random walk \tab Smoothing \tab Yes \tab Yes \cr
+   \code{\link[=RW2]{RW2()}} \tab Second-order random walk \tab Like \code{RW()}, but smoother \tab Yes \tab Yes \cr
+   \code{\link[=RW_Seas]{RW_Seas()}} \tab Random walk, with seasonal effect \tab Terms involving time \tab Yes \tab Yes \cr
+   \code{\link[=RW2_Seas]{RW2_Seas()}} \tab Second-order random walk, with seasonal effect \tab Term involving time \tab Yes \tab Yes \cr
+   \code{\link[=AR]{AR()}} \tab Auto-regressive prior of order \emph{k} \tab Mean reversion \tab Yes \tab Yes \cr
+   \code{\link[=AR1]{AR1()}} \tab Auto-regressive prior of order 1 Special case of \code{AR()} \tab Mean reversion \tab Yes \tab Yes \cr
+   \code{\link[=Lin]{Lin()}} \tab Linear trend, with independent normal \tab Parsimonious model for time \tab Yes \tab Yes \cr
+   \code{\link[=Lin_AR]{Lin_AR()}} \tab Linear trend, with autoregressive errors \tab Term involving time \tab Yes \tab Yes \cr
+   \code{\link[=Lin_AR1]{Lin_AR1()}} \tab Linear trend, with AR1 errors \tab Terms involving time \tab Yes \tab Yes \cr
+   \code{\link[=Sp]{Sp()}} \tab P-Spline (penalised spline) \tab Smoothing, eg over age \tab No \tab Yes \cr
+   \code{\link[=SVD]{SVD()}} \tab Age or age-sex profile based on SVD of database \tab Age or age-sex \tab No \tab No \cr
+   \code{\link[=SVD_AR]{SVD_AR()}} \tab \code{SVD()}, but coefficients follow \code{AR()} \tab Age or age-sex and time \tab Yes \tab Yes \cr
+   \code{\link[=SVD_AR1]{SVD_AR1()}} \tab \code{SVD()}, but coefficients follow \code{AR1()} \tab Age or age-sex and time \tab Yes \tab Yes \cr
+   \code{\link[=SVD_RW]{SVD_RW()}} \tab \code{SVD()}, but coefficients follow \code{RW()} \tab Age or age-sex and time \tab Yes \tab Yes \cr
+   \code{\link[=SVD_RW2]{SVD_RW2()}} \tab \code{SVD()}, but coefficients follow \code{RW2()} \tab Age or age-sex and time \tab Yes \tab Yes \cr
 }
 }
+\section{Default prior}{
+
+
+The rule for selecting a default prior for a term is:
+\itemize{
+\item if term has less than 3 elements, use \code{\link[=NFix]{NFix()}};
+\item otherwise, if the term involves time, use \code{\link[=RW]{RW()}}, with time as the `along' dimension;
+\item otherwise, if the term involves age, use \code{\link[=RW]{RW()}}, with age as the `along' dimension;
+\item otherwise, use \code{\link[=N]{N()}}.
+}
+}
+

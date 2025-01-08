@@ -4,19 +4,34 @@
 \alias{AR1}
 \title{Autoregressive Prior of Order 1}
 \usage{
-AR1(min = 0.8, max = 0.98, s = 1, along = NULL)
+AR1(
+  s = 1,
+  shape1 = 5,
+  shape2 = 5,
+  min = 0.8,
+  max = 0.98,
+  along = NULL,
+  con = c("none", "by")
+)
 }
 \arguments{
+\item{s}{Scale for the prior for the innovations.
+Default is \code{1}.}
+
+\item{shape1, shape2}{Parameters for beta-distribution prior
+for coefficients. Defaults are \code{5} and \code{5}.}
+
 \item{min, max}{Minimum and maximum values
 for autocorrelation coefficient.
 Defaults are \code{0.8} and \code{0.98}.}
 
-\item{s}{Scale for the prior for the innovations.
-Default is \code{1}.}
-
 \item{along}{Name of the variable to be used
-as the "along" variable. Only used with
+as the 'along' variable. Only used with
 interactions.}
+
+\item{con}{Constraints on parameters.
+Current choices are \code{"none"} and \code{"by"}.
+Default is \code{"none"}. See below for details.}
 }
 \value{
 An object of class \code{"bage_prior_ar"}.
@@ -32,8 +47,8 @@ interactions that involve time.
 \details{
 If \code{AR()} is used with an interaction,
 separate AR processes are constructed along
-the "along" variable, within each combination of the
-"by" variables.
+the 'along' variable, within each combination of the
+'by' variables.
 
 Arguments \code{min} and \code{max} can be used to specify
 the permissible range for autocorrelation.
@@ -58,26 +73,51 @@ where
 \itemize{
 \item \eqn{\pmb{\beta}} is the main effect or interaction;
 \item \eqn{j} denotes position within the main effect;
-\item \eqn{v} denotes position within the "along" variable of the interaction; and
-\item \eqn{u} denotes position within the "by" variable(s) of the interaction.
+\item \eqn{v} denotes position within the 'along' variable of the interaction; and
+\item \eqn{u} denotes position within the 'by' variable(s) of the interaction.
 }
 
 Internally, \code{AR1()} derives a value for \eqn{\omega} that
 gives every element of \eqn{\beta} a marginal
 variance of \eqn{\tau^2}. Parameter \eqn{\tau}
 has a half-normal prior
-\deqn{\tau \sim \text{N}^+(0, \text{s}^2),}
+\deqn{\tau \sim \text{N}^+(0, \mathtt{s}^2),}
 where \code{s} is provided by the user.
 
 Coefficient \eqn{\phi} is constrained
 to lie between \code{min} and \code{max}.
 Its prior distribution is
 
-\deqn{\phi = (\text{max} - \text{min}) \phi' - \text{min}}
+\deqn{\phi = (\mathtt{max} - \mathtt{min}) \phi' - \mathtt{min}}
 
 where
 
-\deqn{\phi' \sim \text{Beta}(2, 2).}
+\deqn{\phi' \sim \text{Beta}(\mathtt{shape1}, \mathtt{shape2}).}
+}
+
+\section{Constraints}{
+
+
+With some combinations of terms and priors, the values of
+the intercept, main effects, and interactions are
+are only weakly identified.
+For instance, it may be possible to increase the value of the
+intercept and reduce the value of the remaining terms in
+the model with no effect on predicted rates and only a tiny
+effect on prior probabilities. This weak identifiability is
+typically harmless. However, in some applications, such as
+forecasting, or when trying to obtain interpretable values
+for main effects and interactions, it can be helpful to increase
+identifiability through the use of constraints.
+
+Current options for constraints are:
+\itemize{
+\item \code{"none"} No constraints. The default.
+\item \code{"by"} Only used in interaction terms that include 'along' and
+'by' dimensions. Within each value of the 'along'
+dimension, terms across each 'by' dimension are constrained
+to sum to 0.
+}
 }
 
 \examples{
