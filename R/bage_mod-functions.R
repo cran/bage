@@ -1,8 +1,95 @@
 
 ## User-visible functions that look like methods, but technically are not
 
+## 'set_covariates' -----------------------------------------------------------
 
-## 'set_datamod_outcome_rr3' ----------------------------------------------------------
+## HAS_TESTS
+#' Specify Covariates
+#'
+#' Add covariates to a model.
+#'
+#' If `set_covariates()` is applied to
+#' a model that already has covariates,
+#' `set_covariates()` deletes the
+#' existing covariates.
+#'
+#' If `set_covariates()` is applied to
+#' a fitted model, `set_covariates()` [unfits][unfit()]
+#' the model, deleting existing estimates.
+#' 
+#' @section Covariate data:
+#'
+#' All variables contained in the `formula`
+#' argument to `set_covariates()` should be in the
+#' dataset supplied in the original call to
+#' [mod_pois()], [mod_binom()], or [mod_norm()].
+#'
+#' `set_covariates()` processes the covariate data before
+#' adding it to the model:
+#' - All numeric variables are standardized, using
+#'   `x <- scale(x)`.
+#' - Categorical variables are converted to sets of indicator
+#'   variables, using [treatment][stats::contr.treatment()] contrasts.
+#'   For instance, variable `x` with categories
+#'   `"high"`, `"medium"`, and `"low"`,
+#'   is converted into two indicator variables, one called `xmedium` and one
+#'   called `xlow`.
+#'
+#' @section Mathematical details:
+#'
+#' When a model includes covariates, the quantity
+#'
+#' \deqn{\pmb{Z} \pmb{\zeta}}
+#'
+#' is added to the linear predictor, where \eqn{\pmb{Z}}
+#' is a matrix of standardized covariates, and \eqn{\pmb{\zeta}}
+#' is a vector of coefficients. The elements of
+#' \eqn{\pmb{\zeta}} have prior
+#'
+#' \deqn{\zeta_p \sim \text{N}(0, 1)}.
+#'
+#' @param mod An object of class `"bage_mod"`,
+#' created with [mod_pois()],
+#' [mod_binom()], or [mod_norm()].
+#' @param formula A one-sided R [formula][stats::formula()],
+#' specifying the covariates.
+#'
+#' @returns A modified version of `mod`
+#'
+#' @seealso
+#' - [datamods] Overview of data models implemented in **bage**
+#' - [mod_pois()], [mod_binom()], [mod_norm()] Specify a
+#'   model for rates, probabilities, or means
+#'
+#' @examples
+#' ## create a COVID covariate
+#' library(dplyr, warn.conflicts = FALSE)
+#' births <- kor_births |>
+#'   mutate(is_covid = time %in% 2020:2022)
+#' mod <- mod_pois(births ~ age * region + time,
+#'                 data = births,
+#'                 exposure = popn) |>
+#'   set_covariates(~ is_covid)
+#' mod
+#' @export
+set_covariates <- function(mod, formula) {
+  check_bage_mod(x = mod, nm_x = "mod")
+  check_covariates_formula(formula = formula, mod = mod)
+  data <- mod$data
+  formula_mod <- mod$formula
+  matrix_covariates <- make_matrix_covariates(formula = formula,
+                                              data = data)
+  covariates_nms <- colnames(matrix_covariates)
+  if (has_covariates(mod))
+    cli::cli_alert_warning("Model already has covariates. Deleting these.")
+  mod$formula_covariates <- formula
+  mod$covariates_nms <- covariates_nms
+  mod <- unfit(mod)
+  mod
+}
+
+
+## 'set_datamod_outcome_rr3' --------------------------------------------------
 
 #' Specify RR3 Data Model
 #'
@@ -28,7 +115,8 @@
 #'   with probability 2/3.
 #'
 #' If `set_datamod_outcome_rr3()` is applied to
-#' a fitted model, it 'unfits'
+#' a fitted model, `set_datamod_outcome_rr3()`
+#' [unfits][unfit()]
 #' the model, deleting existing estimates.
 #'
 #' @param mod An object of class `"bage_mod"`,
@@ -52,6 +140,7 @@
 #'   fit()
 #' @export
 set_datamod_outcome_rr3 <- function(mod) {
+  check_bage_mod(x = mod, nm_x = "mod")
   ## check is valid distribution
   valid_distn <- c("binom", "pois")
   nm_distn <- nm_distn(mod)
@@ -85,18 +174,21 @@ set_datamod_outcome_rr3 <- function(mod) {
 #'
 #' \deqn{p(\xi) = \frac{1}{\mu}\exp\left(\frac{-\xi}{\mu}\right).}
 #'
+#' By default \eqn{\mu} equals 1.
+#'
 #' In Poisson and binomial models,
 #' `mean` can be set to `0`, implying
 #' that the dispersion term is also `0`.
 #' In normal models, `mean` must be non-negative.
 #'
 #' If `set_disp()` is applied to
-#' a fitted model, it 'unfits'
+#' a fitted model, `set_disp()` [unfits][unfit()]
 #' the model, deleting existing estimates.
 #'
 #' @inheritParams set_datamod_outcome_rr3
 #' @param mean Mean value for the exponential prior.
 #' In Poisson and binomial models, can be set to 0.
+#' Default is `1`.
 #'
 #' @returns A `bage_mod` object
 #'
@@ -106,7 +198,7 @@ set_datamod_outcome_rr3 <- function(mod) {
 #' - [set_prior()] Specify prior for a term
 #' - [set_n_draw()] Specify the number of draws
 #' - [is_fitted()] Test whether a model is fitted
-#' 
+#'
 #' @examples
 #' mod <- mod_pois(injuries ~ age:sex + ethnicity + year,
 #'                 data = nzl_injuries,
@@ -115,7 +207,7 @@ set_datamod_outcome_rr3 <- function(mod) {
 #' mod |> set_disp(mean = 0.1)
 #' mod |> set_disp(mean = 0)
 #' @export
-set_disp <- function(mod, mean) {
+set_disp <- function(mod, mean = 1) {
     check_bage_mod(x = mod, nm_x = "mod")
     nm_distn <- nm_distn(mod)
     zero_ok <- nm_distn %in% c("pois", "binom")
@@ -144,12 +236,12 @@ set_disp <- function(mod, mean) {
 #' the old value, and the model has already been fitted,
 #' then the model is [unfitted][unfit()], and
 #' function [fit()] may need to be called again.
-#' 
+#'
 #' @inheritParams set_datamod_outcome_rr3
 #' @param n_draw Number of draws.
 #'
 #' @returns A `bage_mod` object
-#' 
+#'
 #' @seealso
 #' - [bage::augment()], [bage::components()] functions for
 #'   drawing from prior or posterior distribution - the output
@@ -188,16 +280,17 @@ set_n_draw <- function(mod, n_draw = 1000L) {
     }
     if (n_draw < n_draw_old) {
       s <- seq_len(n_draw)
-      mod$draws_effectfree <- mod$draws_effectfree[, s, drop = FALSE] 
+      mod$draws_effectfree <- mod$draws_effectfree[, s, drop = FALSE]
       mod$draws_hyper <- mod$draws_hyper[, s, drop = FALSE]
       mod$draws_hyperrandfree <- mod$draws_hyperrandfree[, s, drop = FALSE]
+      if (has_covariates(mod))
+        mod$draws_coef_covariates <- mod$draws_coef_covariates[, s, drop = FALSE]        
       if (has_disp(mod))
         mod$draws_disp <- mod$draws_disp[s]
     }
   }
   mod
 }
-
 
 
 ## 'set_prior' ----------------------------------------------------------------
@@ -209,9 +302,9 @@ set_n_draw <- function(mod, n_draw = 1000L) {
 #' a main effect, or an interaction.
 #'
 #' If `set_prior()` is applied to
-#' a fitted model, it 'unfits'
+#' a fitted model, `set_prior()` [unfits][unfit()]
 #' the model, deleting existing estimates.
-#' 
+#'
 #' @param mod A `bage_mod` object, created with
 #' [mod_pois()], [mod_binom()], or [mod_norm()].
 #' @param formula A formula giving the term
@@ -270,6 +363,97 @@ set_prior <- function(mod, formula) {
 }
 
 
+## 'set_seeds' --------------------------------------------------------------
+
+## HAS_TESTS
+#' Reset Random Seeds in Model Object
+#'
+#' Reset random seeds stored in a model object.
+#' When `new_seeds` is `NULL` (the default),
+#' the new seeds are generated randomly; otherwise
+#' they are taken from `new_seeds`.
+#'
+#' When an object of class `"bage_mod"` is first created,
+#' values are generated four four random seeds:
+#'
+#' - `seed_components`
+#' - `seed_augment`
+#' - `seed_forecast_components`
+#' - `seed_forecast_augment`
+#'
+#' When [fit()], [components()], [augment()],
+#' and [forecast()] are called on the model object,
+#' the seeds are used internally to ensure that
+#' he same inputs generate the same outputs, even
+#' when the outputs involve random draws.
+#'
+#' End users are unlikely to call `set_seeds()` in
+#' a data analysis, though it may occasionally by useful
+#' when building a simulation from scratch.
+#'
+#' @param mod An object of class `"bage_mod"`,
+#' created with [mod_pois()],
+#' [mod_binom()], or [mod_norm()].
+#' @param new_seeds `NULL` (the default) or a list
+#' of integers with names `"seed_components"`
+#' `"seed_augment"`, `"seed_forecast_components"`,
+#' and `"seed_forecast_augment"`.
+#'
+#' @returns A modified version of `mod`.
+#'
+#' @seealso
+#' - [report_sim()] Do a simulation study. (`report_sim()`
+#'   calls `set_seeds()` internally.)
+#' - [mod_pois()], [mod_binom()], [mod_norm()] Specify a model
+#' - [fit()] Fit a model
+#' - [unfit()] Reset model, deleting estimates
+#'
+#' @examples
+#' ## fit model
+#' mod <- mod_pois(injuries ~ age,
+#'                 data = nzl_injuries,
+#'                 exposure = popn) |>
+#'   fit()
+#'
+#' ## call 'components()'
+#' components(mod)
+#'
+#' ## call 'components()' again - same results
+#' components(mod)
+#'
+#' ## reset seeds
+#' mod <- set_seeds(mod)
+#'
+#' ## calling 'set_seeds' unfits the model
+#' is_fitted(mod)
+#'
+#' ## so we fit it again
+#' mod <- fit(mod)
+#'
+#' ## when we call components, we get
+#' ## different results from earlier
+#' components(mod)
+#' @export
+set_seeds <- function(mod, new_seeds = NULL) {
+  check_bage_mod(x = mod, nm_x = "mod")
+  if (is.null(new_seeds)) {
+    mod$seed_components <- make_seed()
+    mod$seed_augment <- make_seed()
+    mod$seed_forecast_components <- make_seed()
+    mod$seed_forecast_augment <- make_seed()
+  }
+  else {
+    check_new_seeds(new_seeds)
+    mod$seed_components <- new_seeds$seed_components
+    mod$seed_augment <- new_seeds$seed_augment
+    mod$seed_forecast_components <- new_seeds$seed_forecast_components
+    mod$seed_forecast_augment <- new_seeds$seed_forecast_augment
+  }
+  mod <- unfit(mod)
+  mod
+}
+
+
 ## 'set_var_age' --------------------------------------------------------------
 
 #' Specify Age Variable
@@ -281,7 +465,7 @@ set_prior <- function(mod, formula) {
 #'
 #' In an R \code{\link{formula}}, a 'variable' is different
 #' from a 'term'. For instance,
-#' 
+#'
 #' `~ age + region + age:region`
 #'
 #' contains variables `age` and `region`,
@@ -293,9 +477,9 @@ set_prior <- function(mod, formula) {
 #' see below for an example.
 #'
 #' If `set_var_age()` is applied to
-#' a fitted model, it 'unfits'
+#' a fitted model, `set_var_age()` [unfits][unfit()]
 #' the model, deleting existing estimates.
-#' 
+#'
 #' @inheritParams set_datamod_outcome_rr3
 #' @param name The name of the age variable.
 #'
@@ -307,7 +491,7 @@ set_prior <- function(mod, formula) {
 #' - [is_fitted()] Test whether a model is fitted
 #' - internally, **bage** uses [poputils::find_var_age()]
 #'   to locate age variables
-#' 
+#'
 #' @examples
 #' ## rename 'age' variable to something unusual
 #' injuries2 <- nzl_injuries
@@ -344,16 +528,16 @@ set_var_age <- function(mod, name) {
 #'
 #' In an R \code{\link{formula}}, a 'variable' is different
 #' from a 'term'. For instance,
-#' 
+#'
 #' `~ gender + region + gender:region`
 #'
 #' contains variables `gender` and `region`,
 #' and terms `gender`, `region`, and `gender:region`.
 #'
 #' If `set_var_sexgender()` is applied to
-#' a fitted model, it 'unfits'
+#' a fitted model, `set_var_sexgender()` [unfits][unfit()]
 #' the model, deleting existing estimates.
-#' 
+#'
 #' @inheritParams set_datamod_outcome_rr3
 #' @param name The name of the sex or gender variable.
 #'
@@ -369,7 +553,7 @@ set_var_age <- function(mod, name) {
 #'   to locate female categories within a sex or gender variable
 #' - internally, **bage** uses [poputils::find_label_male()]
 #'   to locate male categories within a sex or gender variable
-#' 
+#'
 #' @examples
 #' ## rename 'sex' variable to something unexpected
 #' injuries2 <- nzl_injuries
@@ -404,7 +588,7 @@ set_var_sexgender <- function(mod, name) {
 #'
 #' In an R \code{\link{formula}}, a 'variable' is different
 #' from a 'term'. For instance,
-#' 
+#'
 #' `~ time + region + time:region`
 #'
 #' contains variables `time` and `region`,
@@ -416,9 +600,9 @@ set_var_sexgender <- function(mod, name) {
 #' see below for an example.
 #'
 #' If `set_var_time()` is applied to
-#' a fitted model, it 'unfits'
+#' a fitted model, `set_var_time()` [unfits][unfit()]
 #' the model, deleting existing estimates.
-#' 
+#'
 #' @inheritParams set_datamod_outcome_rr3
 #' @param name The name of the time variable.
 #'
@@ -469,6 +653,7 @@ set_var_time <- function(mod, name) {
 #' @seealso
 #' - [fit()] Fit a model
 #' - [mod_pois()], [mod_binom()], [mod_norm()] Specify a model
+#' - [set_seeds()] Reset random seeds
 #' - Functions such as [set_prior()], [set_disp()] and
 #'   [set_var_age()] unfit models as side effects.
 #'
@@ -492,10 +677,12 @@ unfit <- function(mod) {
   mod["draws_effectfree"] <- list(NULL)
   mod["draws_hyper"] <- list(NULL)
   mod["draws_hyperrandfree"] <- list(NULL)
+  mod["draws_coef_covariates"] <- list(NULL)
   mod["draws_disp"] <- list(NULL)
   mod["point_effectfree"] <- list(NULL)
   mod["point_hyper"] <- list(NULL)
   mod["point_hyperrandfree"] <- list(NULL)
+  mod["point_coef_covariates"] <- list(NULL)
   mod["point_disp"] <- list(NULL)
   mod["computations"] <- list(NULL)
   mod["oldpar"] <- list(NULL)
@@ -512,7 +699,7 @@ unfit <- function(mod) {
 #' Called by user-visible functions
 #' 'set_var_age', 'set_var_sexgender',
 #' and 'set_var_time'.
-#' 
+#'
 #' @param mod A `bage_mod` object.
 #' @param name The name of the variable.
 #' @param var "age", "sexgender", or "time"
@@ -562,7 +749,7 @@ set_var_inner <- function(mod, name, var) {
   if (has_name_old) {
     length_effect_old <- lengths_effects[[name_old]]
     priors[[name_old]] <- default_prior(nm_term = name_old,
-                                        var_age = var_age, 
+                                        var_age = var_age,
                                         var_time = var_time,
                                         length_effect = length_effect_old)
   }

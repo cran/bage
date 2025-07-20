@@ -180,11 +180,12 @@ intercept and reduce the value of the remaining terms in
 the model with no effect on predicted rates and only a tiny
 effect on prior probabilities. This weak identifiability is
 typically harmless. However, in some applications, such as
-forecasting, or when trying to obtain interpretable values
+when trying to obtain interpretable values
 for main effects and interactions, it can be helpful to increase
-identifiability through the use of constraints.
+identifiability through the use of constraints, specified through the
+\code{con} argument.
 
-Current options for constraints are:
+Current options for \code{con} are:
 \itemize{
 \item \code{"none"} No constraints. The default.
 \item \code{"by"} Only used in interaction terms that include 'along' and
@@ -214,8 +215,9 @@ SVD_RW2(HMD, indep = FALSE)
 \references{
 \itemize{
 \item For details of the construction of
-scaled SVDS see the vignette
-\href{https://bayesiandemography.github.io/bage/articles/vig2_math.html}{here}.
+scaled SVDS see the
+\item \href{https://bayesiandemography.github.io/bage/articles/vig2_math.html}{Mathematical Details}
+vignette
 }
 }
 \seealso{

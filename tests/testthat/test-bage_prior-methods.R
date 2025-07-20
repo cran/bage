@@ -1784,6 +1784,13 @@ test_that("'draw_vals_hyper' works with bage_prior_linar", {
   expect_identical(length(ans$sd), 10L)
 })
 
+test_that("'draw_vals_hyper' works with bage_prior_linex", {
+  prior <- Lin(s = 0)
+  ans <- draw_vals_hyper(prior = prior,
+                         n_sim = 10)
+  expect_identical(ans, list())
+})
+
 test_that("'draw_vals_hyper' works with bage_prior_norm", {
   prior <- N()
   ans <- draw_vals_hyper(prior = prior,
@@ -6644,7 +6651,7 @@ test_that("'generate' works with bage_prior_svd_rw2random - no sex, n_by = 2", {
 })
 
 test_that("'generate' works with bage_prior_svd_rw2random - no sex, n_by = 2, con = 'by'", {
-  x <- SVD_RW2(HFD)
+  x <- SVD_RW2(HFD, con = "by")
   set.seed(0)
   n_along <- 4
   n_by <- 2
@@ -10123,9 +10130,11 @@ test_that("'print' works", {
   expect_snapshot(print(SVD_RW(HMD)))
   expect_snapshot(print(SVD_RW(HMD, indep = FALSE)))
   expect_snapshot(print(SVD_RW(HMD, sd = 0)))
+  expect_snapshot(print(SVD_RW(HMD, sd = 0, indep = FALSE)))
   expect_snapshot(print(SVD_RW2(HMD)))
   expect_snapshot(print(SVD_RW2(HMD, indep = FALSE)))
   expect_snapshot(print(SVD_RW2(HMD, sd = 0)))
+  expect_snapshot(print(SVD_RW2(HMD, sd = 0, indep = FALSE)))
 })
 
 

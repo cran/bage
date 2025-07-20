@@ -7,9 +7,9 @@
 \method{forecast}{bage_mod}(
   object,
   newdata = NULL,
+  labels = NULL,
   output = c("augment", "components"),
   include_estimates = FALSE,
-  labels = NULL,
   ...
 )
 }
@@ -21,13 +21,13 @@ typically created with \code{\link[=mod_pois]{mod_pois()}},
 \item{newdata}{Data frame with data for
 future periods.}
 
+\item{labels}{Labels for future values.}
+
 \item{output}{Type of output returned}
 
 \item{include_estimates}{Whether to
 include historical estimates along
 with the forecasts. Default is \code{FALSE}.}
-
-\item{labels}{Labels for future values.}
 
 \item{...}{Not currently used.}
 }
@@ -50,15 +50,24 @@ interactions with non-time-varying parameters, e.g.
 age effects or dispersion.
 \item Use the combined parameters to generate values for
 rates, probabilities or means.
-\item If a \code{newdata} argument has been provided,
-and \code{output} is \code{"augment"},
-draw values for outcome.
+\item Optionally, generate values for the outcome variable.
 }
 
-\code{vignette("vig2_math")} has the technical details.
+\code{forecast()} generates values for the outcome variable when,
+\itemize{
+\item \code{output} is \code{"augment"},
+\item a value has been supplied for \code{newdata},
+\item \code{newdata} included a value for the exposure,
+size, or weights variable (except if \code{exposure = 1}
+or \code{weights = 1} in the original call to
+\code{\link[=mod_pois]{mod_pois()}} or \code{\link[=mod_norm]{mod_norm()}}).
 }
 
-\section{Output}{
+\href{https://bayesiandemography.github.io/bage/articles/vig2_math.html}{Mathematical Details}
+gives more details on the internal calculations in forecasting.
+}
+
+\section{Output format}{
 
 
 When \code{output} is \code{"augment"} (the default),
@@ -74,6 +83,20 @@ When \code{include_estimates} is \code{TRUE}, the output
 includes these values.
 Setting \code{include_estimates} to \code{TRUE} can be helpful
 when creating graphs that combine estimates and forecasts.
+}
+
+\section{Forecasting with covariates}{
+
+
+Models that contain \link[=set_covariates]{covariates} can be used
+in forecasts, provided that
+\itemize{
+\item all coefficients (the \eqn{\zeta_p}) are estimated
+from historical data via \code{\link[=fit]{fit()}}, and
+\item if any covariates (the columns of \eqn{\pmb{Z}})
+are time-varying, then future values for these
+covariates are supplied via the \code{newdata} argument.
+}
 }
 
 \section{Fitted and unfitted models}{
@@ -133,16 +156,26 @@ mod_pois(injuries ~ age * sex + ethnicity + year,
   fit() |>
   forecast(newdata = data_forecast)
 
-## forecast based on priors only
-mod_unfitted <- mod_pois(injuries ~ age * sex + ethnicity + year,
-                         data = nzl_injuries,
-                         exposure = popn)
-mod_unfitted |>
-  forecast(labels = 2019:2024)
+## forecast using GDP per capita in 2023 as a covariate
+mod_births <- mod_pois(births ~ age * region + time,
+                       data = kor_births,
+                       exposure = popn) |>
+  set_covariates(~ gdp_pc_2023) |>
+  fit()
+mod_births |>
+  forecast(labels = 2024:2025)
 }
 \seealso{
 \itemize{
-\item \code{\link[=mod_pois]{mod_pois()}}, \code{\link[=mod_binom]{mod_binom()}}, \code{\link[=mod_norm]{mod_norm()}} to specify a model
-\item \code{\link[=fit]{fit()}} to fit a model
+\item \code{\link[=mod_pois]{mod_pois()}} Specify a Poisson model
+\item \code{\link[=mod_binom]{mod_binom()}} Specify a binomial model
+\item \code{\link[=mod_norm]{mod_norm()}} Specify a normal model
+\item \code{\link[=fit]{fit()}} Fit a model
+\item \code{\link[=augment]{augment()}} Extract values for rates,
+probabilities, or means, together
+with original data
+\item \code{\link[=components]{components()}} Extract values for hyper-parameters
+\item \href{https://bayesiandemography.github.io/bage/articles/vig2_math.html}{Mathematical Details}
+vignette
 }
 }

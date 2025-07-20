@@ -26,8 +26,10 @@
 
 #' Births in South Korea
 #'
-#' Births by age of mother, region, and calendar year,
-#' 2011-2023.
+#' Births and mid-year population by age of mother,
+#' region, and calendar year,
+#' 2011-2023, plus regional data on GDP per capita and
+#' population density.
 #'
 #' @format
 #' A [tibble][tibble::tibble-package] with 1,872 rows and the following
@@ -38,12 +40,18 @@
 #' - `time` Calendar year, 2011-2023
 #' - `births` Counts of births
 #' - `popn` Mid-year population
+#' - `gdp_pc_2023` Regional GDP per capita in 2023
+#' - `dens_2020` Regional population density
+#'   (people per km-squared) in 2020
 #'
 #' @source Tables "Live Births by Age Group of Mother,
 #' Sex and Birth Order for Provinces",
 #' and "Resident Population in Five-Year Age Groups",
 #' on the Korean Statistical Information Service website.
-#' Data downloaded on 24 September 2024.
+#' Data downloaded on 24 September 2024. Data on GDP per capita
+#' and population density from Wikipedia
+#' https://w.wiki/DMFA, data downloaded on 8 March 2025, and
+#' https://w.wiki/DMF9, data downloaded on 8 March 2025.
 "kor_births"
 
 
@@ -158,6 +166,32 @@
 #' on the Statistics New Zealand website.
 #' Data downloaded on 1 January 2023.
 "nzl_injuries"
+
+
+#' Deaths in Portugal
+#'
+#' Deaths and exposure in Portugal, by age, sex, and year.
+#'
+#' The data are from the Human Mortality Database. Deaths are
+#' rounded to the nearest integer.  More recent versions,
+#' and a comprehensive description of the data,
+#' are available at the HMD website.
+#'
+#' @format
+#' A [tibble][tibble::tibble-package]
+#' with 3,168 rows and the following columns:
+#'
+#' - `age`: Age groups `"0"`, `"1-4"`, "5-9", ..., `"95-99"`, `"100+"`
+#' - `sex`: `"Female"` or `"Male"`
+#' - `time`: Calendar year
+#' - `deaths`: Count of deaths
+#' - `exposure`: Person-years lived by population
+#'
+#' @source Human Mortality Database. University of California, Berkeley (USA),
+#' and Max Planck Institute for Demographic Research (Germany).
+#' Available at \url{https://www.mortality.org}.
+#' (data downloaded on 17 July 2018).
+"prt_deaths"
 
 
 #' Infant Mortality in Sweden

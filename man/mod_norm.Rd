@@ -30,52 +30,23 @@ as age, sex, and time. The terms for these dimension themselves
 have models, as described in \link{priors}. These priors all have defaults,
 which depend on the type of term (eg an intercept, an age main effect,
 or an age-time interaction.)
-
-Internally, the outcome
-variable scaled to have mean 0 and sd 1.
 }
-\section{Mathematical details}{
+\section{Scaling of outcome and weights}{
 
 
-The likelihood is
+Internally, \code{mod_norm()} scales the outcome variable
+to have mean 0 and standard deviation 1, and
+scales the weights to have mean 1.
+This scaling allows \code{mod_norm()} to use the
+same menu of priors as \code{\link[=mod_pois]{mod_pois()}} and \code{\link[=mod_binom]{mod_binom()}}.
 
-\deqn{y_i \sim \text{N}(\mu_i, \xi^2 / w_i)}
+\code{\link[=augment]{augment()}} always returns values on the
+original scale, rather than the transformed scale.
 
-where
-\itemize{
-\item \eqn{y_i} is a scaled value for an, such of the log of income, for some
-combination \eqn{i} of classifying variables,
-such as age, sex, and region;
-\item \eqn{\mu_i} is a mean;
-\item \eqn{\xi} is a standard deviation parameter; and
-\item \eqn{w_i} is a weight.
-}
-
-The scaling of the outcome variable is done internally.
-If \eqn{y_i^*} is the original, then \eqn{y_i = (y_i^* - m)/s}
-where \eqn{m} and \eqn{s} are the sample mean and standard
-deviation of \eqn{y_i^*}.
-
-In some applications, \eqn{w_i} is set to 1
-for all \eqn{i}.
-
-The means \eqn{\mu_i} equal the sum of terms formed
-from classifying variables,
-
-\deqn{\mu_i = \sum_{m=0}^{M} \beta_{j_i^m}^{(m)}}
-
-where
-\itemize{
-\item \eqn{\beta^{0}} is an intercept;
-\item \eqn{\beta^{(m)}}, \eqn{m = 1, \dots, M}, is a main effect
-or interaction; and
-\item \eqn{j_i^m} is the element of \eqn{\beta^{(m)}} associated with
-cell \eqn{i}.
-}
-
-The \eqn{\beta^{(m)}} are given priors, as described in \link{priors}.
-
-The prior for \eqn{\xi} is described in \code{\link[=set_disp]{set_disp()}}.
+\code{\link[=components]{components()}} by default returns values on
+the transformed scale. But if \code{original_scale} is
+\code{TRUE}, it returns some types of values on the
+original scale. See \code{\link[=components]{components()}} for details.
 }
 
 \section{Specifying weights}{
@@ -89,6 +60,58 @@ quote marks, eg \code{"wt"} or \code{wt};
 \item a formula, which is evaluated with \code{data} as its
 environment (see below for example).
 }
+}
+
+\section{Mathematical details}{
+
+
+The likelihood is
+
+\deqn{y_i \sim \text{N}(\gamma_i, w_i^{-1} \sigma^2)}
+where
+\itemize{
+\item subscript \eqn{i} identifies some combination of the
+classifying variables, such as age, sex, and time,
+\item \eqn{y_i} is the value of the outcome variable,
+\item \eqn{w_i} is a weight.
+}
+
+In some applications, \eqn{w_i} is set to 1
+for all \eqn{i}.
+
+Internally, \strong{bage} works with standardized
+versions of \eqn{\gamma_i} and \eqn{\sigma^2}:
+
+\deqn{\mu_i = (\gamma_i - \bar{y}) / s}
+\deqn{\xi^2 = \sigma^2 / (\bar{w} s^2)}
+where
+\deqn{\bar{y} = \sum_{i=1}^n y_i / n}
+\deqn{s = \sqrt{\sum_{i=1}^n (y_i - \bar{y})^2 / (n-1)}}
+\deqn{\bar{w} = \sum_{i=1}^n w_i / n}
+
+Mean parameter \eqn{\mu_i} is modelled as
+the sum of terms formed
+from classifying variables and covariates,
+
+\deqn{\mu_i = \sum_{m=0}^{M} \beta_{j_i^m}^{(m)}}
+
+where
+\itemize{
+\item \eqn{\beta^{0}} is an intercept;
+\item \eqn{\beta^{(m)}}, \eqn{m = 1, \dots, M}, is a main effect
+or interaction; and
+\item \eqn{j_i^m} is the element of \eqn{\beta^{(m)}} associated with
+cell \eqn{i},
+}
+
+The \eqn{\beta^{(m)}} are given priors, as described in \link{priors}.
+
+\eqn{\xi} has an exponential prior with mean 1. Non-default
+values for the mean can be specified with \code{\link[=set_disp]{set_disp()}}.
+
+The model for \eqn{\mu_i}
+can also include covariates,
+as described in \code{\link[=set_covariates]{set_covariates()}}.
 }
 
 \examples{
@@ -108,7 +131,14 @@ mod <- mod_norm(value ~ diag:age + year,
 \item \code{\link[=set_prior]{set_prior()}} Specify non-default prior for term
 \item \code{\link[=set_disp]{set_disp()}} Specify non-default prior for standard deviation
 \item \code{\link[=fit]{fit()}} Fit a model
-\item \code{\link[=forecast]{forecast()}} Forecast a model
-\item \code{\link[=report_sim]{report_sim()}} Do a simulation study on a model
+\item \code{\link[=augment]{augment()}} Extract values for means,
+together with original data
+\item \code{\link[=components]{components()}} Extract values for hyper-parameters
+\item \code{\link[=forecast]{forecast()}} Forecast parameters and outcomes
+\item \code{\link[=report_sim]{report_sim()}} Check model using a simulation study
+\item \code{\link[=replicate_data]{replicate_data()}} Check model using replicate data
+data for a model
+\item \href{https://bayesiandemography.github.io/bage/articles/vig2_math.html}{Mathematical Details}
+Detailed description of models
 }
 }

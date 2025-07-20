@@ -11,6 +11,17 @@
 #' which depend on the type of term (eg an intercept, an age main effect,
 #' or an age-time interaction.)
 #'
+#' @section Specifying exposure:
+#'
+#' The `exposure` argument can take three forms:
+#'
+#' - the name of a variable in `data`, with or without
+#'   quote marks, eg `"population"` or `population`;
+#' - the number `1`, in which case a pure "counts" model
+#'   with no exposure, is produced; or
+#' - a formula, which is evaluated with `data` as its
+#'   environment (see below for example).
+#' 
 #' @section Mathematical details:
 #'
 #' The likelihood is
@@ -19,7 +30,7 @@
 #'
 #' where
 #'
-#' - subscript \eqn{i} identifies some combination of
+#' - subscript \eqn{i} identifies some combination of the
 #'   classifying variables, such as age, sex, and time;
 #' - \eqn{y_i} is an outcome, such as deaths;
 #' - \eqn{\gamma_i} is rates; and
@@ -37,7 +48,8 @@
 #' where
 #'
 #' - \eqn{\mu_i} is the expected value for \eqn{\gamma_i}; and
-#' - \eqn{\xi} governs dispersion (ie variance.)
+#' - \eqn{\xi} governs dispersion (i.e. variation), with
+#'   lower values implying less dispersion.
 #'
 #' Expected value \eqn{\mu_i} equals, on the log scale,
 #' the sum of terms formed from classifying variables,
@@ -54,18 +66,12 @@
 #'
 #' The \eqn{\beta^{(m)}} are given priors, as described in [priors].
 #'
-#' The prior for \eqn{\xi} is described in [set_disp()].
+#' \eqn{\xi} has an exponential prior with mean 1. Non-default
+#' values for the mean can be specified with  [set_disp()].
 #'
-#' @section Specifying exposure:
-#'
-#' The `exposure` argument can take three forms:
-#'
-#' - the name of a variable in `data`, with or without
-#'   quote marks, eg `"population"` or `population`;
-#' - the number `1`, in which case a pure "counts" model
-#'   with no exposure, is produced; or
-#' - a formula, which is evaluated with `data` as its
-#'   environment (see below for example).
+#' The model for \eqn{\mu_i}
+#' can also include covariates,
+#' as described in [set_covariates()].
 #'
 #' @param formula An R [formula][stats::formula()],
 #' specifying the outcome and predictors.
@@ -82,8 +88,14 @@
 #' - [set_prior()] Specify non-default prior for term
 #' - [set_disp()] Specify non-default prior for dispersion
 #' - [fit()] Fit a model
-#' - [forecast()] Forecast a model
-#' - [report_sim()] Do a simulation study on a model
+#' - [augment()] Extract values for rates,
+#'   together with original data
+#' - [components()] Extract values for hyper-parameters
+#' - [forecast()] Forecast parameters and outcomes
+#' - [report_sim()] Check model using a simulation study
+#' - [replicate_data()] Check model using replicate data
+#' - [Mathematical Details](https://bayesiandemography.github.io/bage/articles/vig2_math.html)
+#'   Detailed description of models
 #'
 #' @examples
 #' ## specify a model with exposure
@@ -101,7 +113,9 @@
 #'                 data = nzl_injuries,
 #'                 exposure = ~ pmax(popn, 1))
 #' @export
-mod_pois <- function(formula, data, exposure) {
+mod_pois <- function(formula,
+                     data,
+                     exposure) {
   ## processing common to all models
   args <- mod_helper(formula = formula,
                      data = data,
@@ -114,30 +128,36 @@ mod_pois <- function(formula, data, exposure) {
   exposure <- deparse1(substitute(exposure))
   exposure <- gsub("^\\\"|\\\"$", "", exposure)
   is_offset_specified <- !identical(exposure, "1")
-  vname_offset <- if (is_offset_specified) exposure else NULL
+  nm_offset_data <- if (is_offset_specified) exposure else NULL
   if (is_offset_specified) {
-    check_offset_in_data(vname_offset = vname_offset,
-                         nm_offset = "exposure",
+    check_offset_in_data(nm_offset_data = nm_offset_data,
+                         nm_offset_mod = "exposure",
                          data = data)
-    check_offset_nonneg(vname_offset = vname_offset,
-                        nm_offset = "exposure",
+    check_offset_nonneg(nm_offset_data = nm_offset_data,
+                        nm_offset_mod = "exposure",
                         data = data)
     check_resp_zero_if_offset_zero(formula = formula,
-                                   vname_offset = vname_offset,
-                                   nm_offset = "exposure",
+                                   nm_offset_data = nm_offset_data,
+                                   nm_offset_mod = "exposure",
                                    data = data)
-    check_offset_not_in_formula(vname_offset = vname_offset,
-                                nm_offset = "exposure",
+    check_offset_not_in_formula(nm_offset_data = nm_offset_data,
+                                nm_offset_mod = "exposure",
                                 formula = formula)
-    offset <- make_offset(vname_offset = vname_offset,
+    offset <- make_offset(nm_offset_data = nm_offset_data,
                           data = data)
   }
   else
     offset <- make_offset_ones(data)
+  ## check for suspicious rates
+  outcome <- args$outcome
+  mult_high_rate <- 1000
+  message_suspicious_rates(outcome = outcome,
+                           exposure = offset,
+                           mult_high_rate = mult_high_rate)
   ## create object and return
   ans <- c(args,
            list(offset = offset,
-                vname_offset = vname_offset))
+                nm_offset_data = nm_offset_data))
   class(ans) <- c("bage_mod_pois", "bage_mod")
   ans
 }
@@ -156,6 +176,15 @@ mod_pois <- function(formula, data, exposure) {
 #' which depend on the type of term (eg an intercept, an age main effect,
 #' or an age-time interaction.)
 #'
+#' @section Specifying size:
+#'
+#' The `size` argument can take two forms:
+#'
+#' - the name of a variable in `data`, with or without
+#'   quote marks, eg `"population"` or `population`; or
+#' - a formula, which is evaluated with `data` as its
+#'   environment (see below for example).
+#' 
 #' @section Mathematical details:
 #'
 #' The likelihood is
@@ -164,8 +193,9 @@ mod_pois <- function(formula, data, exposure) {
 #'
 #' where
 #'
-#' - \eqn{y_i} is a count, such of number of births, for some
-#'   combination \eqn{i} of classifying variables,
+#' - subscript \eqn{i} identifies some combination of the the
+#'   classifying variables, such as age, sex, and time;
+#' - \eqn{y_i} is a count, such of number of births,
 #'   such as age, sex, and region;
 #' - \eqn{\gamma_i} is a probability of 'success'; and
 #' - \eqn{w_i} is the number of trials.
@@ -195,16 +225,12 @@ mod_pois <- function(formula, data, exposure) {
 #'
 #' The \eqn{\beta^{(m)}} are given priors, as described in [priors].
 #'
-#' The prior for \eqn{\xi} is described in [set_disp()].
+#' \eqn{\xi} has an exponential prior with mean 1. Non-default
+#' values for the mean can be specified with  [set_disp()].
 #'
-#' @section Specifying size:
-#'
-#' The `size` argument can take two forms:
-#'
-#' - the name of a variable in `data`, with or without
-#'   quote marks, eg `"population"` or `population`; or
-#' - a formula, which is evaluated with `data` as its
-#'   environment (see below for example).
+#' The model for \eqn{\mu_i}
+#' can also include covariates,
+#' as described in [set_covariates()].
 #' 
 #' @param formula An R [formula][stats::formula()],
 #' specifying the outcome and predictors.
@@ -221,8 +247,14 @@ mod_pois <- function(formula, data, exposure) {
 #' - [set_prior()] Specify non-default prior for term
 #' - [set_disp()] Specify non-default prior for dispersion
 #' - [fit()] Fit a model
-#' - [forecast()] Forecast a model
-#' - [report_sim()] Do a simulation study on a model
+#' - [augment()] Extract values for probabilities,
+#'   together with original data
+#' - [components()] Extract values for hyper-parameters
+#' - [forecast()] Forecast parameters and outcomes
+#' - [report_sim()] Check model using simulation study
+#' - [replicate_data()] Check model using replicate data
+#' - [Mathematical Details](https://bayesiandemography.github.io/bage/articles/vig2_math.html)
+#'   Detailed descriptions of models
 #'
 #' @examples
 #' mod <- mod_binom(oneperson ~ age:region + age:year,
@@ -246,30 +278,30 @@ mod_binom <- function(formula, data, size) {
   ## process 'size'
   size <- deparse1(substitute(size))
   size <- gsub("^\\\"|\\\"$", "", size)
-  vname_offset <- size
-  check_offset_in_data(vname_offset = vname_offset,
-                       nm_offset = "size",
+  nm_offset_data <- size
+  check_offset_in_data(nm_offset_data = nm_offset_data,
+                       nm_offset_mod = "size",
                        data = data)
-  check_offset_nonneg(vname_offset = vname_offset,
-                      nm_offset = "size",
+  check_offset_nonneg(nm_offset_data = nm_offset_data,
+                      nm_offset_mod = "size",
                       data = data)
-  check_offset_not_in_formula(vname_offset = vname_offset,
-                              nm_offset = "size",
+  check_offset_not_in_formula(nm_offset_data = nm_offset_data,
+                              nm_offset_mod = "size",
                               formula = formula)
   check_resp_zero_if_offset_zero(formula = formula,
-                                 vname_offset = vname_offset,
-                                 nm_offset = "size",
+                                 nm_offset_data = nm_offset_data,
+                                 nm_offset_mod = "size",
                                  data = data)
   check_resp_le_offset(formula = formula,
-                       vname_offset = vname_offset,
-                       nm_offset = "size",
+                       nm_offset_data = nm_offset_data,
+                       nm_offset_mod = "size",
                        data = data)
-  offset <- make_offset(vname_offset = vname_offset,
+  offset <- make_offset(nm_offset_data = nm_offset_data,
                         data = data)
   ## create object and return
   ans <- c(args,
            list(offset = offset,
-                vname_offset = vname_offset))
+                nm_offset_data = nm_offset_data))
   class(ans) <- c("bage_mod_binom", "bage_mod")
   ans
 }
@@ -288,49 +320,22 @@ mod_binom <- function(formula, data, size) {
 #' which depend on the type of term (eg an intercept, an age main effect,
 #' or an age-time interaction.)
 #'
-#' Internally, the outcome
-#' variable scaled to have mean 0 and sd 1.
+#' @section Scaling of outcome and weights:
 #'
-#' @section Mathematical details:
+#' Internally, `mod_norm()` scales the outcome variable
+#' to have mean 0 and standard deviation 1, and
+#' scales the weights to have mean 1.
+#' This scaling allows `mod_norm()` to use the
+#' same menu of priors as [mod_pois()] and [mod_binom()].
 #'
-#' The likelihood is
+#' [augment()] always returns values on the
+#' original scale, rather than the transformed scale.
+#'
+#' [components()] by default returns values on
+#' the transformed scale. But if `original_scale` is
+#' `TRUE`, it returns some types of values on the
+#' original scale. See [components()] for details.
 #' 
-#' \deqn{y_i \sim \text{N}(\mu_i, \xi^2 / w_i)}
-#'
-#' where
-#'
-#' - \eqn{y_i} is a scaled value for an, such of the log of income, for some
-#'   combination \eqn{i} of classifying variables,
-#'   such as age, sex, and region;
-#' - \eqn{\mu_i} is a mean;
-#' - \eqn{\xi} is a standard deviation parameter; and
-#' - \eqn{w_i} is a weight.
-#'
-#' The scaling of the outcome variable is done internally.
-#' If \eqn{y_i^*} is the original, then \eqn{y_i = (y_i^* - m)/s}
-#' where \eqn{m} and \eqn{s} are the sample mean and standard
-#' deviation of \eqn{y_i^*}. 
-#'
-#' In some applications, \eqn{w_i} is set to 1
-#' for all \eqn{i}.
-#'
-#' The means \eqn{\mu_i} equal the sum of terms formed
-#' from classifying variables,
-#'
-#' \deqn{\mu_i = \sum_{m=0}^{M} \beta_{j_i^m}^{(m)}}
-#'
-#' where
-#'
-#' - \eqn{\beta^{0}} is an intercept;
-#' - \eqn{\beta^{(m)}}, \eqn{m = 1, \dots, M}, is a main effect
-#'   or interaction; and
-#' - \eqn{j_i^m} is the element of \eqn{\beta^{(m)}} associated with
-#'   cell \eqn{i}.
-#'
-#' The \eqn{\beta^{(m)}} are given priors, as described in [priors].
-#'
-#' The prior for \eqn{\xi} is described in [set_disp()].
-#'
 #' @section Specifying weights:
 #'
 #' The `weights` argument can take three forms:
@@ -340,6 +345,54 @@ mod_binom <- function(formula, data, size) {
 #' - the number `1`, in which no weights are used; or
 #' - a formula, which is evaluated with `data` as its
 #'   environment (see below for example).
+#'
+#'
+#' @section Mathematical details:
+#'
+#' The likelihood is
+#'
+#' \deqn{y_i \sim \text{N}(\gamma_i, w_i^{-1} \sigma^2)}
+#' where
+#' - subscript \eqn{i} identifies some combination of the
+#'   classifying variables, such as age, sex, and time,
+#' - \eqn{y_i} is the value of the outcome variable,
+#' - \eqn{w_i} is a weight.
+#' 
+#' In some applications, \eqn{w_i} is set to 1
+#' for all \eqn{i}.
+#'
+#' Internally, **bage** works with standardized
+#' versions of \eqn{\gamma_i} and \eqn{\sigma^2}:
+#'
+#' \deqn{\mu_i = (\gamma_i - \bar{y}) / s}
+#' \deqn{\xi^2 = \sigma^2 / (\bar{w} s^2)}
+#' where
+#' \deqn{\bar{y} = \sum_{i=1}^n y_i / n}
+#' \deqn{s = \sqrt{\sum_{i=1}^n (y_i - \bar{y})^2 / (n-1)}}
+#' \deqn{\bar{w} = \sum_{i=1}^n w_i / n}
+#'
+#' Mean parameter \eqn{\mu_i} is modelled as
+#' the sum of terms formed
+#' from classifying variables and covariates,
+#'
+#' \deqn{\mu_i = \sum_{m=0}^{M} \beta_{j_i^m}^{(m)}}
+#'
+#' where
+#'
+#' - \eqn{\beta^{0}} is an intercept;
+#' - \eqn{\beta^{(m)}}, \eqn{m = 1, \dots, M}, is a main effect
+#'   or interaction; and
+#' - \eqn{j_i^m} is the element of \eqn{\beta^{(m)}} associated with
+#'   cell \eqn{i},
+#'
+#' The \eqn{\beta^{(m)}} are given priors, as described in [priors].
+#'
+#' \eqn{\xi} has an exponential prior with mean 1. Non-default
+#' values for the mean can be specified with [set_disp()].
+#'
+#' The model for \eqn{\mu_i}
+#' can also include covariates,
+#' as described in [set_covariates()].
 #' 
 #' @param formula An R [formula][stats::formula()],
 #' specifying the outcome and predictors.
@@ -356,8 +409,15 @@ mod_binom <- function(formula, data, size) {
 #' - [set_prior()] Specify non-default prior for term
 #' - [set_disp()] Specify non-default prior for standard deviation
 #' - [fit()] Fit a model
-#' - [forecast()] Forecast a model
-#' - [report_sim()] Do a simulation study on a model
+#' - [augment()] Extract values for means,
+#'   together with original data
+#' - [components()] Extract values for hyper-parameters
+#' - [forecast()] Forecast parameters and outcomes
+#' - [report_sim()] Check model using a simulation study
+#' - [replicate_data()] Check model using replicate data
+#'   data for a model
+#' - [Mathematical Details](https://bayesiandemography.github.io/bage/articles/vig2_math.html)
+#'   Detailed description of models
 #'
 #' @examples
 #' mod <- mod_norm(value ~ diag:age + year,
@@ -378,18 +438,18 @@ mod_norm <- function(formula, data, weights) {
   weights <- deparse1(substitute(weights))
   weights <- gsub("^\\\"|\\\"$", "", weights)
   is_offset_specified <- !identical(weights, "1")
-  vname_offset <- if (is_offset_specified) weights else NULL
+  nm_offset_data <- if (is_offset_specified) weights else NULL
   if (is_offset_specified) {
-    check_offset_in_data(vname_offset = vname_offset,
-                         nm_offset = "weights",
+    check_offset_in_data(nm_offset_data = nm_offset_data,
+                         nm_offset_mod = "weights",
                          data = data)
-    check_offset_nonneg(vname_offset = vname_offset,
-                        nm_offset = "weights",
+    check_offset_nonneg(nm_offset_data = nm_offset_data,
+                        nm_offset_mod = "weights",
                         data = data)
-    check_offset_not_in_formula(vname_offset = vname_offset,
-                                nm_offset = "weights",
+    check_offset_not_in_formula(nm_offset_data = nm_offset_data,
+                                nm_offset_mod = "weights",
                                 formula = formula)
-    offset <- make_offset(vname_offset = vname_offset,
+    offset <- make_offset(nm_offset_data = nm_offset_data,
                           data = data)
   }
   else
@@ -412,7 +472,8 @@ mod_norm <- function(formula, data, weights) {
   ## create object and return
   ans <- c(args,
            list(offset = offset,
-                vname_offset = vname_offset,
+                nm_offset_data = nm_offset_data,
+                offset_mean = offset_mean,
                 outcome_mean = outcome_mean,
                 outcome_sd = outcome_sd))
   class(ans) <- c("bage_mod_norm", "bage_mod")
@@ -456,7 +517,6 @@ mod_helper <- function(formula, data, n_draw) {
                         var_age = var_age,
                         var_time = var_time,
                         lengths_effect = lengths_effect)
-  seed_stored_draws <- make_seed()
   seed_components <- make_seed()
   seed_augment <- make_seed()
   seed_forecast_components <- make_seed()
@@ -472,17 +532,20 @@ mod_helper <- function(formula, data, n_draw) {
        var_sexgender = var_sexgender,
        var_time = var_time,
        mean_disp = 1,
+       formula_covariates = NULL,
+       covariates_nms = NULL,
        n_draw = n_draw,
        vars_inner = NULL,
        draws_effectfree = NULL,
        draws_hyper = NULL,
        draws_hyperrandfree = NULL,
+       draws_coef_covariates = NULL,
        draws_disp = NULL,
        point_effectfree = NULL,
        point_hyper = NULL,
        point_hyperrandfree = NULL,
+       point_coef_covariates = NULL,
        point_disp = NULL,
-       seed_stored_draws = seed_stored_draws,
        seed_components = seed_components,
        seed_augment = seed_augment,
        seed_forecast_components = seed_forecast_components,

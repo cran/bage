@@ -65,8 +65,8 @@ draw_vals_outcome_true.NULL <- function(datamod,
   ans <- matrix(as.double(outcome_obs), nrow = n_val, ncol = n_draw)
   ans <- rvec::rvec(ans)
   if (nm_distn == "pois")
-    vals <- rvec::rpois_rvec(n = n_impute,
-                             lambda = fitted_impute * offset_impute)
+    vals <- rpois_rvec_guarded(n = n_impute,
+                               lambda = fitted_impute * offset_impute)
   else if (nm_distn == "binom")
     vals <- rvec::rbinom_rvec(n = n_impute,
                               size = offset_impute,
@@ -101,7 +101,7 @@ draw_vals_outcome_true.bage_datamod_outcome_rr3 <- function(datamod,
                                 nrow = n_val,
                                 ncol = 5L)
   prob_obs_given_true[outcome_true < 0L] <- 0
-  ans <- matrix(nrow = n_val, ncol = n_draw)
+  ans <- matrix(NA_integer_, nrow = n_val, ncol = n_draw)
   for (i_draw in seq_len(n_draw)) {
     if (nm_distn == "pois")
       prob_true_given_fitted <- stats::dpois(outcome_true, lambda = fitted[, i_draw] * offset)

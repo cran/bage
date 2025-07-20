@@ -70,7 +70,7 @@ test_that("'con_by_fitted' works", {
 
 ## 'draw_vals_components_fitted' ----------------------------------------------
 
-test_that("'draw_vals_components_fitted' works", {
+test_that("'draw_vals_components_fitted' works - no covariates", {
   set.seed(0)
   data <- expand.grid(age = poputils::age_labels(type = "lt", max = 60),
                       time = 2000:2005,
@@ -90,6 +90,29 @@ test_that("'draw_vals_components_fitted' works", {
   expect_identical(names(ans), c("term", "component", "level", ".fitted"))
   i <- ans$term == "age:sex" & ans$component == "effect"
   expect_true(mean(abs(as.numeric(sum(ans$.fitted[i])))) > 0)
+})
+
+test_that("'draw_vals_components_fitted' works - has covariates", {
+  set.seed(0)
+  data <- expand.grid(age = 0:3,
+                      time = 2000:2002,
+                      reg = letters[1:3],
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_n_draw(mod, n = 5)
+  mod <- set_covariates(mod, ~ reg)
+  mod <- fit(mod)
+  set.seed(0)
+  ans <- draw_vals_components_fitted(mod)
+  expect_identical(names(ans), c("term", "component", "level", ".fitted"))
+  i <- ans$term == "age:sex" & ans$component == "effect"
+  expect_true(mean(abs(as.numeric(sum(ans$.fitted[i])))) > 0)
+  expect_true("covariates" %in% ans$term)
 })
 
 
@@ -262,58 +285,6 @@ test_that("'get_disp' works - fitted", {
 })  
 
 
-## 'insert_after' -------------------------------------------------------
-
-test_that("'insert_after' works with data frames", {
-  df <- data.frame(x = 1:3, y = 3:1)
-  x <- 11:13
-  nm_x = "new"
-  ans_obtained <- insert_after(df = df,
-                               nm_after = "x",
-                               x = x,
-                               nm_x = nm_x)
-  ans_expected <- data.frame(x = 1:3, new = 11:13, y = 3:1)
-  expect_identical(ans_obtained, ans_expected)
-  ans_obtained <- insert_after(df = df,
-                               nm_after = "y",
-                               x = x,
-                               nm_x = nm_x)
-  ans_expected <- data.frame(x = 1:3, y = 3:1, new = 11:13)
-  expect_identical(ans_obtained, ans_expected)
-})
-
-test_that("'insert_after' works with tibbles", {
-  df <- tibble::tibble(x = 1:3, y = 3:1)
-  x <- 11:13
-  nm_x = "new"
-  ans_obtained <- insert_after(df = df,
-                               nm_after = "x",
-                               x = x,
-                               nm_x = nm_x)
-  ans_expected <- tibble(x = 1:3, new = 11:13, y = 3:1)
-  expect_identical(ans_obtained, ans_expected)
-  ans_obtained <- insert_after(df = df,
-                               nm_after = "y",
-                               x = x,
-                               nm_x = nm_x)
-  ans_expected <- tibble(x = 1:3, y = 3:1, new = 11:13)
-  expect_identical(ans_obtained, ans_expected)
-})
-
-
-## 'is_same_class' ------------------------------------------------------------
-
-test_that("'is_same_class' returns TRUE when classes same", {
-    expect_true(is_same_class(AR1(), AR1()))
-    expect_true(is_same_class(1L, 2L))
-})
-
-test_that("'is_same_class' returns FALSE when classes different", {
-    expect_false(is_same_class(AR1(), N()))
-    expect_false(is_same_class(1L, FALSE))
-})
-
-
 ## 'make_combined_matrix_effect_outcome' -----------------------------------------
 
 test_that("'make_combined_matrix_effect_outcome' works with valid inputs", {
@@ -461,6 +432,23 @@ test_that("'make_copies_repdata' works with valid inputs", {
 })
 
 
+## 'make_draws_coef_covariates' -----------------------------------------------
+
+test_that("'make_draws_coef_covariates' works", {
+  set.seed(0)
+  est <- list(effectfree = rnorm(10),
+              hyper = rnorm(2),
+              hyperrand = numeric(),
+              log_disp = 0.5,
+              coef_covariates = rnorm(4),
+              hyper_covariates = numeric())
+  draws_post <- matrix(rnorm(17 * 5), nrow = 17)
+  ans_obtained <- make_draws_coef_covariates(est = est, draws_post = draws_post)
+  ans_expected <- draws_post[14:17,]
+  expect_identical(unname(ans_obtained), ans_expected)
+})
+
+
 ## 'make_draws_components' -----------------------------------------------
 
 test_that("'make_draws_components' works - no svd, spline", {
@@ -550,15 +538,39 @@ test_that("'make_draws_components' works - has hyperrand", {
   expect_true(rvec::is_rvec(ans_obtained))
 })
 
+test_that("'make_draws_components' works - has covariates", {
+  set.seed(0)
+  data <- expand.grid(age = poputils::age_labels(type = "lt", max = 60),
+                      time = 2000:2005,
+                      sex = c("F", "M"),
+                      reg = letters[1:3])
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_n_draw(mod, n = 5)
+  mod <- set_covariates(mod, ~reg)
+  mod <- fit(mod)
+  set.seed(0)
+  ans_obtained <- make_draws_components(mod)
+  expect_true(rvec::is_rvec(ans_obtained))
+})
+
 
 ## 'make_draws_disp' ----------------------------------------------------
 
 test_that("'make_draws_disp' works", {
-    set.seed(0)
-    draws_post <- matrix(rnorm(13 * 5), nrow = 13)
-    ans_obtained <- make_draws_disp(draws_post)
-    ans_expected <- exp(draws_post[13,])
-    expect_identical(unname(ans_obtained), ans_expected)
+  set.seed(0)
+  est <- list(effectfree = rnorm(10),
+              hyper = rnorm(2),
+              hyperrand = numeric(),
+              log_disp = 0.5)
+  draws_post <- matrix(rnorm(13 * 5), nrow = 13)
+  ans_obtained <- make_draws_disp(est = est, draws_post = draws_post)
+  ans_expected <- exp(draws_post[13,])
+  expect_identical(unname(ans_obtained), ans_expected)
 })
 
 
@@ -835,6 +847,90 @@ test_that("'fit_inner_outer' throws error when 'start_oldpar' is TRUE", {
 })
 
 
+## 'infer_trend_cyc_seas_err_forecast' --------------------------------------------
+
+test_that("'infer_trend_cyc_seas_err_forecast' works", {
+  set.seed(0)
+  data <- expand.grid(age = 0:4, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ sex * time + age
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+    set_prior(time ~ RW2()) |>
+    set_prior(sex:time ~ Lin()) |>
+    fit()
+  mod <- set_n_draw(mod, 5)
+  mod <- fit(mod)
+  comp_est <- components(mod)
+  comp_forecast <- forecast(mod, labels = 2006:2007, output = "components")
+  dimnames_terms_forecast <- make_dimnames_terms_forecast(dimnames_terms = mod$dimnames_terms,
+                                                          var_time = mod$var_time,
+                                                          labels_forecast = 2006:2007,
+                                                          time_only = TRUE)
+  ans_obtained <- infer_trend_cyc_seas_err_forecast(components = comp_forecast,
+                                                    priors = mod$priors,
+                                                    dimnames_terms = dimnames_terms_forecast,
+                                                    var_time = mod$var_time,
+                                                    var_age = mod$var_age)
+  expect_equal(ans_obtained[1:3], comp_forecast[1:3])
+})
+
+
+## 'infer_trend_cyc_seas_err_seasfix_forecast' --------------------------------
+
+test_that("'infer_trend_cyc_seas_err_seasfix_forecast' works", {
+  set.seed(0)
+  data <- expand.grid(age = 0:4, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ sex * time + age
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+                  set_prior(sex:time ~ RW_Seas(n = 3)) |>
+                  set_n_draw(n = 10) |>
+                  fit()
+  components <- components(mod)
+  ans <- infer_trend_cyc_seas_err_seasfix_forecast(prior = mod$priors[["sex:time"]],
+                                                   dimnames_term = mod$dimnames_terms[["sex:time"]],
+                                                   var_time = mod$var_time,
+                                                   var_age = mod$var_age,
+                                                   components = components)
+  season <- ans$.fitted[ans$term == "sex:time" & ans$component == "season"]
+  trend <- ans$.fitted[ans$term == "sex:time" & ans$component == "trend"]
+  effect <- ans$.fitted[ans$term == "sex:time" & ans$component == "effect"]
+  expect_equal(effect, season + trend)
+})
+
+
+## 'infer_trend_cyc_seas_err_seasvary_forecast' -------------------------------
+
+test_that("'infer_trend_cyc_seas_err_seasvary_forecast' works", {
+  set.seed(0)
+  data <- expand.grid(age = 0:4, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ sex * time + age
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+                  set_prior(sex:time ~ RW_Seas(n = 3, s = 1)) |>
+                  set_n_draw(n = 10) |>
+                  fit()
+  components <- components(mod)
+  ans <- infer_trend_cyc_seas_err_seasvary_forecast(prior = mod$priors[["sex:time"]],
+                                                    dimnames_term = mod$dimnames_terms[["sex:time"]],
+                                                    var_time = mod$var_time,
+                                                    var_age = mod$var_age,
+                                                    components = components)
+  season <- ans$.fitted[ans$term == "sex:time" & ans$component == "season"]
+  trend <- ans$.fitted[ans$term == "sex:time" & ans$component == "trend"]
+  effect <- ans$.fitted[ans$term == "sex:time" & ans$component == "effect"]
+  expect_equal(effect, season + trend)
+})
+
 
 ## 'make_along_mod' -----------------------------------------------------------
 
@@ -858,6 +954,39 @@ test_that("'make_along_mod' works", {
                     "sex:age" = "age",
                     "age:time" = "age")
   expect_identical(ans_obtained, ans_expected)
+})
+
+
+## 'make_comp_covariates' -------------------------------------------------------------
+
+test_that("'make_comp_covariates' works with non-covariate", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = c("a", "b"),
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$distance <- runif(n = nrow(data))
+  mod <- mod_pois(formula = deaths ~ age * sex ,
+                  data = data,
+                  exposure = popn) 
+  expect_identical(make_comp_covariates(mod), character())
+})
+
+test_that("'make_comp_covariates' works with covariates", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = c("a", "b"),
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$income <- runif(n = nrow(data))
+  data$distance <- runif(n = nrow(data))
+  mod <- mod_pois(formula = deaths ~ age * sex ,
+                  data = data,
+                  exposure = popn) |>
+    set_covariates(~ income)
+  expect_identical(make_comp_covariates(mod), "coef")
 })
 
 
@@ -1315,6 +1444,39 @@ test_that("'make_hyperrand_zeroseasvary' works with interaction, con is 'by'", {
 })
 
 
+## 'make_level_covariates' -------------------------------------------------------------
+
+test_that("'make_level_covariates' works with non-covariate", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = c("a", "b"),
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$distance <- runif(n = nrow(data))
+  mod <- mod_pois(formula = deaths ~ age * sex ,
+                  data = data,
+                  exposure = popn) 
+  expect_identical(make_level_covariates(mod), character())
+})
+
+test_that("'make_level_covariates' works with covariates", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = c("a", "b"),
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$income <- runif(n = nrow(data))
+  data$distance <- runif(n = nrow(data))
+  mod <- mod_pois(formula = deaths ~ age * sex ,
+                  data = data,
+                  exposure = popn) |>
+    set_covariates(~ income)
+  expect_identical(make_level_covariates(mod), "income")
+})
+
+
 ## 'make_levels_spline' -------------------------------------------------------
 
 test_that("'make_levels_spline' works - unlist is FALSE", {
@@ -1539,8 +1701,6 @@ test_that("'make_levels_svd_term' works - indep, age:time:reg, con is 'by'", {
 })
 
 
-
-
 ## 'make_lin_trend' -----------------------------------------------------------
 
 test_that("'make_lin_trend' works with valid inputs - n_by = 1", {
@@ -1569,7 +1729,7 @@ test_that("'make_lin_trend' works with valid inputs - n_by = 2, transposed", {
 
 ## 'make_stored_draws' --------------------------------------------------------
 
-test_that("'make_stored_draws' works with valid inputs", {
+test_that("'make_stored_draws' works with valid inputs - no covariates", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -1585,7 +1745,7 @@ test_that("'make_stored_draws' works with valid inputs", {
               hyperrandfree = numeric(),
               disp = runif(1))
   prec <- crossprod(matrix(rnorm(169), nr = 13))
-  map <- make_map(mod)
+  map <- make_fit_map(mod)
   ans <- make_stored_draws(mod = mod,
                            est = est,
                            prec = prec,
@@ -1600,10 +1760,45 @@ test_that("'make_stored_draws' works with valid inputs", {
   expect_identical(ans, ans2)
 })
 
+test_that("'make_stored_draws' works with valid inputs - has covariates", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$income <- rnorm(n = nrow(data))
+  formula <- deaths ~ age + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_prior(mod, sex ~ Known(c(0.1, -0.1)))
+  mod <- set_n_draw(mod, n = 10)
+  mod <- set_covariates(mod, ~income)
+  est <- list(effectfree = c(rnorm(11), 0.1, -0.1),
+              hyper = rnorm(1),
+              hyperrandfree = numeric(),
+              coef_covariates = runif(1),
+              disp = runif(1))
+  prec <- crossprod(matrix(rnorm(196), nr = 14))
+  map <- make_fit_map(mod)
+  ans <- make_stored_draws(mod = mod,
+                           est = est,
+                           prec = prec,
+                           map = map)
+  expect_identical(ncol(ans$draws_effectfree), 10L)
+  expect_identical(ncol(ans$draws_hyper), 10L)
+  expect_identical(ncol(ans$draws_coef_covariates), 10L)
+  expect_identical(length(ans$draws_disp), 10L)
+  ans2 <- make_stored_draws(mod = mod,
+                            est = est,
+                            prec = prec,
+                            map = map)
+  expect_identical(ans, ans2)
+})
+
 
 ## 'make_stored_point' --------------------------------------------------------
 
-test_that("'make_stored_draws' works with valid inputs", {
+test_that("'make_stored_point' works with valid inputs - no covariates", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -1625,34 +1820,60 @@ test_that("'make_stored_draws' works with valid inputs", {
   expect_identical(ans$point_disp, exp(est$log_disp))
 })
 
+test_that("'make_stored_point' works with valid inputs - with covariates", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"), reg = letters[1:5])
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_prior(mod, sex ~ Known(c(0.1, -0.1)))
+  mod <- set_covariates(mod, ~ reg)
+  est <- list(effectfree = c(rnorm(11), 0.1, -0.1),
+              hyper = rnorm(1),
+              hyperrandfree = numeric(),
+              log_disp = runif(1),
+              coef_covariates = rnorm(4))
+  ans <- make_stored_point(mod = mod,
+                           est = est)
+  expect_identical(ans$point_effectfree, est$effectfree)
+  expect_identical(ans$point_hyper, exp(est$hyper))
+  expect_identical(ans$point_hyperrandfree, double())
+  expect_identical(ans$point_disp, exp(est$log_disp))
+  expect_identical(ans$point_coef_covariates, est$coef_covariates)
+})
+
 
 ## 'make_par_disp' ------------------------------------------------------------
 
 test_that("'make_par_disp' works with bage_mod_pois", {
-    set.seed(0)
-    data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
-    data$popn <- rpois(n = nrow(data), lambda = 100)
-    data$deaths <- rpois(n = nrow(data), lambda = 10)
-    formula <- deaths ~ age + time + sex
-    mod <- mod_pois(formula = formula,
-                    data = data,
-                    exposure = popn)
-    mod <- set_n_draw(mod, n = 10)
-    mod <- fit(mod)
-    components <- components(mod)
-    meanpar <- exp(make_linpred_comp(components = components,
-                                     data = mod$data,
-                                     dimnames_terms = mod$dimnames_terms))
-    disp <- components$.fitted[components$component == "disp"]
-    set.seed(1)
-    ans_obtained <- make_par_disp(mod,
-                                  meanpar = meanpar,
-                                  disp = disp)
-    set.seed(1)
-    ans_expected <- rvec::rgamma_rvec(n = length(meanpar),
-                                      data$deaths + 1/disp,
-                                      data$popn + 1/(disp*meanpar))
-    expect_equal(ans_obtained, ans_expected)
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age + time + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_n_draw(mod, n = 10)
+  mod <- fit(mod)
+  components <- components(mod)
+  meanpar <- exp(make_linpred_from_components(mod = mod,
+                                              components = components,
+                                              data = mod$data,
+                                              dimnames_terms = mod$dimnames_terms))
+  disp <- components$.fitted[components$component == "disp"]
+  set.seed(1)
+  ans_obtained <- make_par_disp(mod,
+                                meanpar = meanpar,
+                                disp = disp)
+  set.seed(1)
+  ans_expected <- rvec::rgamma_rvec(n = length(meanpar),
+                                    data$deaths + 1/disp,
+                                    data$popn + 1/(disp*meanpar))
+  expect_equal(ans_obtained, ans_expected)
 })
 
 test_that("'make_par_disp' works with bage_mod_binom", {
@@ -1668,9 +1889,10 @@ test_that("'make_par_disp' works with bage_mod_binom", {
   mod <- set_n_draw(mod, n = 10)
   components <- components(mod)
   invlogit <- function(x) 1 / (1 + exp(-x))
-  meanpar <- invlogit(make_linpred_comp(components = components,
-                                        data = mod$data,
-                                        dimnames_terms = mod$dimnames_terms))
+  meanpar <- invlogit(make_linpred_from_components(mod = mod,
+                                                   components = components,
+                                                   data = mod$data,
+                                                   dimnames_terms = mod$dimnames_terms))
   disp <- components$.fitted[components$component == "disp"]
   set.seed(1)
   ans_obtained <- make_par_disp(mod,
@@ -1700,7 +1922,7 @@ test_that("'make_is_fixed' works when nothing fixed", {
                 hyper =  make_hyper(mod),
                 hyperrand = make_hyperrand(mod),
                 log_disp = 0)
-    map <- make_map(mod)
+    map <- make_fit_map(mod)
     expect_true(is.null(map))
     ans_obtained <- make_is_fixed(est = est, map = map)
     ans_expected <- rep(FALSE, times = length(unlist(est)))
@@ -1721,7 +1943,7 @@ test_that("'make_is_fixed' works when Known prior", {
                 hyper =  make_hyper(mod),
                 hyperrand = make_hyperrand(mod),
                 log_disp = 0)
-    map <- make_map(mod)
+    map <- make_fit_map(mod)
     ans_obtained <- make_is_fixed(est = est, map = map)
     ans_expected <- rep(c(FALSE, TRUE, FALSE),
                         times = c(11,
@@ -1823,9 +2045,9 @@ test_that("'make_levels_replicate' works", {
 })
 
 
-## 'make_linpred_comp' --------------------------------------------------------
+## 'make_linpred_from_components' ---------------------------------------------
 
-test_that("'make_linpred_comp' works with valid inputs", {
+test_that("'make_linpred_from_components' works with valid inputs - no covariates", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -1836,35 +2058,41 @@ test_that("'make_linpred_comp' works with valid inputs", {
                   exposure = popn)
   mod <- set_n_draw(mod, n_draw = 10L)
   comp <- components(mod, quiet = TRUE)
-  ans <- make_linpred_comp(components = comp,
-                           data = mod$data,
-                           dimnames_terms = mod$dimnames_terms)
+  ans <- make_linpred_from_components(mod = mod,
+                                      components = comp,
+                                      data = mod$data,
+                                      dimnames_terms = mod$dimnames_terms)
   expect_identical(length(ans), length(mod$outcome))
 })
 
-
-## 'make_linpred_raw' ---------------------------------------------------------
-
-test_that("'make_linpred_raw' works with valid inputs - point is FALSE", {
+test_that("'make_linpred_from_components' works with valid inputs - with covariates", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
   data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$income <- rnorm(n = nrow(data))
   formula <- deaths ~ age + sex
   mod <- mod_pois(formula = formula,
                   data = data,
                   exposure = popn)
+  mod <- set_covariates(mod, ~ income)
   mod <- set_n_draw(mod, n_draw = 10L)
-  mod <- fit(mod)
-  ans_obtained <- make_linpred_raw(mod, point = FALSE)
   comp <- components(mod, quiet = TRUE)
-  ans_expected <- make_linpred_comp(components = comp,
-                                    data = mod$data,
-                                    dimnames_terms = mod$dimnames_terms)
+  ans_obtained <- make_linpred_from_components(mod = mod,
+                                               components = comp,
+                                               data = mod$data,
+                                               dimnames_terms = mod$dimnames_terms)
+  ans_expected <- comp$.fitted[comp$term == "(Intercept)"] +
+    rep(comp$.fitted[comp$term == "age" & comp$component == "effect"], times = 12) +
+    rep(comp$.fitted[comp$term == "sex" & comp$component == "effect"], each = 60) +
+    comp$.fitted[comp$term == "covariates" & comp$component == "coef"] * as.numeric(scale(data$income))
   expect_equal(ans_obtained, ans_expected)
 })
 
-test_that("'make_linpred_raw' works with valid inputs - point is TRUE", {
+
+## 'make_linpred_from_stored_draws' -------------------------------------------
+
+test_that("'make_linpred_from_stored_draws' works with valid inputs - point is FALSE", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -1875,11 +2103,135 @@ test_that("'make_linpred_raw' works with valid inputs - point is TRUE", {
                   exposure = popn)
   mod <- set_n_draw(mod, n_draw = 10L)
   mod <- fit(mod)
-  ans_obtained <- make_linpred_raw(mod, point = TRUE)
+  ans_obtained <- make_linpred_from_stored_draws(mod, point = FALSE)
+  comp <- components(mod, quiet = TRUE)
+  ans_expected <- make_linpred_from_components(mod = mod,
+                                               components = comp,
+                                               data = mod$data,
+                                               dimnames_terms = mod$dimnames_terms)
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_linpred_from_stored_draws' works with valid inputs - point is TRUE", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_n_draw(mod, n_draw = 10L)
+  mod <- fit(mod)
+  ans_obtained <- make_linpred_from_stored_draws(mod, point = TRUE)
   m1 <- make_combined_matrix_effect_outcome(mod)
   m2 <- make_combined_matrix_effectfree_effect(mod)
   ans_expected <- as.double(m1 %*% m2 %*% mod$point_effectfree)
   expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_linpred_from_stored_draws' works with valid inputs - has covariaes", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$income <- rnorm(n = nrow(data))
+  formula <- deaths ~ age + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_n_draw(mod, n_draw = 10L)
+  mod <- set_covariates(mod, ~ income)
+  mod <- fit(mod)
+  ans_obtained <- make_linpred_from_stored_draws(mod, point = TRUE)
+  m1 <- make_combined_matrix_effect_outcome(mod)
+  m2 <- make_combined_matrix_effectfree_effect(mod)
+  mc <- make_matrix_covariates(~income, data)
+  ans_expected <- as.double(m1 %*% m2 %*% mod$point_effectfree) +
+    as.double(mod$point_coef_covariates * mc)
+  expect_equal(ans_obtained, ans_expected)
+})
+
+
+## 'make_linpred_from_stored_draws_covariates' --------------------------------
+
+test_that("'make_linpred_from_stored_draws_covariates' works with valid inputs - point is FALSE", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$income <- rnorm(n = nrow(data))
+  formula <- deaths ~ age + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_covariates(mod, ~income)
+  mod <- set_n_draw(mod, n_draw = 10L)
+  mod <- fit(mod)
+  ans_obtained <- make_linpred_from_stored_draws_covariates(mod, point = FALSE)
+  ans_expected <- scale(data$income) %*% mod$draws_coef_covariates
+  expect_equal(as.matrix(ans_obtained), as.matrix(ans_expected))
+})
+
+test_that("'make_linpred_from_stored_draws_covariates' works with valid inputs - point is TRUE", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$income <- rnorm(n = nrow(data))
+  formula <- deaths ~ age + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_covariates(mod, ~income)
+  mod <- set_n_draw(mod, n_draw = 10L)
+  mod <- fit(mod)
+  ans_obtained <- make_linpred_from_stored_draws_covariates(mod, point = TRUE)
+  ans_expected <- scale(data$income) %*% mod$point_coef_covariates
+  expect_equal(as.numeric(ans_obtained), as.numeric(ans_expected))
+})
+
+
+
+## 'make_linpred_from_stored_draws_effects' -----------------------------------
+
+test_that("'make_linpred_from_stored_draws_effects' works with valid inputs - point is FALSE", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_n_draw(mod, n_draw = 10L)
+  mod <- fit(mod)
+  ans_obtained <- make_linpred_from_stored_draws_effects(mod, point = FALSE)
+  comp <- components(mod, quiet = TRUE)
+  ans_expected <- make_linpred_from_components(mod = mod,
+                                               components = comp,
+                                               data = mod$data,
+                                               dimnames_terms = mod$dimnames_terms)
+  ans_expected <- ans_expected
+  expect_equal(as.matrix(ans_obtained), as.matrix(ans_expected))
+})
+
+test_that("'make_linpred_from_stored_draws_effects' works with valid inputs - point is TRUE", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_n_draw(mod, n_draw = 10L)
+  mod <- fit(mod)
+  ans_obtained <- make_linpred_from_stored_draws_effects(mod, point = TRUE)
+  m1 <- make_combined_matrix_effect_outcome(mod)
+  m2 <- make_combined_matrix_effectfree_effect(mod)
+  ans_expected <- as.double(m1 %*% m2 %*% mod$point_effectfree)
+  expect_equal(as.numeric(ans_obtained), as.numeric(ans_expected))
 })
 
 
@@ -1923,27 +2275,6 @@ test_that("'make_point_est_effects' throws correct error when not fitted", {
                   exposure = popn)
   expect_error(make_point_est_effects(mod),
                "Internal error: Model not fitted.")
-})
-
-
-## 'make_scaled_eigen' --------------------------------------------------------
-
-## See also tests for rvnorm_eigen
-
-test_that("'make_scaled_eigen' works with positive definite matrix", {
-    set.seed(0)
-    prec <- solve(crossprod(matrix(rnorm(25), 5)))
-    ans <- make_scaled_eigen(prec)
-    expect_identical(dim(ans), dim(prec))
-})
-
-test_that("'make_scaled_eigen' works with non-negative definite matrix", {
-    set.seed(0)
-    prec <- solve(crossprod(matrix(rnorm(25), 5)))
-    prec[5,] <- 0
-    prec[,5] <- 0
-    ans <- make_scaled_eigen(prec)
-    expect_identical(dim(ans), dim(prec))
 })
 
 
@@ -2093,6 +2424,59 @@ test_that("'make_term_components' works - has svd", {
   expect_identical(length(ans), length(comp))
 })
 
+test_that("'make_term_components' works - has covariates", {
+  set.seed(0)
+  data <- expand.grid(age = poputils::age_labels(type = "lt", max = 60),
+                      time = 2000:2005,
+                      sex = c("F", "M"),
+                      reg = c("a", "b"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_n_draw(mod, n = 1)
+  mod <- set_covariates(mod, ~reg)
+  mod <- fit(mod)
+  comp <- make_comp_components(mod)
+  ans <- make_term_components(mod)
+  expect_identical(length(ans), length(comp))
+})
+
+
+## 'make_term_covariates' -------------------------------------------------------------
+
+test_that("'make_term_covariates' works with non-covariate", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = c("a", "b"),
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$distance <- runif(n = nrow(data))
+  mod <- mod_pois(formula = deaths ~ age * sex ,
+                  data = data,
+                  exposure = popn) 
+  expect_identical(make_term_covariates(mod), character())
+})
+
+test_that("'make_term_covariates' works with covariates", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = c("a", "b"),
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$income <- runif(n = nrow(data))
+  data$distance <- runif(n = nrow(data))
+  mod <- mod_pois(formula = deaths ~ age * sex ,
+                  data = data,
+                  exposure = popn) |>
+    set_covariates(~ income)
+  expect_identical(make_term_covariates(mod), "covariates")
+})
+
 
 ## 'make_term_spline' ------------------------------------------------------------
 
@@ -2202,30 +2586,6 @@ test_that("'make_unconstr_dimnames_by' works", {
 })
 
 
-## 'paste_dot' ----------------------------------------------------------------
-
-test_that("'paste_dot' works with valid inputs", {
-  expect_identical(paste_dot(1:3, 3:1), c("1.3", "2.2", "3.1"))
-})
-
-
-## 'rescale_lin_intercept' ----------------------------------------------------
-
-test_that("'rescale_lin_intercept' works with valid inputs", {
-  set.seed(0)
-  slope <- rvec::rnorm_rvec(n = 4, n_draw = 10)
-  effect <- rvec::rnorm_rvec(n = 20, n_draw = 10)
-  matrix_along_by <- matrix(0:19, nrow = 5)
-  ans_obtained <- rescale_lin_intercept(slope = slope,
-                                        effect = effect,
-                                        matrix_along_by = matrix_along_by)
-  ans_expected <- slope
-  for (i in 1:4)
-    ans_expected[i] <- mean(effect[1:5 + (i - 1) * 5]) - mean(slope[i] * (1:5))
-  expect_equal(ans_obtained, ans_expected)
-})
-
-
 ## 'make_transforms_hyper' ----------------------------------------------------
 
 test_that("'make_transforms_hyper' works", {
@@ -2245,133 +2605,77 @@ test_that("'make_transforms_hyper' works", {
 })
 
 
-## 'infer_trend_cyc_seas_err_forecast' --------------------------------------------
+## 'rescale_components' -------------------------------------------------------
 
-test_that("'infer_trend_cyc_seas_err_forecast' works", {
+test_that("'rescale_components' works", {
   set.seed(0)
-  data <- expand.grid(age = 0:4, time = 2000:2005, sex = c("F", "M"))
-  data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rpois(n = nrow(data), lambda = 10)
-  formula <- deaths ~ sex * time + age
-  mod <- mod_pois(formula = formula,
+  data <- expand.grid(age = 0:5,
+                      time = 2000:2011,
+                      sex = c("F", "M"),
+                      region = c("a", "b"))
+  data$wt <- rpois(n = nrow(data), lambda = 10)
+  data$income <- rnorm(n = nrow(data), mean = data$age + data$time/100, sd = 5 / sqrt(data$wt))
+  formula <- income ~ age * sex + region * time
+  mod <- mod_norm(formula = formula,
                   data = data,
-                  exposure = popn) |>
-    set_prior(time ~ RW2()) |>
-    set_prior(sex:time ~ Lin()) |>
+                  weights = wt) |>
+    set_prior(time ~ Lin_AR1()) |>
+    set_prior(region:time ~ RW_Seas(n = 2)) |>
+    set_n_draw(n = 4) |>
     fit()
-  mod <- set_n_draw(mod, 5)
-  mod <- fit(mod)
-  comp_est <- components(mod)
-  comp_forecast <- forecast(mod, labels = 2006:2007, output = "components")
-  dimnames_terms_forecast <- make_dimnames_terms_forecast(dimnames_terms = mod$dimnames_terms,
-                                                          var_time = mod$var_time,
-                                                          labels_forecast = 2006:2007,
-                                                          time_only = TRUE)
-  ans_obtained <- infer_trend_cyc_seas_err_forecast(components = comp_forecast,
-                                                    priors = mod$priors,
-                                                    dimnames_terms = dimnames_terms_forecast,
-                                                    var_time = mod$var_time,
-                                                    var_age = mod$var_age)
-  expect_equal(ans_obtained[1:3], comp_forecast[1:3])
+  components <- components(mod, quiet = TRUE)
+  ans_obtained <- rescale_components(components = components,
+                                     mod = mod)
+  ans_expected <- components
+  ans_expected$.fitted[[1]] <- ans_expected$.fitted[[1]] * sd(data$income) + mean(data$income)
+  ans_expected$.fitted[ans_expected$component == "disp"] <- (ans_expected$.fitted[ans_expected$component == "disp"]
+    * sqrt(mod$offset_mean) * mod$outcome_sd)
+  is_not_hyp_int_disp <- ans_expected$component != "hyper" & ans_expected$level != "(Intercept)" & ans_expected$level != "disp"
+  ans_expected$.fitted[is_not_hyp_int_disp] <- ans_expected$.fitted[is_not_hyp_int_disp] * sd(data$income)
+  expect_equal(ans_obtained, ans_expected)
 })
 
-
-## 'infer_trend_cyc_seas_err_seasfix_forecast' --------------------------------
-
-test_that("'infer_trend_cyc_seas_err_seasfix_forecast' works", {
+test_that("'rescale_components' raises correct error if mod not normal", {
   set.seed(0)
-  data <- expand.grid(age = 0:4, time = 2000:2005, sex = c("F", "M"))
-  data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rpois(n = nrow(data), lambda = 10)
-  formula <- deaths ~ sex * time + age
+  data <- expand.grid(age = 0:5,
+                      time = 2000:2011,
+                      sex = c("F", "M"),
+                      region = c("a", "b"))
+  data$wt <- rpois(n = nrow(data), lambda = 10)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age * sex + region * time
   mod <- mod_pois(formula = formula,
                   data = data,
-                  exposure = popn) |>
-                  set_prior(sex:time ~ RW_Seas(n = 3)) |>
-                  set_n_draw(n = 10) |>
-                  fit()
-  components <- components(mod)
-  ans <- infer_trend_cyc_seas_err_seasfix_forecast(prior = mod$priors[["sex:time"]],
-                                                   dimnames_term = mod$dimnames_terms[["sex:time"]],
-                                                   var_time = mod$var_time,
-                                                   var_age = mod$var_age,
-                                                   components = components)
-  season <- ans$.fitted[ans$term == "sex:time" & ans$component == "season"]
-  trend <- ans$.fitted[ans$term == "sex:time" & ans$component == "trend"]
-  effect <- ans$.fitted[ans$term == "sex:time" & ans$component == "effect"]
-  expect_equal(effect, season + trend)
-})
-
-
-## 'infer_trend_cyc_seas_err_seasvary_forecast' -------------------------------
-
-test_that("'infer_trend_cyc_seas_err_seasvary_forecast' works", {
-  set.seed(0)
-  data <- expand.grid(age = 0:4, time = 2000:2005, sex = c("F", "M"))
-  data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rpois(n = nrow(data), lambda = 10)
-  formula <- deaths ~ sex * time + age
-  mod <- mod_pois(formula = formula,
-                  data = data,
-                  exposure = popn) |>
-                  set_prior(sex:time ~ RW_Seas(n = 3, s = 1)) |>
-                  set_n_draw(n = 10) |>
-                  fit()
-  components <- components(mod)
-  ans <- infer_trend_cyc_seas_err_seasvary_forecast(prior = mod$priors[["sex:time"]],
-                                                    dimnames_term = mod$dimnames_terms[["sex:time"]],
-                                                    var_time = mod$var_time,
-                                                    var_age = mod$var_age,
-                                                    components = components)
-  season <- ans$.fitted[ans$term == "sex:time" & ans$component == "season"]
-  trend <- ans$.fitted[ans$term == "sex:time" & ans$component == "trend"]
-  effect <- ans$.fitted[ans$term == "sex:time" & ans$component == "effect"]
-  expect_equal(effect, season + trend)
-})
-
-
-## 'rvec_to_mean' -------------------------------------------------------------
-
-test_that("'rvec_to_mean' works with valid inputs", {
-  data <- tibble::tibble(a = 1:3,
-                         b = rvec::rvec(matrix(1:12, nr = 3)),
-                         c = rvec::rvec(matrix(FALSE, nr = 3, nc = 2)),
-                         d = c("a", "b", "c"))
-  ans_obtained <- rvec_to_mean(data)
-  ans_expected <- tibble::tibble(a = 1:3,
-                         b = rowMeans(matrix(1:12, nr = 3)),
-                         c = rowMeans(matrix(FALSE, nr = 3, nc = 2)),
-                         d = c("a", "b", "c"))
-  expect_identical(ans_obtained, ans_expected)
-})
-
-
-## 'rmvnorm_chol', 'rmvnorm_eigen' --------------------------------------------
-
-test_that("'rmvnorm_chol' and 'rmvnorm_eigen' give the same answer", {
-    set.seed(0)
-    prec <- crossprod(matrix(rnorm(25), 5))
-    mean <- rnorm(5)
-    R_prec <- chol(prec)
-    scaled_eigen <- make_scaled_eigen(prec)
-    ans_chol <- rmvnorm_chol(n = 100000, mean = mean, R_prec = R_prec)
-    ans_eigen <- rmvnorm_eigen(n = 100000, mean = mean, scaled_eigen = scaled_eigen)
-    expect_equal(rowMeans(ans_chol), rowMeans(ans_eigen), tolerance = 0.02)
-    expect_equal(cov(t(ans_chol)), cov(t(ans_eigen)), tolerance = 0.02)
-})
+                  exposure = wt)
+  components <- components(mod, quiet = TRUE)
+  expect_error(rescale_components(components = components,
+                                  mod = mod),
+               "Internal error: `mod` has class")
+})  
 
 
 ## 'sort_components' ----------------------------------------------------------
 
 test_that("'sort_components' works with valid inputs", {
+  data <- expand.grid(age = 0:9,
+                      time = 1:3,
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$income <- rnorm(n = nrow(data))
+  mod <- mod_pois(formula = deaths ~ time + sex,
+                  data = data,
+                  exposure = popn) |>
+    set_covariates(~ income)
   components <- tibble::tribble(~term,         ~component, ~level,
                                 "sex",          "effect",   "m",
                                 "time",         "season", "2000",
                                 "sex",          "hyper",    "sd",
                                 "sex",          "effect",   "f",
+                                "covariates",   "hyper",    "sd_global",
+                                "covariates",   "coef",    "income",
                                 "(Intercept)", "effect",   "(Intercept)",
                                 "time",         "effect", "2000")
-  mod <- list(formula = deaths ~ time + sex)
   ans_obtained <- sort_components(components = components, mod = mod)
   ans_expected <- tibble::tribble(~term,         ~component, ~level,
                                   "(Intercept)", "effect",   "(Intercept)",
@@ -2379,16 +2683,28 @@ test_that("'sort_components' works with valid inputs", {
                                   "time",         "season",   "2000",
                                   "sex",          "effect",   "m",
                                   "sex",          "effect",   "f",
-                                  "sex",          "hyper",    "sd")
+                                  "sex",          "hyper",    "sd",
+                                  "covariates",   "coef",    "income",
+                                  "covariates",   "hyper",    "sd_global")
   expect_identical(ans_obtained, ans_expected)
 })
 
 test_that("'sort_components' raises correct effor with invalid component", {
+  data <- expand.grid(age = 0:9,
+                      time = 1:3,
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$income <- rnorm(n = nrow(data))
+  mod <- mod_pois(formula = deaths ~ time + sex,
+                  data = data,
+                  exposure = popn) |>
+    set_covariates(~ income)
   components <- tibble::tribble(~term,         ~component, ~level,
                                 "(Intercept)", "effect",   "(Intercept)",
                                 "time",         "season", "2000",
                                 "sex",          "wrong",    "sd")
-  expect_error(sort_components(components, mod = list(formula = deaths ~ age)),
+  expect_error(sort_components(components, mod = mod),
                "Internal error: \"wrong\" not a valid value for `component`.")
 })
 

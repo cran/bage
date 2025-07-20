@@ -103,13 +103,10 @@ which is what we use internally. Values for $\gamma_i$ can be generated using
 ## Normal likelihood {#sec:norm}
 
 The normal model is 
-\begin{equation}
-  \tilde{y}_i \sim \text{N}(\mu_i, \tilde{w}_i^{-1}\xi^2).
-\end{equation}
-where $\tilde{y}_i$ is a standardized version of outcome $y_i$, and $\tilde{w}_i$ is a standardized version of weight $w_i$. The standardization is carried out using
 \begin{align}
-  \tilde{y}_i & = \frac{y_i - \bar{y}}{s} \\
-  \tilde{w}_i & = \frac{w_i}{\bar{w}}.
+  y_i & \sim \text{N}(\gamma_i, w_i^{-1} \sigma^2) \\
+  \gamma_i & = \bar{y} + s \mu_i \\
+  \sigma^2 & = \bar{w} s^2 \xi^2
 \end{align}
 where
 \begin{align}
@@ -118,10 +115,10 @@ where
   \bar{w} & = \frac{\sum_{i=1}^n w_i}{n}.
 \end{align}
 
-Standardizing allows us to apply the same priors as we use for the Poisson and binomial models.
+Mean $\mu_i$ and stanard deviation $\xi$ are defined on scale that used standardized versinos of $y$ and $w$. Standardizing allows us to apply the same priors as we use for the Poisson and binomial models.
 
 
-# Model for prior means
+# Model for prior means {#sec:means}
 
 Let $\pmb{\mu} = (\mu_1, \cdots, \mu_n)^{\top}$. Our model for $\pmb{\mu}$ is
 \begin{equation}
@@ -154,11 +151,15 @@ If a prior involves an 'along' dimension but the user does not specify one, the 
 - otherwise, raise an error asking the user to explicitly specify a dimension. 
 
 
-### Sum-to-zero constraints {#sec:sum-to-zero}
+### Constraints {#sec:constraints}
 
-Priors that involve 'along' dimensions can optionally include sum-to-zero constraints. If these constrains are applied, then within each element $v$ of the 'along' dimension, the sum of the $\beta_j^{(m)}$ across each 'by' dimension is zero. For instance, if $\pmb{\beta}^{(m)}$ is an interaction between time, region, and sex, with time as the 'along' variable, then within each combination of time and region, the values for females and males sum to zero, and within each combination of time and sex, the values for regions sum to zero.
+With some combinations of terms and priors, some $\pmb{\beta}^{(m)}$ are only weakly identified, and have diffuse prior distributions. Even when this happens, however, the quantity $\mu_i = \sum_{m=0}^M \beta_{j_i^m}^{(m)}$ is still well identified, so the weak identification may not matter to the aims of the analysis.
 
-Except in the case of dynamic SVD-based priors (eg Sections \@ref(sec:pr-svd-rw)), the sum-to-zero constraints are implemented internally by drawing values within an unrestricted lower-dimensional space, and then transforming to the restricted higher-dimensional space. For instance, a random walk prior for a time-region interaction with $R$ regions consists of $R-1$ unrestricted random walks along time, which are converted into $R$ random walks that sum to zero across region. Matrices for transforming between the unrestricted and restricted spaces are constructed using the QR decomposition, as described in Section 1.8.1 of @wood2017generalized. With dynamic SVD-based priors, we draw values for the SVD coefficients with no constraints, convert these to unconstrained values for $\pmb{\beta}^{(m)}$, and then subtract means.
+If, however, stronger identification is required, it can be achieved by imposing constraints on the elements of the $\pmb{\beta}^{(m)}$. This is done via the `con` argument. At present only two choices for `con` have been implemented. The first is `"none"`, where no constraints are applied. This is the default. The second is `"by"`.
+
+The `"by"` option can only be used if $\pmb{\beta}^{(m)}$ has an 'along' dimension. If `con` is `"by"`, then within each element $v$ of the 'along' dimension, the sum of the $\beta_j^{(m)}$ across each 'by' dimension is zero. For instance, if $\pmb{\beta}^{(m)}$ is an interaction between time, region, and sex, with time as the 'along' variable, then within each combination of time and region, the values for females and males sum to zero, and within each combination of time and sex, the values for regions sum to zero.
+
+Except in the case of dynamic SVD-based priors (eg Sections \@ref(sec:pr-svd-rw)), `"by"` constraints are implemented internally by drawing values within an unrestricted lower-dimensional space, and then transforming to the restricted higher-dimensional space. For instance, a random walk prior for a time-region interaction with $R$ regions consists of $R-1$ unrestricted random walks along time, which are converted into $R$ random walks that sum to zero across region. Matrices for transforming between the unrestricted and restricted spaces are constructed using the QR decomposition, as described in Section 1.8.1 of @wood2017generalized. With dynamic SVD-based priors, we draw values for the SVD coefficients with no constraints, convert these to unconstrained values for $\pmb{\beta}^{(m)}$, and then subtract means.
 
 
 ### Algorithm for assigning default priors
@@ -252,7 +253,7 @@ Random walk
 
 $A_0^{(m)}$ can be 0, implying that $\beta_{u,1}^{(m)}$ is fixed at 0.
 
-When $U_m > 1$, sum-to-zero constraints (Section \@ref(sec:sum-to-zero)) can be applied.
+When $U_m > 1$, constraints (Section \@ref(sec:constraints)) can be applied.
 
 ### Contribution to posterior density
 
@@ -273,13 +274,15 @@ If the prior includes sum-to-zero constraints, means are subtracted from the for
 ### Code
 
 ```
-RW(s = 1, along = NULL, zero_sum = TRUE)
+RW(s = 1,
+   along = NULL,
+   con = c("none", "by"))
 ```
 
 - `s` is $A_{\tau}^{(m)}$. Defaults to 1.
 - `sd` is $A_0^{(m)}$. Defaults to 1.
 - `along` used to identify 'along' and 'by' dimensions.
-- if `zero_sum` is `TRUE`, sum-to-zero constraints are applied.
+- if `con` is `"by"`, sum-to-zero constraints are applied.
 
 
 ## RW2() {#sec:pr-rw2}
@@ -297,7 +300,7 @@ Second-order random walk
 
 $A_0^{(m)}$ can be 0, implying that $\beta_{u,1}^{(m)}$ is fixed at 0.
 
-When $U_m > 1$, sum-to-zero constraints (Section \@ref(sec:sum-to-zero)) can be applied.
+When $U_m > 1$, constraints (Section \@ref(sec:constraints)) can be applied.
 
 ### Contribution to posterior density
 
@@ -318,14 +321,62 @@ If the prior includes sum-to-zero constraints, means are subtracted from the for
 ### Code
 
 ```
-RW2(s = 1, sd = 1, sd_slope = 1, along = NULL, zero_sum = TRUE)
+RW2(s = 1,
+    sd = 1,
+    sd_slope = 1,
+    along = NULL,
+    con = c("none", "by"))
 ```
 
 - `s` is $A_{\tau}^{(m)}$
 - `sd` is $A_0^{(m)}$
 - `sd_slope` is $A_{\eta}^{(m)}$
 - `along` used to identify 'along' and 'by' dimensions
-- if `zero_sum` is `TRUE`, sum-to-zero constraints are applied
+- if `con` is `"by"`, sum-to-zero constraints are applied
+
+
+
+## RW2_Infant() {#sec:pr-rw2-infant}
+
+### Model
+
+Second-order random walk with infant indicator. Designed for age profiles for mortality rates. Along dimension must be age.
+
+\begin{align}
+  \beta_{u,1}^{(m)} & \sim \text{N}(0, 1) \\
+  \beta_{u,2}^{(m)} & \sim \text{N}\left(0, (A_{\eta}^{(m)})^2\right) \\
+  \beta_{u,3}^{(m)} & \sim \text{N}\left(2 \beta_{u,2}^{(m)}, \tau_m^2\right) \\
+  \beta_{u,v}^{(m)} & \sim \text{N}\left(2 \beta_{u,v-1}^{(m)} - \beta_{u,v-2}^{(m)}, \tau_m^2\right), \quad v = 4, \cdots, V_m \\
+  \tau_m & \sim \text{N}^+\left(0, (A_{\tau}^{(m)})^2\right)
+\end{align}
+
+When $U_m > 1$, constraints (Section \@ref(sec:constraints)) can be applied.
+
+### Contribution to posterior density
+
+\begin{equation}
+  \text{N}(\tau_m \mid 0, A_{\tau}^{(m)2}) \prod_{u=1}^{U_m} \text{N}(\beta_{u,1}^{(m)} \mid 0, 1) \text{N}(\beta_{u,2}^{(m)} \mid 0, (A_{\eta}^{(m)})^2) \text{N}\left(\beta_{u,3}^{(m)} \mid 2 \beta_{u,2}^{(m)}, \tau_m^2 \right) \prod_{v=4}^{V_m} \text{N}\left(\beta_{u,v}^{(m)} \mid 2 \beta_{u,v-1}^{(m)} - \beta_{u,v-2}^{(m)}, \tau_m^2 \right) 
+\end{equation}
+
+
+### Forecasting
+
+Terms with an `RW2_Infant()` prior cannot be forecasted.
+
+### Code
+
+```
+RW2_Infant(s = 1,
+           sd_slope = 1,
+	   con = c("none", "by"))
+```
+
+- `s` is $A_{\tau}^{(m)}$
+- `sd_slope` is $A_{\eta}^{(m)}$
+- if `con` is `"by"`, sum-to-zero constraints are applied
+
+
+
 
 
 
@@ -350,18 +401,19 @@ $A_0^{(m)}$ can be 0, implying that $\alpha_{u,1}^{(m)}$ is fixed at 0.
 
 $A_{\omega}^{(m)2}$ can be set to zero, implying that seasonal effects are fixed over time.
 
-When $U_m > 1$, sum-to-zero constraints (Section \@ref(sec:sum-to-zero)) can be applied.
+When $U_m > 1$, constraints (Section \@ref(sec:constraints)) can be applied.
 
 
 ### Contribution to posterior density
 
-\begin{equation}
-\begin{split}
-  & \text{N}(\tau_m \mid 0, A_{\tau}^{(m)2}) \text{N}(\omega_m \mid 0, A_{\omega}^{(m)2}) \\
-  \quad \times & \prod_{u=1}^{U_m} \left( \text{N}\left(\alpha_{u,1}^{(m)} \mid 0, (A_0^{(m)})^2 \right) \prod_{v=2}^{V_m} \text{N}\left(\alpha_{u,v}^{(m)} \mid \alpha_{u,v-1}^{(m)}, \tau_m^2 \right) \prod_{v=1}^{S_m-1}  \text{N}\left(\lambda_{u,v}^{(m)} \mid 0, (A_{\lambda}^{(m)})^2\right) \\
-  \prod_{v > S_m, \; (v-1) \bmod S_m \neq 0}^{V_m} \text{N}\left(\lambda_{u,v}^{(m)} \mid \lambda_{u,v-S_m}^{(m)}, \omega_m^2\right) \right)
-\end{split}
-\end{equation}
+\begin{align}
+  & \text{N}(\tau_m \mid 0, A_{\tau}^{(m)2}) \text{N}(\omega_m \mid 0, A_{\omega}^{(m)2}) \notag \\
+  & \quad \times \prod_{u=1}^{U_m} \bigg( \text{N}\left(\alpha_{u,1}^{(m)} \mid 0, (A_0^{(m)})^2 \right)  
+  \prod_{v=2}^{V_m} \text{N}\left(\alpha_{u,v}^{(m)} \mid \alpha_{u,v-1}^{(m)}, \tau_m^2 \right) \notag \\
+  & \quad \times \prod_{v=1}^{S_m-1}  \text{N}\left(\lambda_{u,v}^{(m)} \mid 0, (A_{\lambda}^{(m)})^2\right)  
+  \prod_{\substack{v > S_m \\ (v-1) \bmod S_m \neq 0}}^{V_m} \text{N}\left(\lambda_{u,v}^{(m)} \mid \lambda_{u,v-S_m}^{(m)}, \omega_m^2\right) \bigg)
+\end{align}
+
 
 ### Forecasting
 
@@ -374,7 +426,13 @@ When $U_m > 1$, sum-to-zero constraints (Section \@ref(sec:sum-to-zero)) can be 
 ### Code
 
 ```
-RW_Seas(n_seas, s = 1, sd = 1, s_seas = 0, sd_seas = 1, along = NULL, zero_sum = FALSE)
+RW_Seas(n_seas,
+        s = 1,
+	sd = 1,
+	s_seas = 0,
+	sd_seas = 1,
+	along = NULL,
+	con = c("none", "by"))
 ```
 
 - `n_seas` is $S_m$
@@ -383,7 +441,7 @@ RW_Seas(n_seas, s = 1, sd = 1, s_seas = 0, sd_seas = 1, along = NULL, zero_sum =
 - `s_seas` is $A_{\omega}^{(m)}$
 - `sd_seas` is $A_{\lambda}^{(m)}$
 - `along` used to identify 'along' and 'by' dimensions
-- if `zero_sum` is `TRUE`, sum-to-zero constraints are applied
+- if `con` is `"by"`, sum-to-zero constraints are applied
 
 
 ## RW2_Seas() {#sec:rw2seas}
@@ -408,20 +466,22 @@ $A_0^{(m)}$ can be 0, implying that $\alpha_{u,1}^{(m)}$ is fixed at 0.
 
 $A_{\omega}^{(m)2}$ can be set to zero, implying that seasonal effects are fixed over time.
 
-When $U_m > 1$, sum-to-zero constraints (Section \@ref(sec:sum-to-zero)) can be applied.
+When $U_m > 1$, constraints (Section \@ref(sec:constraints)) can be applied.
 
 ### Contribution to posterior density
 
-\begin{equation}
-\begin{split}
-  & \text{N}(\tau_m \mid 0, A_{\tau}^{(m)2}) \text{N}(\omega_m \mid 0, A_{\omega}^{(m)2})  \\
-  \quad \times & \prod_{u=1}^{U_m} \left( \text{N}(\alpha_{u,1}^{(m)} \mid 0, (A_0^{(m)})^2 )
-\text{N}(\alpha_{u,2}^{(m)} \mid \alpha_{u,1}^{(m)}, (A_{\eta}^{(m)})^2 )
-\prod_{v=3}^{V_m} \text{N}(\alpha_{u,v}^{(m)} \mid 2 \alpha_{u,v-1}^{(m)} - \alpha_{u,v-2}^{(m)}, \tau_m^2 )  \\
-  \prod_{v=1}^{S_m-1}  \text{N}(\lambda_{u,v}^{(m)} \mid 0, (A_{\lambda}^{(m)})^2)
-  \prod_{v > S_m, (v-1) \bmod S_m \neq 0}^{V_m} \text{N}(\lambda_{u,v}^{(m)} \mid \lambda_{u,v-S_m}^{(m)}, \omega_m^2) \right)
-  \end{split}
-\end{equation}
+
+
+\begin{align}
+& \text{N}(\tau_m \mid 0, A_{\tau}^{(m)2}) \text{N}(\omega_m \mid 0, A_{\omega}^{(m)2})  \notag \\
+& \times \prod_{u=1}^{U_m} \bigg( \text{N}(\alpha_{u,1}^{(m)} \mid 0, (A_0^{(m)})^2 )  
+\text{N}(\alpha_{u,2}^{(m)} \mid \alpha_{u,1}^{(m)}, (A_{\eta}^{(m)})^2 )  \notag \\
+& \quad \times \prod_{v=3}^{V_m} \text{N}(\alpha_{u,v}^{(m)} \mid 2 \alpha_{u,v-1}^{(m)} - \alpha_{u,v-2}^{(m)}, \tau_m^2 ) \notag \\
+& \quad \times \prod_{v=1}^{S_m-1}  \text{N}(\lambda_{u,v}^{(m)} \mid 0, (A_{\lambda}^{(m)})^2) \notag \\
+& \quad \times \prod_{\substack{v > S_m \\ (v-1) \bmod S_m \neq 0}}^{V_m} \text{N}(\lambda_{u,v}^{(m)} \mid \lambda_{u,v-S_m}^{(m)}, \omega_m^2) \bigg)
+\end{align}
+
+
 
 ### Forecasting
 
@@ -434,7 +494,14 @@ When $U_m > 1$, sum-to-zero constraints (Section \@ref(sec:sum-to-zero)) can be 
 ### Code
 
 ```
-RW2_Seas(n_seas, s = 1, sd = 1, sd_slope = 1, s_seas = 0, sd_seas = 1, along = NULL, zero_sum = FALSE)
+RW2_Seas(n_seas,
+         s = 1,
+	 sd = 1,
+	 sd_slope = 1,
+	 s_seas = 0,
+	 sd_seas = 1,
+	 along = NULL,
+	 con = c("none", "by"))
 ```
 
 - `n_seas` is $S_m$
@@ -444,7 +511,7 @@ RW2_Seas(n_seas, s = 1, sd = 1, sd_slope = 1, s_seas = 0, sd_seas = 1, along = N
 - `s_seas` is $A_{\omega}^{(m)}$
 - `sd_seas` is $A_{\lambda}^{(m)}$
 - `along` used to identify 'along' and 'by' dimensions
-- if `zero_sum` is `TRUE`, sum-to-zero constraints are applied
+- if `con` is `"by"`, sum-to-zero constraints are applied
 
 
 ## AR() {#sec:pr-ar}
@@ -486,7 +553,7 @@ AR(n_coef = 2,
    shape1 = 5,
    shape2 = 5,
    along = NULL,
-   zero_sum = FALSE)
+   con = c("none", "by"))
 ```
 
 - `n_coef` is $K_m$
@@ -503,8 +570,8 @@ Special case or `AR()`, with extra options for autocorrelation coefficient.
 ### Model
 
 \begin{align}
-  \beta_{u,1}^{(m)} & \sim \text{N}(0, \tau_m^2), \quad u = 1, \cdots, U_m \\
-  \beta_{u,v}^{(m)} & \sim \text{N}(\phi_m \beta_{u,v-1}^{(m)}, (1 - \phi_m^2) \tau_m^2), \quad u = 1, \cdots, U_m, \quad v = 2, \cdots, V_m \\
+  \beta_{u,1}^{(m)} & \sim \text{N}(0, \tau_m^2) \\
+  \beta_{u,v}^{(m)} & \sim \text{N}(\phi_m \beta_{u,v-1}^{(m)}, (1 - \phi_m^2) \tau_m^2) \quad v = 2, \cdots, V_m \\
   \phi_m & = a_{0,m} + (a_{1,m} - a_{0,m}) \phi_m^{\prime} \\
   \phi_m^{\prime} & \sim \text{Beta}(S_1^{(m)}, S_2^{(m)}) \\
   \tau_m & \sim \text{N}^+\left(0, A_{\tau}^{(m)2}\right).
@@ -536,7 +603,7 @@ AR1(s = 1,
     min = 0.8,
     max = 0.98,
     along = NULL,
-    zero_sum = TRUE)
+    con = c("none", "by"))
 ```
 
 - `s` is $A_{\tau}^{(m)}$
@@ -582,13 +649,18 @@ Note that $\sum_{v=1}^{V_m} \alpha_{u,v}^{(m)} = 0$.
 ### Code
 
 ```
-Lin(s = 1, mean_slop = 0, sd_slope = 1, along = NULL, zero_sum = FALSE)
+Lin(s = 1,
+    mean_slope = 0,
+    sd_slope = 1,
+    along = NULL,
+    con = c("none", "by"))
 ```
 
 - `s` is $A_{\tau}^{(m)}$
 - `mean_slope` is $B_{\eta}^{(m)}$
 - `sd_slope` is $A_{\eta}^{(m)}$
 - `along` is used to indentify 'along' and 'by' dimensions
+- if `con` is `"by"`, sum-to-zero constraints are applied
 
 
 ## Lin_AR() {#sec:pr-lin-ar}
@@ -618,12 +690,10 @@ Each of the individual $\phi_k^{(m)}$ has prior
 
 ### Contribution to posterior density
 
-\begin{equation}
-\begin{split}
-  & \text{N}^+\left(\tau_m \mid 0, A_{\tau}^{(m)2} \right)  \prod_{k=1}^{K_m} \text{Beta}\left( \tfrac{1}{2} \phi_k^{(m)} + \tfrac{1}{2} \mid 2, 2 \right) \\
+\begin{align}
+  & \text{N}^+\left(\tau_m \mid 0, A_{\tau}^{(m)2} \right)  \prod_{k=1}^{K_m} \text{Beta}\left( \tfrac{1}{2} \phi_k^{(m)} + \tfrac{1}{2} \mid S_1^{(m)}, S_2^{(m)} \right) \notag \\
   & \quad \times \prod_{u=1}^{U_m} \text{N}(\eta_u^{(m)} \mid 0, A_{\eta}^{(m)2}) p\left( \epsilon_{u,1}^{(m)}, \cdots, \epsilon_{u,V_m}^{(m)} \mid \phi_1^{(m)}, \cdots, \phi_{K_m}^{(m)}, \tau_m \right) 
-\end{split}
-\end{equation}
+\end{align}
 where $p\left( \epsilon_{u,1}^{(m)}, \cdots, \epsilon_{u,V_m}^{(m)} \mid \phi_1^{(m)}, \cdots, \phi_{K_m}^{(m)}, \tau_m \right)$ is calculated internally by TMB.
 
 ### Forecasting
@@ -644,7 +714,7 @@ Lin_AR(n_coef = 2,
        mean_slope = 0,
        sd_slope = 1,
        along = NULL,
-       zero_coef = FALSE)
+       con = c("none", "by"))
 ```
 
 - `n_coef` is $K_m$
@@ -654,11 +724,69 @@ Lin_AR(n_coef = 2,
 - `mean_slope` is $B_{\eta}^{(m)}$
 - `sd_slope` is $A_{\eta}^{(m)}$
 - `along` is used to indentify 'along' and 'by' variables
+- if `con` is `"by"`, sum-to-zero constraints are applied
+
 
 
 ## Lin_AR1() {#sec:pr-lin-ar1}
 
-TODO - WRITE DETAILS
+### Model
+
+
+\begin{align}
+  \beta_{u,v}^{(m)} & = \alpha_{u,v}^{(m)} + \epsilon_{u,v}^{(m)} \\
+  \alpha_{u,v}^{(m)} & = \left(v - \frac{V_m + 1}{2}\right) \eta_u^{(m)} \\
+  \eta_u^{(m)} & \sim \text{N}\left(B_{\eta}^{(m)}, (A_{\eta}^{(m)})^2\right)\\
+  \epsilon_{u,1}^{(m)} & \sim \text{N}\left(0, \tau_m^2 \right) \\
+  \epsilon_{u,v}^{(m)} & \sim \text{N}\left(\phi_m \epsilon_{u,v-1}^{(m)},  (1 - \phi_m^2) \tau_m^2 \right), \quad v = 2, \cdots, V_m \\
+  \phi_m & = a_{0,m} + (a_{1,m} - a_{0,m}) \phi_m^{\prime} \\
+  \phi_m^{\prime} & \sim \text{Beta}(S_1^{(m)}, S_2^{(m)}) \\
+  \tau_m & \sim \text{N}^+\left(0, A_{\tau}^{(m)2}\right).
+\end{align}
+
+Note that $\sum_{v=1}^{V_m} \alpha_{u,v}^{(m)} = 0$.
+
+
+### Contribution to posterior density
+
+\begin{align}
+  & \text{N}^+\left(\tau_m \mid 0, A_{\tau}^{(m)2} \right)  \text{Beta}( \phi_m^{\prime} \mid S_1^{(m)}, S_2^{(m)}) \notag \\
+  & \quad \times \prod_{u=1}^{U_m} \text{N}(\eta_u^{(m)} \mid 0, A_{\eta}^{(m)2}) \text{N}\left(\epsilon_{u,1}^{(m)} \mid 0, \tau_m^2 \right)  \prod_{v=2}^{V_m} \text{N}\left(\epsilon_{u,v}^{(m)} \mid \phi_m \epsilon_{u,v-1}^{(m)}, (1 - \phi_m^2) \tau_m^2 \right)  
+\end{align}
+
+### Forecasting
+
+\begin{align}
+  \beta_{u, V_m + h}^{(m)} & = \left(\frac{V_m - 1}{2}+ h\right) \eta_u^{(m)} + \epsilon_{u,V_m+h}^{(m)} \\
+  \epsilon_{u,V_m+h}^{(m)} & \sim \text{N}\left(\phi_m \epsilon_{u,V_m + h - 1}^{(m)}, (1 - \phi_m^2) \tau_m^2\right)
+\end{align}
+
+
+### Code
+
+```
+Lin_AR1(s = 1,
+        shape1 = 5,
+        shape2 = 5,
+	min = 0.8,
+	max = 0.98,
+        mean_slope = 0,
+        sd_slope = 1,
+        along = NULL,
+   	con = c("none", "by"))
+```
+
+- `s` is $A_{\tau}^{(m)}$
+- `shape1` is $S_1^{(m)}$
+- `shape2` is $S_2^{(m)}$
+- `min` is $a_{0m}$
+- `max` is $a_{1m}$
+- `mean_slope` is $B_{\eta}^{(m)}$
+- `sd_slope` is $A_{\eta}^{(m)}$
+- `along` is used to indentify 'along' and 'by' variables
+- if `con` is `"by"`, sum-to-zero constraints are applied
+
+
 
 ## Sp() {#sec:pr-spline}
 
@@ -684,13 +812,14 @@ $\pmb{B}^{(m)} = (\pmb{b}_1^{(m)}(\pmb{v}), \cdots, \pmb{b}_{K_m}^{(m)}(\pmb{v})
 
 ### Forecasting
 
-Terms with a P-Spline prior cannot be forecasted.
+Terms with a `Sp()` prior cannot be forecasted.
 
 
 ### Code
 
 ```
-Sp(n = NULL, s = 1)
+Sp(n = NULL,
+   s = 1)
 ```
 
 - `n` is $K_m$. Defaults to $\max(0.7 J_m, 4)$.
@@ -749,7 +878,9 @@ Terms with an SVD prior cannot be forecasted.
 ### Code
 
 ```
-SVD(ssvd, n_comp = NULL, indep = TRUE)
+SVD(ssvd,
+    n_comp = NULL,
+    indep = TRUE)
 ```
 where
 - `ssvd` is an object containing $\pmb{F}$ and $\pmb{g}$
@@ -801,9 +932,10 @@ SVD_RW(ssvd,
        indep = TRUE,
        s = 1,
        sd = 1,
-       zero_sum = FALSE)
+       con = c("none", "by"))
 ```
 where
+
 - `ssvd` is an object containing $\pmb{F}$ and $\pmb{g}$
 - `n_comp` is $K_m$
 - `indep` determines whether and independent or joint model will be used if the term being modelled contains a sex or gender variable.
@@ -811,20 +943,9 @@ where
 - `sd` is $A_0^{(m)}$
 
 
-## SVD_RW2() {#sec:pr-svd-rw2}
+## SVD_RW2(), SVD_AR(), SVD_AR1() {#sec:pr-svd-oth}
 
-Same structure as `SVD_RW()`. TODO - write details.
-
-
-## SVD_AR() {#sec:pr-svd-ar}
-
-Same structure as `SVD_RW()`. TODO - write details.
-
-## SVD_AR1() {#sec:pr-svd-ar1}
-
-Same structure as `SVD_RW()`. TODO - write details.
-
-
+The `SVD_RW2()`, `SVD_AR()` and `SVD_AR1()` priors have the same structure as the `SVD_RW()` prior, but with `RW2()`, `AR()`, and `AR1()` priors for the along dimension taking the place of the `RW()` prior.
 
 ## Known {#sec:pr-known}
 
@@ -854,82 +975,39 @@ Known(values)
 
 ## Model
 
-The columns of matrix $\pmb{Z}$ are assumed to be standardised to have mean 0 and standard deviation 1.  $\pmb{Z}$ does not contain a column for an intercept.
+Matrix $\pmb{Z}$ is a standardized version of the original covariate data supplied by the user. We standardize every numeric variable to have mean 0 and standard deviation one. We then convert categorical variables to sets of indicator variables using R's 'treatment' contrast. If a variable in the original data is categorical with $C$ categories, then it is converted into $C-1$ indicator variables, with the first category as the omitted variable.
 
-We implement two priors for coefficient vector $\pmb{\zeta}$. The first prior is designed for the case where $P$, the number of colums of $\pmb{Z}$, is small, and most $\zeta_p$ are likely to distinguishable from zero. The second prior is designed for the case where $P$ is large, and only a few $\zeta_p$ are likely to be distinguishable from zero.
-
-
-### Standard prior
-
-\begin{align}
-  \zeta_p \mid \varphi & \sim \text{N}(0, \varphi^2) \\
-  \varphi & \sim \text{N}^+(0, 1)
-\end{align}
-
-
-### Shrinkage prior
-
-Regularized horseshoe prior [@piironen2017hyperprior]
-
-\begin{align}
-  \zeta_p \mid \vartheta_p, \varphi & \sim \text{N}(0, \vartheta_p^2 \varphi^2) \\
-  \vartheta_p & \sim \text{Cauchy}^+(0, 1) \\
-  \varphi & \sim \text{Cauchy}^+(0, A_{\varphi}^2) \\
-  A_{\varphi} & = \frac{p_0}{p_0 + P} \frac{\hat{\sigma}}{\sqrt{n}}
-\end{align}
-where $p_0$ is an initial guess at the number of $\zeta_p$ that are non-zero, and $\hat{\sigma}$ is obtained as follows:
-
-- Poisson. Using maximum likelihood, fit the GLM
-\begin{align}
-  y_i & \sim \text{Poisson}(w_i \gamma_i) \\
-  \log \gamma_i & = \sum_{m=0}^{M} \pmb{X}^{(m)} \pmb{\beta}^{(m)},
-\end{align}
-and set
+The elements of $\pmb{\zeta}$ have prior
 \begin{equation}
-  \hat{\sigma} = \frac{1}{n}\sum_{i=1}^n \frac{1}{w_i \hat{\gamma}_i}.
+  \zeta_p \sim \text{N}(0, 1) 
 \end{equation}
-- Binomial. Using maximum likelihood, fit the GLM
-\begin{align}
-  y_i & \sim \text{binomial}(w_i, \gamma_i) \\
-  \text{logit} \gamma_i & = \sum_{m=0}^{M} \pmb{X}^{(m)} \pmb{\beta}^{(m)},
-\end{align}
-and set
-\begin{equation}
-  \hat{\sigma} = \frac{1}{n}\sum_{i=1}^n \frac{1}{w_i \hat{\gamma}_i (1 - \hat{\gamma}_i)}.
-\end{equation}
-- Normal. Using maximum likelihood, fit the linear model
-\begin{equation}
-  y_i \sim \text{N}\left(\sum_{m=0}^{M} \pmb{X}^{(m)} \pmb{\beta}^{(m)}, w_i^{-1}\xi^2 \right)
-\end{equation}
-and set $\hat{\sigma} = \hat{\xi}$.
 
-
-The quantities used for Poisson and binomial likelihoods are derived from normal approximations to GLMs [@piironen2017hyperprior; @gelman2014bayesian, section 16.2].
 
 ## Contribution to posterior density
 
-TODO - write
+\begin{equation}
+  \prod_{p=1}^P \text{N}(\zeta_p | 0, 1)
+\end{equation}
+
 
 ## Forecasting
 
-TODO - write
+A model with covariates can be used for forecasting provided that
+
+- the coefficients (the $\zeta_p$) are non-time-varying,
+- future values for the covariates (the columns of $\pmb{Z}$) can be
+  inferred from the classifying variables (other than time),
+  or are supplied by the user.
+  
 
 ## Code
 
 ```
-set_covariates(formula, data = NULL, n_coef = NULL)
+set_covariates(mod, formula)
 ```
 
-- `formula` is a one-sided R formula describing the covariates to be used
-- `data` A data frame. If a value for `data` is supplied, then `formula` is interpreted in the context of this data frame. If a value for `data` is not supplied, then `formula` is interpreted in the context of the data frame used for the original call to `mod_pois()`, `mod_binom()`, or `mod_norm()`.
-- `n_coef` is the effective number of non-zero coefficients. If a value is supplied, the shrinkage prior is used; otherwise the standard prior is used.
-
-
-Examples:
-```
-set_covariates(~ mean_income + distance * employment)
-set_covariates(~ ., data = cov_data, n_coef = 5)
-```
+- `mod` Object of class `"bage_mod"`
+- `formula` One-sided R formula describing the covariates to be used
 
 
 # Prior for dispersion terms
@@ -1057,32 +1135,27 @@ Use the original disaggregated data, or, if the original data contains more then
 
 Running TMB yields a set of means $\pmb{m}$, and a precision matrix $\pmb{Q}^{-1}$, which together define the approximate joint posterior distribution of
 
-- $\pmb{\beta}^{(m)}$ for terms with independent normal, fixed normal, multivariate normal, random walk, second-order random walk, AR1, Linear, and Linear-AR1 priors,
-- $\pmb{\alpha}$ for terms with Spline and SVD priors,
-- hyper-parameters for $\pmb{\beta}^{(m)}$ and $\pmb{\alpha}^{(m)}$ typically transformed to another scale, such as a log scale,
-- dispersion term $\xi$, and
-- seasonal effects $\pmb{\lambda}$, together with associated hyper-parameters $\tau_{\lambda}$ (on a log scale).
+- intercept, main effects, and internactions $\pmb{\beta}^{(m)}$, $m = 0, \cdots, M$,
+- typically, hyper-parameters for the $\pmb{\beta}^{(m)}$, in many cases transformed to another scale, such as a log scale,
+- optionally, dispersion term $\xi$, and
+- optionally, covariate cofficients vector $\pmb{zeta}$.
 
-We use $\tilde{\pmb{\theta}}$ to denote a vector containing all these quantities.
-
-We perform a Cholesky decomposition of $\pmb{Q}^{-1}$, to obtain $\pmb{R}$ such that
-\begin{equation}
-  \pmb{R}^{\top} \pmb{R} = \pmb{Q}^{-1}
-\end{equation}
-We store $\pmb{R}$ as part of the model object.
-
-We draw generate values for $\tilde{\pmb{\theta}}$ by generating a vector of standard normal variates $\pmb{z}$, back-solving the equation
-\begin{equation}
-  \pmb{R} \pmb{v} = \pmb{z}
-\end{equation}
-and setting
-\begin{equation}
-  \tilde{\pmb{\theta}} = \pmb{v} + \pmb{m}.
-\end{equation}
+Let $\tilde{\pmb{\theta}}$ to denote a vector containing all these quantities. We draw values for $\tilde{\pmb{\theta}} \mid \pmb{m}, \pmb{Q}^{-1}$, typically using sparse matrix methods (as implemented in package **sparseMVN**.
 
 Next we convert any transformed hyper-parameters back to the original units, and insert values for $\pmb{\beta}^{(m)}$ for terms that have Known priors. We denote the resulting vector $\pmb{\theta}$.
 
-Finally we draw from the distribution of $\pmb{\gamma} \mid \pmb{y}, \pmb{\theta}$ using the methods described in Sections \@ref(sec:pois)-\@ref(sec:norm).
+We draw from the distribution of $\pmb{\gamma} \mid \pmb{y}, \pmb{\theta}$ using the methods described in Sections \@ref(sec:pois)-\@ref(sec:norm).
+
+Output from the Normal model receives special treatment. As described in section \@ref(sec:norm) and \@ref(sec:means), the Normal model is
+\begin{align}
+  \frac{y_i - \bar{y}}{s} & \sim \text{N}\left(\mu_i, \frac{\bar{w}}{w_i} \xi^2\right) \\
+  \mu_i & = \sum_{m=0}^{M} \beta_{j_i^m}^{(m)} + (\pmb{Z} \pmb{\zeta})_i
+\end{align}
+
+
+
+
+
 
 
 # Simulation

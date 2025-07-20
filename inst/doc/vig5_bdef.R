@@ -143,7 +143,7 @@ ggplot(slopes, aes(x = .replicate, y = slope)) +
 
 ## -----------------------------------------------------------------------------
 prob_25 <- aug_init |>
-  mutate(prob = draws_mean(.fitted < 0.0025))
+  mutate(prob = prob(.fitted < 0.0025))
 
 ggplot(prob_25, aes(x = time, y = prob)) +
   facet_wrap(vars(county)) +

@@ -1,3 +1,100 @@
+
+# bage 0.9.4
+
+## Interface
+
+* Modified help for `mod_pois()`, `mod_binom()`, `mod_norm()` to
+  clarify prior for dispersion. Added default value (of 1) to
+  `set_disp()`. This does not affect behaviour, but is a bit clearer
+  for users. (#94)
+* In `set_covariates()`, added paragraph in online documentation to
+  note that calling `set_covariates()` on a model that already has
+  covariates deletes the existing covariates. Also added a warning
+  message to `set_covariates()` when covariates being
+  overwritten. (#95).
+* `mod_pois()` emits message (not warning) if one or more rates are
+  suspiciously high (which is often a sympton of inaccurate
+  exposures.) (#96)
+* Added a guarded version of `rpois_rvec()`, which sets x[i] equal to
+  lambda[i] for lambda[i] > 1e8. This avoids numeric problems which
+  can lead to valgrind errors. The guarded version is called by
+  `augment()` and by `replicate_data()`. The user is warned when the
+  threshold of 1e8 is exceeded.
+  
+
+## Bug fix
+
+* Fixed bug in `set_n_draw()`, which was failing to thin covariate
+  coefficient draws. (#97)
+  
+
+
+# bage 0.9.3
+
+## Interface
+
+* In the online help for `mod_norm()` and in the Mathematical Details
+  vignette (vignette 2), give a new parameterisation of the
+  `mod_norm()` model, expressed on the original scale, not the
+  transformed scale (and closer to the paramterisation used by
+  `mod_pois()` and `mod_binom()`.)
+
+## Bug fix
+
+* Modify the `bage_mod_norm` method for `replicate_data()` so that it
+  returns results on the original scale.
+* Modify the `bage_mod_norm` methods for the helper functions for
+  `augment()` so that they properly incorporate weights.
+
+# bage 0.9.2
+
+## Interface
+
+* Added `original_scale` argument to `components()`, to be used with
+  normal models. Also added message remining users that, with normal
+  models, components were on a log scale (#88)
+* Added more information on progress.
+* Tidied printing of model objects.
+* Added new checks for outcome variable: no `NaN` and no `Inf`
+  permitted.
+
+## Bug fixes
+
+* Fixed bug introducted when `fit_default()` refactored in 0.9.1. Bug
+  meant that when optimizer switched from `nlminb()` to `optim()` on
+  non-convergence, `optim()` was not starting from old parameter
+  values.
+
+## Documentation
+
+* Added entry for `RW2_Infant()` to priors table. Hat-tip to Luke
+  Morris for noticing that entry was missing. (#87)
+
+  
+
+# bage 0.9.1
+
+## Changes to interface
+
+* Added function `set_covariates()`. Models can now include
+  covariates. Covariates are predictors other than the
+  cross-classifying dimensions such as age, sex, or time -- though
+  covariates can be formed from these dimensions.
+* Added variables `gdp_pc_2023` and `dens_2020` to dataset
+  `kor_births`.
+* Added `prt_deaths` dataset.
+* Added `set_seeds()` function, allowing users to reset random seeds
+  (though this would be uncommon in normal use.)
+
+## Changes to documentation
+
+* Added covariates vignette.
+  
+## Changes to internal calculations
+
+* More careful handling of `NA`s in offset and predictor variables.
+  
+  
 # bage 0.9.0
 
 * From 0.9.0 onwards we will use a formal deprecation make any
@@ -19,7 +116,9 @@
   the multivariate normal (which, since **bage** started using
   **sparseMVN**, is very short).
 * Finished vignette 1.
-* Corrected error in help for `kor_births`.
+* Added covariates
+* Added `gdp_pc_2023` and `dens_2020` variables to `kor_births`
+
 
 
 # bage 0.8.5

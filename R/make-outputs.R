@@ -137,280 +137,6 @@ draw_vals_components_fitted <- function(mod) {
 
 
 ## HAS_TESTS
-#' Default Method for Fitting a Model
-#'
-#' @param object A `bage_mod` object.
-#' typically created with [mod_pois()],
-#' [mod_binom()], or [mod_norm()].
-#' @param aggregate Whether to aggregate outcome and offset variables
-#' @param optimizer Which optimizer to use
-#' @param quiet Whether to suppress warnings and trace information
-#' from optimizer
-#' @param start_oldpar Whether to start from old parameter values
-#'
-#' @returns A `bage_mod` object
-#'
-#' @noRd
-fit_default <- function(mod, aggregate, optimizer, quiet, start_oldpar) {
-  t1 <- Sys.time()
-  optimizer_original <- optimizer
-  if (start_oldpar) {
-    if (is_fitted(mod))
-      oldpar <- mod$oldpar
-    else
-      cli::cli_abort("{.arg start_oldpar} is {.val {start_oldpar}} but model has not been fitted.")
-  }
-  mod <- unfit(mod)
-  ## data
-  if (aggregate) {
-    vals_ag <- make_vals_ag(mod)
-    outcome <- vals_ag$outcome
-    offset <- vals_ag$offset
-    matrices_effect_outcome <- vals_ag$matrices_effect_outcome
-  }
-  else {
-    vals_in_lik <- make_vals_in_lik(mod)
-    outcome <- vals_in_lik$outcome
-    offset <- vals_in_lik$offset
-    matrices_effect_outcome <- vals_in_lik$matrices_effect_outcome
-  }
-  dimnames_terms <- mod$dimnames_terms
-  terms_effect <- make_terms_effects(dimnames_terms)
-  i_lik <- make_i_lik_mod(mod)
-  terms_effectfree <- make_terms_effectfree(mod)
-  uses_matrix_effectfree_effect <- make_uses_matrix_effectfree_effect(mod)
-  matrices_effectfree_effect <- make_matrices_effectfree_effect(mod)
-  uses_offset_effectfree_effect <- make_uses_offset_effectfree_effect(mod)
-  offsets_effectfree_effect <- make_offsets_effectfree_effect(mod)
-  i_prior <- make_i_prior(mod)
-  uses_hyper <- make_uses_hyper(mod)
-  terms_hyper <- make_terms_hyper(mod)
-  uses_hyperrandfree <- make_uses_hyperrandfree(mod)
-  terms_hyperrandfree <- make_terms_hyperrandfree(mod)
-  const <- make_const(mod)
-  terms_const <- make_terms_const(mod)
-  matrices_along_by_effectfree <- make_matrices_along_by_effectfree(mod)
-  mean_disp <- mod$mean_disp
-  has_disp <- mean_disp > 0
-  data <- list(i_lik = i_lik,
-               outcome = outcome,
-               offset = offset,
-               terms_effect = terms_effect,
-               terms_effectfree = terms_effectfree,
-               uses_matrix_effectfree_effect = uses_matrix_effectfree_effect,
-               matrices_effectfree_effect = matrices_effectfree_effect,
-               uses_offset_effectfree_effect = uses_offset_effectfree_effect,
-               offsets_effectfree_effect = offsets_effectfree_effect,
-               matrices_effect_outcome = matrices_effect_outcome,
-               i_prior = i_prior,
-               uses_hyper = uses_hyper,
-               terms_hyper = terms_hyper,
-               uses_hyperrandfree = uses_hyperrandfree,
-               terms_hyperrandfree = terms_hyperrandfree,
-               consts = const, ## 'const' is reserved word in C
-               terms_consts = terms_const,
-               matrices_along_by_effectfree = matrices_along_by_effectfree,
-               mean_disp = mean_disp)
-  ## parameters
-  if (start_oldpar)
-    parameters <- oldpar
-  else {
-    effectfree <- make_effectfree(mod)
-    hyper <- make_hyper(mod)
-    hyperrandfree <- make_hyperrandfree(mod)
-    log_disp <- c(disp = 0)
-    parameters <- list(effectfree = effectfree,   
-                       hyper = hyper,
-                       hyperrandfree = hyperrandfree,
-                       log_disp = log_disp)
-  }
-  ## MakeADFun
-  map <- make_map(mod)
-  random <- make_random(mod)
-  has_random_effects <- !is.null(random)
-  f <- TMB::MakeADFun(data = data,
-                      parameters = parameters,
-                      map = map,
-                      DLL = "bage",
-                      random = random,
-                      silent = TRUE)
-  ## optimise
-  t2 <- Sys.time()
-  if (optimizer %in% c("multi", "nlminb")) {
-    if (quiet) {
-      suppressWarnings(out <- stats::nlminb(start = f$par,
-                                            objective = f$fn,
-                                            gradient = f$gr,
-                                            control = list(iter.max = 300L,
-                                                           eval.max = 400L,
-                                                           trace = 0L)))
-    }
-    else {
-      cli::cli_alert("Output from {.fun nlminb}:")
-      out <- stats::nlminb(start = f$par,
-                           objective = f$fn,
-                           gradient = f$gr,
-                           control = list(iter.max = 300L,
-                                          eval.max = 400L,
-                                          trace = 1L))
-    }
-    iter <- out$iterations
-    message <- out$message
-    multi_nonconv <- identical(optimizer, "multi") && !identical(out$convergence, 0L)
-    if (multi_nonconv) {
-      if (!quiet)
-        cli::cli_alert_info("\"nlminb\" optimizer did not converge: continuing with \"BFGS\".")
-      if (has_random_effects)
-        sdreport <- TMB::sdreport(f, bias.correct = FALSE, getJointPrecision = FALSE)
-      else
-        sdreport <- TMB::sdreport(f, bias.correct = FALSE, getReportCovariance = FALSE)
-      oldpar <- as.list(sdreport, what = "Est")
-      f <- TMB::MakeADFun(data = data,
-                          parameters = oldpar,
-                          map = map,
-                          DLL = "bage",
-                          random = random,
-                          silent = TRUE)
-      optimizer <- "BFGS"
-    }
-  }
-  if (optimizer %in% c("BFGS", "CG")) {
-    if (quiet) {
-      suppressWarnings(out <- stats::optim(par = f$par,
-                                           fn = f$fn,
-                                           gr = f$gr,
-                                           method = optimizer,
-                                           control = list(maxit = 300L,
-                                                          trace = 0L)))
-    }
-    else {
-      cli::cli_alert("Output from {.fun optim}:")
-      out <- stats::optim(par = f$par,
-                          fn = f$fn,
-                          gr = f$gr,
-                          method = optimizer,
-                          control = list(trace = 1L,
-                                         maxit = 300L,
-                                         REPORT = 1L))
-    }
-    if (optimizer_original == "multi")
-      iter <- paste(iter, out$counts[["gradient"]], sep = "+")
-    else
-      iter <- out$counts[["gradient"]]
-    message <- out$message
-    if (is.null(message))
-      message <- "<none>"
-  }
-  t3 <- Sys.time()
-  ## extract results
-  if (has_random_effects)
-    sdreport <- TMB::sdreport(f,
-                              bias.correct = TRUE,
-                              getJointPrecision = TRUE)
-  else
-    sdreport <- TMB::sdreport(f) 
-  est <- as.list(sdreport, what = "Est")
-  check_est(est)
-  if (has_random_effects) {
-    prec <- sdreport$jointPrecision
-    check_var_prec(x = prec, est = est)
-  }
-  else {
-    var <- sdreport$cov.fixed
-    check_var_prec(x = var, est = est)
-    prec <- solve(var) ## should be very low dimension
-  }
-  t4 <- Sys.time()
-  mod <- make_stored_draws(mod = mod,
-                           est = est,
-                           prec = prec,
-                           map = map)
-  mod <- make_stored_point(mod = mod,
-                           est = est)
-  t5 <- Sys.time()
-  time_total <- as.numeric(difftime(t5, t1, units = "secs"))
-  time_optim <- as.numeric(difftime(t3, t2, units = "secs"))
-  time_report <- as.numeric(difftime(t4, t3, units = "secs"))
-  converged <- identical(out$convergence, 0L)
-  if (!converged)
-    cli::cli_alert_warning("Optimizer did not converge.")
-  mod$computations <- tibble::tibble(time_total = time_total,
-                                     time_optim = time_optim,
-                                     time_report = time_report,
-                                     iter = iter,
-                                     converged = converged,
-                                     message = message)
-  mod$optimizer <- optimizer_original
-  mod$oldpar <- est
-  mod
-}
-
-
-## HAS_TESTS
-#' Two-Step Method for Fitting a Model
-#'
-#' @param object A `bage_mod` object.
-#' @param quiet Whether to suppress warning messages from nlminb
-#' @param vars_inner Variables used
-#' in inner model.
-#' @param optimizer Which optimizer to use
-#' @param quiet Whether to suppress warnings from 'optimizer'
-#'
-#' @returns A `bage_mod` object
-#'
-#' @noRd
-fit_inner_outer <- function(mod, optimizer, quiet, vars_inner, start_oldpar) {
-  if (start_oldpar)
-    cli::cli_abort("{.arg start_oldpar} must be {.val {FALSE}} when using \"inner-outer\" method.")
-  if (is.null(vars_inner))
-    vars_inner <- make_vars_inner(mod)
-  else
-    check_vars_inner(vars_inner)
-  use_term <- make_use_term(mod = mod,
-                            vars_inner = vars_inner)
-  mod_inner <- make_mod_inner(mod = mod,
-                              use_term = use_term)
-  mod_inner <- fit_default(mod = mod_inner,
-                           optimizer = optimizer,
-                           quiet = quiet,
-                           start_oldpar = start_oldpar,
-                           aggregate = TRUE)
-  mod_outer <- make_mod_outer(mod = mod,
-                              mod_inner = mod_inner,
-                              use_term = use_term)
-  mod_outer <- fit_default(mod = mod_outer,
-                           optimizer = optimizer,
-                           quiet = quiet,
-                           start_oldpar = start_oldpar,
-                           aggregate = TRUE)
-  computations <- rbind(inner = mod_inner$computations,
-                        outer = mod_outer$computations)
-  mod <- combine_stored_draws_point_inner_outer(mod = mod,
-                                                mod_inner = mod_inner,
-                                                mod_outer = mod_outer,
-                                                use_term = use_term)
-  if (has_disp(mod)) {
-    mod_disp <- make_mod_disp(mod)
-    mod_disp <- fit_default(mod = mod_disp,
-                            optimizer = optimizer,
-                            quiet = quiet,
-                            start_oldpar = start_oldpar,
-                            aggregate = FALSE)
-    computations <- rbind(computations,
-                          disp = mod_disp$computations)
-    mod <- transfer_draws_disp(mod = mod,
-                               mod_disp = mod_disp)
-  }
-  computations <- cbind(model = rownames(computations),
-                        computations)
-  rownames(computations) <- NULL
-  mod$computations <- computations
-  mod$vars_inner <- vars_inner
-  mod
-}
-
-
-## HAS_TESTS
 #' Helper Function for 'generate' Methods for 'bage_prior'
 #'
 #' @param x Object of class 'bage_prior'
@@ -731,55 +457,102 @@ get_term_from_est <- function(est, index_term) {
 
 
 ## HAS_TESTS
-#' Insert a Into a Data Frame
+#' Reformat Parts of Forecasted 'components' Data Frame Dealing with
+#' Hyper-Parameters that are Treated as Random Effects
 #'
-#' Insert a variable into a dataframe, immediately
-#' after another variable.
+#' @param components_forecast A data frame with forecasted
+#' (time-varying) parameters
+#' @param components A data frame with estimated
+#' (time-varying and non-time-varying) parameters
+#' @param priors List of objects of class 'bage_prior'.
+#' @param dimnames_terms Dimnames for array representations of terms
+#' being forecast
+#' @param var_time Name of time variable
+#' @param var_age Name of age variable
 #'
-#' Currently assumes that not inserting
-#' at start of 'df'.
-#'
-#' @param df A data frame (including a tibble)
-#' @param nm_after Name of the variable that the
-#' 'x' should come after
-#' @param x New variable
-#' @param nm_x Name of new variable
-#'
-#' @returns A modified version of 'df'
+#' @returns A modified version of 'components'
 #'
 #' @noRd
-insert_after <- function(df, nm_after, x, nm_x) {
-  nms_df <- names(df)
-  n_df <- length(nms_df)
-  i_after <- match(nm_after, names(df))
-  if (i_after < n_df) {
-    s_before <- seq_len(i_after)
-    s_after <- seq.int(from = i_after + 1L, to = n_df)
-    ans <- vctrs::vec_cbind(df[s_before],
-                            x,
-                            df[s_after],
-                            .name_repair = "universal_quiet")
+infer_trend_cyc_seas_err_forecast <- function(components,
+                                              priors,
+                                              dimnames_terms,
+                                              var_time,
+                                              var_age) {
+  nms <- names(dimnames_terms)
+  for (nm in nms) {
+    prior <- priors[[nm]]
+    dimnames_term <- dimnames_terms[[nm]]
+    components <- infer_trend_cyc_seas_err_forecast_one(prior = prior,
+                                                        dimnames_term = dimnames_term,
+                                                        var_time = var_time,
+                                                        var_age = var_age,
+                                                        components = components)
   }
-  else {
-    ans <- vctrs::vec_cbind(df,
-                            x,
-                            .name_repair = "universal_quiet")
-  }
-  names(ans)[[i_after + 1L]] <- nm_x
-  ans
+  components
 }
-  
+
 
 ## HAS_TESTS
-#' Test Whether Two Objects Have the Same Class
+#' Derive 'Components' Output for Terms with Fixed Seasonal Effect
+#' - Forecasts
 #'
-#' @param x,y Objects
+#' Derive 'seasonal' from 'effect' and 'trend'
 #'
-#' @returns TRUE or FALSE
+#' @param prior Object of class 'bage_prior'.
+#' @param dimnames_term Dimnames for array representation of term
+#' @param var_time Name of time variable
+#' @param var_age Name of age variable
+#' @param components A data frame.
+#'
+#' @returns A modifed version of 'components'
 #'
 #' @noRd
-is_same_class <- function(x, y)
-  identical(class(x)[[1L]], class(y)[[1L]])
+infer_trend_cyc_seas_err_seasfix_forecast <- function(prior,
+                                                      dimnames_term,
+                                                      var_time,
+                                                      var_age,
+                                                      components) {
+  nm <- dimnames_to_nm(dimnames_term)
+  is_season <- with(components, (term == nm) & (component == "season"))
+  is_trend <- with(components, (term == nm) & (component == "trend"))
+  is_effect <- with(components, (term == nm) & (component == "effect"))
+  trend <- components$.fitted[is_trend]
+  effect <- components$.fitted[is_effect]
+  season <- effect - trend
+  components$.fitted[is_season] <- season
+  components
+}
+
+
+## HAS_TESTS
+#' Derive 'Components' Output for Terms with Varying Seasonal Effect - Forecasts
+#'
+#' Derive 'seasonal' from 'effect' and 'trend'
+#'
+#' @param prior Object of class 'bage_prior'.
+#' @param dimnames_term Dimnames for array representation of term
+#' @param var_time Name of time variable
+#' @param var_age Name of age variable
+#' @param components A data frame.
+#'
+#' @returns A modifed version of 'components'
+#'
+#' @noRd
+infer_trend_cyc_seas_err_seasvary_forecast <- function(prior,
+                                                       dimnames_term,
+                                                       var_time,
+                                                       var_age,
+                                                       components) {
+  nm <- dimnames_to_nm(dimnames_term)
+  is_trend <- with(components, (term == nm) & (component == "trend"))
+  is_season <- with(components, (term == nm) & (component == "season"))
+  is_effect <- with(components, (term == nm) & (component == "effect"))
+  trend <- components$.fitted[is_trend]
+  effect <- components$.fitted[is_effect]
+  season <- effect - trend
+  components$.fitted[is_season] <- season
+  components
+}
 
 
 ## HAS_TESTS
@@ -899,9 +672,28 @@ make_comp_components <- function(mod) {
   hyperrand <- make_comp_hyperrand(mod)
   spline <- rep("spline", times = length(term_spline))
   svd <- rep("svd", times = length(term_svd))
+  covariates <- make_comp_covariates(mod)
   disp <- rep("disp", times = has_disp)
-  ans <- c(effect, hyper, hyperrand, spline, svd, disp)
+  ans <- c(effect, hyper, hyperrand, spline, svd, covariates, disp)
   ans
+}
+
+
+## HAS_TESTS
+#' Make Variable Identifying Component in
+#' Covariates Part of 'components'
+#'
+#' @param mod Object of class 'bage_mod'
+#'
+#' @returns A character vector
+#'
+#' @noRd
+make_comp_covariates <- function(mod) {
+  if (!has_covariates(mod))
+    return(character())
+  covariates_nms <- mod$covariates_nms
+  n_covariates <- length(covariates_nms)
+  rep("coef", times = n_covariates)
 }
 
 
@@ -948,7 +740,29 @@ make_copies_repdata <- function(data, n) {
     data <- vctrs::vec_rbind(!!!data)
     vctrs::vec_cbind(.replicate, data)
 }
-    
+
+
+## HAS_TESTS
+#' Make Draws from Coefficients for Covariates
+#'
+#' @param est Named list. Output from TMB.
+#' @param draws_post Posterior draws for all parameters
+#' estimated in TMB. Output from 'make_draws_post'.
+#'
+#' @returns A matrix
+#' 
+#' @noRd
+make_draws_coef_covariates <- function(est, draws_post) {
+  n_effectfree <- length(est$effectfree)
+  n_hyper <- length(est$hyper)
+  n_hyperrandfree <- length(est$hyperrandfree)
+  n_disp <- length(est$log_disp)
+  n_coef_covariates <- length(est$coef_covariates)
+  n_from <- n_effectfree + n_hyper + n_hyperrandfree + n_disp + 1L
+  i_coef_covariates <- seq.int(from = n_from, length.out = n_coef_covariates)
+  draws_post[i_coef_covariates, , drop = FALSE]
+}
+
 
 ## HAS_TESTS
 #' Make draws from posterior distribution of
@@ -969,7 +783,7 @@ make_draws_components <- function(mod) {
   hyper <- mod$draws_hyper
   ans_hyper <- rvec::rvec_dbl(hyper)
   ## hyperrand
-  ans_hyperrand <- make_hyperrand(mod)
+  ans_hyperrand <- make_hyperrand(mod)    
   ## spline
   ans_spline <- make_spline(mod = mod, effectfree = effectfree)
   ans_spline <- rvec::rvec_dbl(ans_spline)
@@ -978,6 +792,12 @@ make_draws_components <- function(mod) {
   ans_svd <- rvec::rvec_dbl(ans_svd)
   ## combine
   ans <- c(ans_effects, ans_hyper, ans_hyperrand, ans_spline, ans_svd)
+  ## covariates
+  if (has_covariates(mod)) {
+    ans_coef_covariates <- mod$draws_coef_covariates
+    ans_coef_covariates <- rvec::rvec_dbl(ans_coef_covariates)
+    ans <- c(ans, ans_coef_covariates)
+  }
   ## disp
   if (has_disp(mod)) {
     ans_disp <- get_disp(mod)
@@ -994,15 +814,19 @@ make_draws_components <- function(mod) {
 #'
 #' Includes transforming back to natural units.
 #'
+#' @param est Named list. Output from TMB.
 #' @param draws_post Posterior draws for all parameters
 #' estimated in TMB. Output from 'make_draws_post'.
 #'
 #' @returns A numeric vector.
 #' 
 #' @noRd
-make_draws_disp <- function(draws_post) {
-  n_val <- nrow(draws_post)
-  ans <- draws_post[n_val, ]
+make_draws_disp <- function(est, draws_post) {
+  n_effectfree <- length(est$effectfree)
+  n_hyper <- length(est$hyper)
+  n_hyperrandfree <- length(est$hyperrandfree)
+  i_disp <- n_effectfree + n_hyper + n_hyperrandfree + 1L
+  ans <- draws_post[i_disp, ]
   ans <- exp(ans)
   ans
 }
@@ -1135,13 +959,14 @@ make_draws_post <- function(est, prec, map, n_draw) {
                                    mean = mean,
                                    R_prec = R_prec)
   }
-  ans <- matrix(nrow = length(is_fixed), ncol = n_draw)
+  ans <- matrix(NA_real_, nrow = length(is_fixed), ncol = n_draw)
   ans[!is_fixed, ] <- draws_nonfixed
   ans[is_fixed, ] <- est_unlist[is_fixed]
   ans
 }
 
 
+## HAS_TESTS
 #' Make Values for Hyperrand
 #'
 #' Includes converting from unconstrained to constrained where necessary
@@ -1580,9 +1405,32 @@ make_level_components <- function(mod) {
   spline <- as.character(spline)
   svd <- as.character(svd)
   ans <- c(effect, hyper, hyperrand, spline, svd)
+  if (has_covariates(mod)) {
+    covariates <- make_level_covariates(mod)
+    ans <- c(ans, covariates)
+  }
   if (has_disp(mod))
     ans <- c(ans, "disp")
   ans
+}
+
+
+## HAS_TESTS
+#' Make variable identifying level within each component
+#' of 'components'
+#'
+#' Helper function for function 'components'
+#'
+#' @param mod Object of class 'bage_mod'
+#'
+#' @returns A character vector
+#'
+#' @noRd
+make_level_covariates <- function(mod) {
+  if (!has_covariates(mod))
+    return(character())
+  covariates_nms <- mod$covariates_nms
+  covariates_nms
 }
 
 
@@ -1812,8 +1660,10 @@ make_lin_trend <- function(slope,
 }
 
 
+## HAS_TESTS
 #' Make Linear Predictor from Components
 #'
+#' @param mod Object of class 'bage_mod'
 #' @param components Data frame with estimates for hyper-parameters
 #' @param data Data frame with raw data
 #' @param dimnames_terms Dimnames for array representation of terms
@@ -1821,7 +1671,7 @@ make_lin_trend <- function(slope,
 #' @returns An rvec
 #'
 #' @noRd
-make_linpred_comp <- function(components, data, dimnames_terms) {
+make_linpred_from_components <- function(mod, components, data, dimnames_terms) {
   key_comp <- with(components, paste(term, component, level))
   fitted <- components$.fitted
   data_has_intercept <- "(Intercept)" %in% names(data)
@@ -1843,6 +1693,17 @@ make_linpred_comp <- function(components, data, dimnames_terms) {
     val_term_linpred <- val_term[indices_term]
     ans <- ans + val_term_linpred
   }
+  if (has_covariates(mod)) {
+    formula_covariates <- mod$formula_covariates
+    covariates_nms <- mod$covariates_nms
+    key_covariates <- paste("covariates", "coef", covariates_nms)
+    indices_covariates <- match(key_covariates, key_comp)
+    coef_covariates <- fitted[indices_covariates]
+    matrix_covariates <- make_matrix_covariates(formula = formula_covariates,
+                                                data = data)
+    val_covariates_linpred <- matrix_covariates %*% coef_covariates
+    ans <- ans + val_covariates_linpred
+  }
   ans
 }
 
@@ -1852,7 +1713,33 @@ make_linpred_comp <- function(components, data, dimnames_terms) {
 #'
 #' Can only be used with fitted models.
 #'
-#' Return value aligned to outcome, not data.
+#' @param mod Object of class "bage_mod"
+#' @param point Whether to return point estimates
+#' or draws from the posterior.
+#'
+#' @returns An rvec if 'point' is FALSE, otherwise a vector of doubles
+#'
+#' @noRd
+make_linpred_from_stored_draws <- function(mod, point) {
+  ans <- make_linpred_from_stored_draws_effects(mod = mod,
+                                                point = point)
+  if (has_covariates(mod)) {
+    linpred_covariates <- make_linpred_from_stored_draws_covariates(mod = mod,
+                                                                    point = point)
+    ans <- ans + linpred_covariates
+  }
+  if (point)
+    ans <- as.double(ans)
+  else {
+    ans <- Matrix::as.matrix(ans)
+    ans <- rvec::rvec(ans)
+  }
+  ans
+}
+
+
+## HAS_TESTS
+#' Calculate the Contribution of Covariates to the Linear Predictor
 #'
 #' @param mod Object of class "bage_mod"
 #' @param point Whether to return point estimates
@@ -1861,21 +1748,36 @@ make_linpred_comp <- function(components, data, dimnames_terms) {
 #' @returns An rvec if 'point' is FALSE, otherwise a vector of doubles
 #'
 #' @noRd
-make_linpred_raw <- function(mod, point) {
+make_linpred_from_stored_draws_covariates <- function(mod, point) {
+  formula_covariates <- mod$formula_covariates
+  data <- mod$data
+  if (point)
+    coef_covariates <- mod$point_coef_covariates
+  else
+    coef_covariates <- mod$draws_coef_covariates
+  matrix_covariates <- make_matrix_covariates(formula = formula_covariates,
+                                              data = data)
+  matrix_covariates %*% coef_covariates
+}
+
+
+#' Calculate the Contribution of Effects to the Linear Predictor
+#'
+#' @param mod Object of class "bage_mod"
+#' @param point Whether to return point estimates
+#' or draws from the posterior.
+#'
+#' @returns An rvec if 'point' is FALSE, otherwise a vector of doubles
+#'
+#' @noRd
+make_linpred_from_stored_draws_effects <- function(mod, point) {
   matrix_effect_outcome <- make_combined_matrix_effect_outcome(mod)
   if (point)
     effectfree <- mod$point_effectfree
   else
     effectfree <- mod$draws_effectfree
   effect <- make_effects(mod = mod, effectfree = effectfree)
-  ans <- matrix_effect_outcome %*% effect
-  if (point)
-    ans <- as.double(ans)
-  else {
-    ans <- Matrix::as.matrix(ans)
-    ans <- rvec::rvec(ans)
-  }
-  ans
+  matrix_effect_outcome %*% effect
 }
 
 
@@ -1898,32 +1800,6 @@ make_point_est_effects <- function(mod) {
   ans <- split(x = point_effects, f = terms_effects)
   ans <- ans[unique(terms_effects)] ## 'split' orders result
   ans
-}
-
-
-## HAS_TESTS
-#' Use a precision matrix to construct scaled eigen vectors
-#'
-#' The scaled eigen vectors can be used to draw from a
-#' multivariate normal distribution with the given
-#' pecision matrix.
-#'
-#' @param prec A symmetric positive definite matrix.
-#'
-#' @returns A matrix with the same dimensions as 'prec'
-#'
-#' @noRd
-make_scaled_eigen <- function(prec) {
-    tolerance <- 1e-6
-    eigen <- eigen(prec, symmetric = TRUE)
-    vals <- eigen$values
-    vecs <- eigen$vectors
-    min_valid_val <- -tolerance * abs(vals[[1L]]) ## based on MASS::mvrnorm
-    if (any(vals < min_valid_val))
-        cli::cli_abort("Estimated precision matrix not positive definite.")  ## nocov
-    vals <- pmax(vals, abs(min_valid_val))
-    sqrt_inv_vals <- sqrt(1 / vals)
-    vecs %*% diag(sqrt_inv_vals)
 }
 
 
@@ -1962,6 +1838,7 @@ make_spline <- function(mod, effectfree) {
 }
 
 
+## HAS_TESTS
 #' Extract Posterior Draws for Free Parameters used in SVD Priors
 #'
 #' Where necessary, append zeros to start of time dimension.
@@ -2098,37 +1975,45 @@ make_unconstr_dimnames_by <- function(i_along, dimnames_term) {
 }
 
 
-#' Paste Two Vectors Separated by a Dot
+## HAS_TESTS
+#' Put Some Elements from 'components' on to
+#' Scale of Inputs
 #'
-#' @param x A vector
-#' @param y A vector
+#' Only used if 'mod' is 'bage_mod_norm'.
+#' Put "effect", "trend", "season", "error", and "disp"
+#' on to scale of inputs.
 #'
-#' @returns A character vector
+#' @param components A tibble
+#' @param mod Object of class 'bage_mod_norm'
 #'
-#' @noRd
-paste_dot <- function(x, y) paste(x, y, sep = ".")
-
-
-#' Given Estimates of Effect and Slope, Rescale Intercept for Lines
-#'
-#' @param slope Rvec of length n_by holding slope estimates
-#' @param effect Rvec holding estimates for effect
-#' @param matrix_along_by Mapping matrix
-#'
-#' @returns An rvec of length 'n_by'
+#' @returns A modified version of 'components'
 #'
 #' @noRd
-rescale_lin_intercept <- function(slope, effect, matrix_along_by) {
-  n_along <- nrow(matrix_along_by)
-  n_by <- ncol(matrix_along_by)
-  ans <- slope
-  for (i_by in seq_len(n_by)) {
-    i_along <- matrix_along_by[, i_by] + 1L
-    mean_effect <- mean(effect[i_along])
-    mean_incr <- 0.5 * (1 + n_along) * slope[[i_by]]
-    ans[[i_by]] <- mean_effect - mean_incr
-  }
-  ans
+rescale_components <- function(components, mod) {
+  comp_rescale <- c("effect",
+                    "trend",
+                    "season",
+                    "error",
+                    "disp")
+  is_norm <- inherits(mod, "bage_mod_norm")
+  if (!is_norm)
+    cli::cli_abort("Internal error: {.arg mod} has class {.cls {class(mod)}}.")
+  outcome_mean <- mod$outcome_mean
+  outcome_sd <- mod$outcome_sd
+  offset_mean <- mod$offset_mean
+  is_intercept <- components$term == "(Intercept)"
+  is_disp <- components$term == "disp"
+  is_rescale <- (components$component %in% comp_rescale) & !is_intercept & !is_disp
+  intercept <- components$.fitted[is_intercept]
+  disp <- components$.fitted[is_disp]
+  rescale <- components$.fitted[is_rescale]
+  intercept <- outcome_sd * intercept + outcome_mean
+  disp <- sqrt(offset_mean) * outcome_sd * disp
+  rescale <- outcome_sd * rescale
+  components$.fitted[is_intercept] <- intercept
+  components$.fitted[is_disp] <- disp
+  components$.fitted[is_rescale] <- rescale
+  components
 }
 
 
@@ -2141,7 +2026,7 @@ rescale_lin_intercept <- function(slope, effect, matrix_along_by) {
 #' - 'draws_hyperrandfree', and, optionally,
 #' - 'draws_disp'.
 #'
-#' Reproducibility is achieved via 'seed_stored_draws'.
+#' Reproducibility is achieved via 'seed_components'.
 #'
 #' @param mod A fitted 'bage_mod' object
 #'
@@ -2151,9 +2036,9 @@ rescale_lin_intercept <- function(slope, effect, matrix_along_by) {
 make_stored_draws <- function(mod, est, prec, map) {
   n_draw <- mod$n_draw
   transforms_hyper <- make_transforms_hyper(mod)
-  seed_stored_draws <- mod$seed_stored_draws
+  seed_components <- mod$seed_components
   seed_restore <- make_seed() ## create randomly-generated seed
-  set.seed(seed_stored_draws) ## set pre-determined seed
+  set.seed(seed_components) ## set pre-determined seed
   draws_post <- make_draws_post(est = est,
                                 prec = prec,
                                 map = map,
@@ -2166,8 +2051,12 @@ make_stored_draws <- function(mod, est, prec, map) {
                                       draws_post = draws_post)
   mod$draws_hyperrandfree <- make_draws_hyperrandfree(est = est,
                                                       draws_post = draws_post)
+  if (has_covariates(mod))
+    mod$draws_coef_covariates <- make_draws_coef_covariates(est = est,
+                                                            draws_post = draws_post)
   if (has_disp(mod))
-    mod$draws_disp <- make_draws_disp(draws_post)
+    mod$draws_disp <- make_draws_disp(est = est,
+                                      draws_post = draws_post)
   mod
 }
 
@@ -2194,6 +2083,8 @@ make_stored_point <- function(mod, est) {
     point_hyper[[i]] <- transforms_hyper[[i]](point_hyper[[i]])
   mod$point_hyper <- point_hyper
   mod$point_hyperrandfree <- est$hyperrandfree
+  if (has_covariates(mod))
+    mod$point_coef_covariates <- est$coef_covariates
   if (has_disp(mod))
     mod$point_disp <- exp(est$log_disp)
   mod
@@ -2224,9 +2115,30 @@ make_term_components <- function(mod) {
   spline <- as.character(spline)
   svd <- as.character(svd)
   ans <- c(effect, hyper, hyperrand, spline, svd)
+  if (has_covariates(mod)) {
+    covariates <- make_term_covariates(mod)
+    ans <- c(ans, covariates)
+  }
   if (has_disp(mod))
     ans <- c(ans, "disp")
   ans
+}
+
+
+## HAS_TESTS
+#' Make Character Vector with Term for Covariates
+#'
+#' @param mod Object of class 'bage_mod'
+#'
+#' @returns A character vector
+#'
+#' @noRd
+make_term_covariates <- function(mod) {
+  if (!has_covariates(mod))
+    return(character())
+  covariates_nms <- mod$covariates_nms
+  n_covariates <- length(covariates_nms)
+  rep.int("covariates", times = n_covariates)
 }
 
 
@@ -2252,160 +2164,6 @@ make_transforms_hyper <- function(mod) {
 
 
 ## HAS_TESTS
-#' Reformat Parts of Forecasted 'components' Data Frame Dealing with
-#' Hyper-Parameters that are Treated as Random Effects
-#'
-#' @param components_forecast A data frame with forecasted
-#' (time-varying) parameters
-#' @param components A data frame with estimated
-#' (time-varying and non-time-varying) parameters
-#' @param priors List of objects of class 'bage_prior'.
-#' @param dimnames_terms Dimnames for array representations of terms
-#' being forecast
-#' @param var_time Name of time variable
-#' @param var_age Name of age variable
-#'
-#' @returns A modified version of 'components'
-#'
-#' @noRd
-infer_trend_cyc_seas_err_forecast <- function(components,
-                                              priors,
-                                              dimnames_terms,
-                                              var_time,
-                                              var_age) {
-  nms <- names(dimnames_terms)
-  for (nm in nms) {
-    prior <- priors[[nm]]
-    dimnames_term <- dimnames_terms[[nm]]
-    components <- infer_trend_cyc_seas_err_forecast_one(prior = prior,
-                                                        dimnames_term = dimnames_term,
-                                                        var_time = var_time,
-                                                        var_age = var_age,
-                                                        components = components)
-  }
-  components
-}
-
-
-## HAS_TESTS
-#' Derive 'Components' Output for Terms with Fixed Seasonal Effect
-#' - Forecasts
-#'
-#' Derive 'seasonal' from 'effect' and 'trend'
-#'
-#' @param prior Object of class 'bage_prior'.
-#' @param dimnames_term Dimnames for array representation of term
-#' @param var_time Name of time variable
-#' @param var_age Name of age variable
-#' @param components A data frame.
-#'
-#' @returns A modifed version of 'components'
-#'
-#' @noRd
-infer_trend_cyc_seas_err_seasfix_forecast <- function(prior,
-                                                      dimnames_term,
-                                                      var_time,
-                                                      var_age,
-                                                      components) {
-  nm <- dimnames_to_nm(dimnames_term)
-  is_season <- with(components, (term == nm) & (component == "season"))
-  is_trend <- with(components, (term == nm) & (component == "trend"))
-  is_effect <- with(components, (term == nm) & (component == "effect"))
-  trend <- components$.fitted[is_trend]
-  effect <- components$.fitted[is_effect]
-  season <- effect - trend
-  components$.fitted[is_season] <- season
-  components
-}
-
-
-## HAS_TESTS
-#' Derive 'Components' Output for Terms with Varying Seasonal Effect - Forecasts
-#'
-#' Derive 'seasonal' from 'effect' and 'trend'
-#'
-#' @param prior Object of class 'bage_prior'.
-#' @param dimnames_term Dimnames for array representation of term
-#' @param var_time Name of time variable
-#' @param var_age Name of age variable
-#' @param components A data frame.
-#'
-#' @returns A modifed version of 'components'
-#'
-#' @noRd
-infer_trend_cyc_seas_err_seasvary_forecast <- function(prior,
-                                                       dimnames_term,
-                                                       var_time,
-                                                       var_age,
-                                                       components) {
-  nm <- dimnames_to_nm(dimnames_term)
-  is_trend <- with(components, (term == nm) & (component == "trend"))
-  is_season <- with(components, (term == nm) & (component == "season"))
-  is_effect <- with(components, (term == nm) & (component == "effect"))
-  trend <- components$.fitted[is_trend]
-  effect <- components$.fitted[is_effect]
-  season <- effect - trend
-  components$.fitted[is_season] <- season
-  components
-}
-
-
-## HAS_TESTS
-#' Draw from multivariate normal, using results
-#' from a Cholesky decomposition
-#'
-#' @param n Number of draws
-#' @param mean Mean of distribution
-#' @param R_prec Cholesky decomposition of precision matrix
-#'
-#' @returns A matrix, with each columns being one draw
-#'
-#' @noRd
-rmvnorm_chol <- function(n, mean, R_prec) {
-    n_val <- length(mean)
-    Z <- matrix(stats::rnorm(n = n_val * n),
-                nrow = n_val,
-                ncol = n)
-    mean + backsolve(R_prec, Z)
-}
-
-
-## HAS_TESTS
-#' Draw from multivariate normal, using results
-#' from an eigen decomposition
-#'
-#' @param n Number of draws
-#' @param mean Mean of distribution
-#' @param scaled_eigen Matrix of scaled eigenvalues
-#'
-#' @returns A matrix, with each columns being one draw
-#'
-#' @noRd
-rmvnorm_eigen <- function(n, mean, scaled_eigen) {
-    n_val <- length(mean)
-    Z <- matrix(stats::rnorm(n = n_val * n),
-                nrow = n_val,
-                ncol = n)
-    mean + scaled_eigen %*% Z
-}
-
-
-## HAS_TESTS
-#' Convert Rvec Columns to Numeric Columns by Taking Means
-#'
-#' @param data A data frame
-#'
-#' @return A data frame
-#'
-#' @noRd
-rvec_to_mean <- function(data) {
-  is_rvec <- vapply(data, rvec::is_rvec, TRUE)
-  data[is_rvec] <- lapply(data[is_rvec], rvec::draws_mean)
-  data
-}
-
-
-## HAS_TESTS
 #' Order 'components' Data Frame by 'term' and 'component'
 #'
 #' @param components A tibble - typically the output
@@ -2415,7 +2173,7 @@ rvec_to_mean <- function(data) {
 #'
 #' @noRd
 sort_components <- function(components, mod) {
-  levels_component <- c("effect",
+  levels_component <- c("effect", "coef",
                         "trend", "season", "error",
                         "spline", "svd",
                         "disp",
@@ -2427,6 +2185,8 @@ sort_components <- function(components, mod) {
   levels_term <- attr(terms_formula, "term.labels")
   if (attr(terms_formula, "intercept"))
     levels_term <- c("(Intercept)", levels_term)
+  if (has_covariates(mod))
+    levels_term <- c(levels_term, "covariates")
   i_term <- match(term, levels_term)
   i_comp <- match(components$component, levels_component, nomatch = 0L)
   i_invalid_comp <- match(0L, i_comp, nomatch = 0L)

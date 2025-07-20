@@ -1097,11 +1097,13 @@ Type objective_function<Type>::operator() ()
   DATA_FACTOR(terms_consts);
   DATA_STRUCT(matrices_along_by_effectfree, LIST_M_t);
   DATA_SCALAR(mean_disp);
+  DATA_MATRIX(matrix_covariates);
 
   PARAMETER_VECTOR(effectfree); 
   PARAMETER_VECTOR(hyper);
   PARAMETER_VECTOR(hyperrandfree);
   PARAMETER(log_disp);
+  PARAMETER_VECTOR(coef_covariates);
   
 
   // intermediate quantities
@@ -1114,7 +1116,7 @@ Type objective_function<Type>::operator() ()
   vector<vector<Type> > consts_split = split(consts, terms_consts);
   int has_disp = mean_disp > 0;
   Type disp = has_disp ? exp(log_disp) : 0;
-
+  int uses_covariates = matrix_covariates.cols() > 0;
 
   // linear predictor
 
@@ -1137,6 +1139,9 @@ Type objective_function<Type>::operator() ()
       effect_term = effect_term + offset_term;
     }
     linpred = linpred + matrix_effect_outcome * effect_term;
+  }
+  if (uses_covariates) {
+    linpred = linpred + matrix_covariates * coef_covariates;
   }
 
   // negative log posterior
@@ -1177,6 +1182,12 @@ Type objective_function<Type>::operator() ()
       }
     }
   }
+
+  // contribution to log posterior from covariates
+  if (uses_covariates) {
+    ans -= dnorm(coef_covariates, Type(0), Type(1), true).sum();
+  }
+  
   // contribution to log posterior from dispersion term
   if (has_disp) {
     Type rate_disp = 1 / mean_disp;

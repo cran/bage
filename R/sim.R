@@ -88,7 +88,7 @@ draw_vals_ar <- function(coef,
 #' @noRd
 draw_vals_ar_inner <- function(n, coef, sd) {
   n_sim <- length(sd)
-  ans <- matrix(nrow = n, ncol = n_sim)
+  ans <- matrix(NA_real_, nrow = n, ncol = n_sim)
   for (i_sim in seq_len(n_sim))
     ans[, i_sim] <- draw_vals_ar_one(n = n,
                                      coef = coef[, i_sim],
@@ -153,7 +153,7 @@ draw_vals_coef <- function(prior, n_sim) {
   shape2 <- specific$shape2
   min <- specific$min
   max <- specific$max
-  ans <- matrix(nrow = n_coef, ncol = n_sim)
+  ans <- matrix(NA_real_, nrow = n_coef, ncol = n_sim)
   for (i_sim in seq_len(n_sim)) {
     found_val <- FALSE
     for (i_attempt in seq_len(max_attempt)) {
@@ -193,6 +193,7 @@ draw_vals_components_unfitted <- function(mod, n_sim) {
   var_time <- mod$var_time
   var_age <- mod$var_age
   var_sexgender <- mod$var_sexgender
+  has_covariates <- has_covariates(mod)
   has_disp <- has_disp(mod)
   seed_components <- mod$seed_components
   seed_restore <- make_seed() ## create randomly-generated seed
@@ -229,6 +230,12 @@ draw_vals_components_unfitted <- function(mod, n_sim) {
                           vals_effect,
                           vals_spline,
                           vals_svd)
+  if (has_covariates) {
+    vals_covariates <- draw_vals_covariates(mod = mod,
+                                            n_sim = n_sim)
+    vals_covariates <- vals_covariates_to_dataframe(vals_covariates)
+    ans <- vctrs::vec_rbind(ans, vals_covariates)
+  }
   if (has_disp) {
     vals_disp <- draw_vals_disp(mod = mod,
                                 n_sim = n_sim)
@@ -237,6 +244,28 @@ draw_vals_components_unfitted <- function(mod, n_sim) {
   }
   set.seed(seed_restore) ## set randomly-generated seed, to restore randomness
   ans    
+}
+
+
+## HAS_TESTS
+#' Draw Values for Covariates
+#'
+#' @param mod Object of class "bage_mod"
+#' @param n_sim Number of draws
+#'
+#' @returns A named list
+#'
+#' @noRd
+draw_vals_covariates <- function(mod, n_sim) {
+  covariates_nms <- mod$covariates_nms
+  n_covariates <- length(covariates_nms)
+  coef <- stats::rnorm(n = n_covariates * n_sim)
+  coef <- matrix(coef,
+                 nrow = n_covariates,
+                 ncol = n_sim,
+                 dimnames = list(covariates_nms, NULL))
+  ans <- list(coef = coef)
+  ans
 }
 
 
@@ -478,7 +507,7 @@ draw_vals_rw <- function(sd, sd_init, matrix_along_by, levels_effect) {
   n_sim <- length(sd)
   n_along <- nrow(matrix_along_by)
   n_by <- ncol(matrix_along_by)
-  ans <- matrix(nrow = n_along, ncol = n_by * n_sim)
+  ans <- matrix(NA_real_, nrow = n_along, ncol = n_by * n_sim)
   ans[1L, ] <- stats::rnorm(n = n_by * n_sim, sd = sd_init)
   sd <- rep(sd, each = n_by)
   for (i_along in seq.int(from = 2L, to = n_along))
@@ -511,7 +540,7 @@ draw_vals_rw2 <- function(sd, sd_init, sd_slope, matrix_along_by, levels_effect)
   n_along <- nrow(matrix_along_by)
   n_by <- ncol(matrix_along_by)
   sd <- rep(sd, each = n_by)
-  ans <- matrix(nrow = n_along, ncol = n_by * n_sim)
+  ans <- matrix(NA_real_, nrow = n_along, ncol = n_by * n_sim)
   ans[1L, ] <- stats::rnorm(n = n_by * n_sim, sd = sd_init)
   ans[2L, ] <- stats::rnorm(n = n_by * n_sim, mean = ans[1L, ], sd = sd_slope)
   for (i_along in seq.int(from = 3L, to = n_along))
@@ -573,7 +602,7 @@ draw_vals_sd_seas <- function(prior, n_sim) {
 draw_vals_seasfix <- function(n_seas, sd_init, matrix_along_by, n_sim) {
   n_along <- nrow(matrix_along_by)
   n_by <- ncol(matrix_along_by)
-  ans <- matrix(nrow = n_along, ncol = n_by * n_sim)
+  ans <- matrix(NA_real_, nrow = n_along, ncol = n_by * n_sim)
   m <- diag(n_seas - 1L)
   m[, 1L] <- 1
   m <- rbind(m, -1 * colSums(m))
@@ -1114,12 +1143,14 @@ perform_comp <- function(est,
 #' tibble called `"augment"`.
 #'
 #' @seealso
-#' - [mod_pois()], [mod_binom()], [mod_norm()] Specify a
-#' model
-#' - [components()], [augment()] Draw from joint prior
-#' or posterior distribution of model
+#' - [mod_pois()] Specify binomial model
+#' - [mod_binom()] Specify binomial model
+#' - [mod_norm()] Specify normal model
+#' - [set_prior()] Specify non-default prior for term
+#' - [set_disp()] Specify non-default prior for dispersion
+#' - [fit()] Fit a model
 #' - [replicate_data()] Generate replicate
-#' data for a model
+#'   data for a model
 #'
 #' @examples
 #' ## results random, so set seed
@@ -1204,6 +1235,7 @@ report_sim <- function(mod_est,
     perform_aug <- utils::getFromNamespace("perform_aug", ns = "bage")
     outcome <- outcome_obs_sim[, i_sim]
     mod_est$outcome <- outcome
+    mod_est <- set_seeds(mod_est)
     mod_est <- fit(mod_est, method = method, vars_inner = vars_inner)
     comp_est <- components(mod_est)
     aug_est <- augment(mod_est)
@@ -1279,6 +1311,32 @@ vals_disp_to_dataframe <- function(vals_disp) {
 
 
 ## HAS_TESTS
+#' Convert a List of Simulated Covariates to a Data Frame
+#'
+#' @param vals_covariates A named list of matrices
+#'
+#' @returns A tibble with columns 'component'
+#' 'term', 'level', and '.fitted'
+#' 
+#' @noRd
+vals_covariates_to_dataframe <- function(vals_covariates) {
+  nms <- names(vals_covariates)
+  nrow <- vapply(vals_covariates, nrow, 0L)
+  term <- rep("covariates", times = sum(nrow))
+  component <- rep("coef", times = sum(nrow))
+  level <- lapply(vals_covariates, rownames)
+  level <- unlist(level, use.names = FALSE)
+  .fitted <- do.call(rbind, vals_covariates)
+  .fitted <- unname(.fitted)
+  .fitted <- rvec::rvec(.fitted)
+  tibble::tibble(term = term,
+                 component = component,
+                 level = level,
+                 .fitted = .fitted)
+}
+
+
+## HAS_TESTS
 #' Convert a List of Simulated Effects to a Data Frame
 #'
 #' @param vals_effect A named list of matrices
@@ -1301,7 +1359,6 @@ vals_effect_to_dataframe <- function(vals_effect) {
                  level = level,
                  .fitted = .fitted)
 }
- 
 
 
 ## 'vals_hyper_to_dataframe' --------------------------------------------------

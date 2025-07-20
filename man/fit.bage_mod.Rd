@@ -31,7 +31,7 @@ and \link[=set_var_time]{time} variables.}
 
 \item{optimizer}{Which optimizer to use.
 Current choices are \code{"multi"},
-\code{"nlminb"}, \code{"BFGS"}, and "GC". Default
+\code{"nlminb"}, \code{"BFGS"}, and \code{"CG"}. Default
 is \code{"multi"}. See below for details.}
 
 \item{quiet}{Whether to suppress warnings and
@@ -49,30 +49,30 @@ model. Default is \code{FALSE}.}
 A \code{bage_mod} object
 }
 \description{
-Calculate the posterior distribution for a model.
+Derive the posterior distribution
+for a model.
 }
 \section{Estimation methods}{
 
-\itemize{
-\item \code{"standard"} All parameters, other than
+
+When \code{method} is \code{"standard"} (the default),
+all parameters, other than
 the lowest-level rates, probabilities, or
 means are jointly estimated within TMB.
-The default.
-\item \code{"inner-outer"}. Multiple-stage estimation,
-which can be faster than \code{"standard"} for
-models with many parameters. In Step 1, the
-data is aggregated across all dimensions other
+
+When \code{method} is \code{"inner-outer"}, estimation is
+carried out in multiple steps, which, in large models,
+can sometimes reduce computation times.
+In Step 1, the data is aggregated across all dimensions other
 than those specified in \code{var_inner}, and a model
 for the \code{inner} variables is fitted to the data.
 In Step 2, the data is aggregated across the
 remaining variables, and a model for the
 \code{outer} variables is fitted to the data.
 In Step 3, values for dispersion are calculated.
-Parameter estimtes from steps 1, 2, and 3
+Parameter estimates from steps 1, 2, and 3
 are then combined. \code{"inner-outer"} methods are
-still experimental, and may change in future,
-eg dividing calculations into chunks in Step 2.
-}
+still experimental, and may change in future.
 }
 
 \section{Optimizer}{
@@ -81,7 +81,7 @@ eg dividing calculations into chunks in Step 2.
 The choices for the \code{optimizer} argument are:
 \itemize{
 \item \code{"multi"} Try \code{"nlminb"}, and if that fails,
-retart from the value where \code{"nlminb"} stopped,
+restart from the parameter values where \code{"nlminb"} stopped,
 using \code{"BFGS"}. The default.
 \item \code{"nlminb"} \code{\link[stats:nlminb]{stats::nlminb()}}
 \item \code{"BFGS"} \code{\link[stats:optim]{stats::optim()}} using method \code{"BFGS"}.
@@ -114,12 +114,18 @@ comp
 }
 \seealso{
 \itemize{
-\item \code{\link[=mod_pois]{mod_pois()}}, \code{\link[=mod_binom]{mod_binom()}}, \code{\link[=mod_norm]{mod_norm()}} Specify a model
-\item \code{\link[=augment]{augment()}}, \code{\link[=components]{components()}}, \code{\link[=tidy]{tidy()}} Examine
-output from a model
+\item \code{\link[=mod_pois]{mod_pois()}} Specify a Poisson model
+\item \code{\link[=mod_binom]{mod_binom()}} Specify a binomial model
+\item \code{\link[=mod_norm]{mod_norm()}} Specify a normal model
+\item \code{\link[=augment]{augment()}} Extract values for rates,
+probabilities, or means, together
+with original data
+\item \code{\link[=components]{components()}} Extract values for hyper-parameters
 \item \code{\link[=forecast]{forecast()}} Forecast, based on a model
 \item \code{\link[=report_sim]{report_sim()}} Simulation study of a model
 \item \code{\link[=unfit]{unfit()}} Reset a model
 \item \code{\link[=is_fitted]{is_fitted()}} Check if a model has been fitted
+\item \href{https://bayesiandemography.github.io/bage/articles/vig2_math.html}{Mathematical Details}
+vignette
 }
 }

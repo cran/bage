@@ -575,7 +575,7 @@ test_that("'forecast_seasvary' works", {
 
 ## 'make_data_forecast_labels' ------------------------------------------------
 
-test_that("'make_data_forecast_labels' works", {
+test_that("'make_data_forecast_labels' works - no covariates", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$deaths <- rpois(n = nrow(data), lambda = 100)
@@ -585,7 +585,6 @@ test_that("'make_data_forecast_labels' works", {
   mod <- mod_pois(formula = formula,
                   data = data,
                   exposure = exposure)
-  mod <- set_n_draw(mod, n = 10)
   ans <- make_data_forecast_labels(mod = mod,
                                    labels_forecast = 2006:2008)
   expect_identical(names(ans), names(data))
@@ -595,6 +594,106 @@ test_that("'make_data_forecast_labels' works", {
   expect_setequal(ans$age, data$age)
   expect_setequal(ans$sex, data$sex)
   expect_setequal(ans$time, 2006:2008)
+})
+
+test_that("'make_data_forecast_labels' works - with covariates", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$deaths <- rpois(n = nrow(data), lambda = 100)
+  data$exposure <- 100
+  data$unused <- 33
+  data$income <- data$age + 1
+  formula <- deaths ~ age * sex + sex * time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = exposure) |>
+    set_covariates(~income)
+  ans <- make_data_forecast_labels(mod = mod,
+                                   labels_forecast = 2006:2008)
+  expect_identical(names(ans), names(data))
+  expect_true(all(is.na(ans$deaths)))
+  expect_true(all(is.na(ans$exposure)))
+  expect_true(all(is.na(ans$unused)))
+  expect_setequal(ans$age, data$age)
+  expect_setequal(ans$sex, data$sex)
+  expect_setequal(ans$time, 2006:2008)
+  expect_setequal(ans$income, ans$age + 1)
+})
+
+
+## 'make_data_forecast_labels_covariates' -------------------------------------
+
+test_that("'make_data_forecast_labels_covariates' works - numeric covariate", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$deaths <- rpois(n = nrow(data), lambda = 100)
+  data$exposure <- 100
+  data$unused <- 33
+  data$income <- 3 * data$age
+  data_forecast <- expand.grid(age = 0:9, time = 2006:2007, sex = c("F", "M"),
+                               KEEP.OUT.ATTRS = FALSE)
+  data_forecast$unused <- NA_real_
+  data_forecast$income <- NA_real_
+  mod <- mod_pois(deaths ~ age * sex + sex * time,
+                  data = data,
+                  exposure = exposure) |>
+    set_covariates(~income)
+  ans_obtained <- make_data_forecast_labels_covariates(mod = mod,
+                                                       data_forecast = data_forecast)
+  ans_expected <- data_forecast
+  ans_expected$income <- ans_expected$age * 3
+  ans_expected <- tibble::tibble(ans_expected)
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_data_forecast_labels_covariates' works with numeric and categorical covariates", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$reg <- ifelse(data$age %in% 0:4, "a", "b")
+  data$deaths <- rpois(n = nrow(data), lambda = 100)
+  data$exposure <- 100
+  data$unused <- 33
+  data$income <- 3 * data$age
+  data_forecast <- expand.grid(age = 0:9, time = 2006:2007, sex = c("F", "M"),
+                               KEEP.OUT.ATTRS = FALSE)
+  data_forecast$region <- NA_character_
+  data_forecast$unused <- NA_real_
+  data_forecast$income <- NA_real_
+  mod <- mod_pois(deaths ~ age * sex + sex * time,
+                  data = data,
+                  exposure = exposure) |>
+    set_covariates(~income + reg)
+  ans_obtained <- make_data_forecast_labels_covariates(mod = mod,
+                                                       data_forecast = data_forecast)
+  ans_expected <- data_forecast
+  ans_expected$income <- ans_expected$age * 3
+  ans_expected$reg <- ifelse(ans_expected$age %in% 0:4, "a", "b")
+  ans_expected <- tibble::tibble(ans_expected)
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_data_forecast_labels_covariates' throws appropriate error when cannot infer future values", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data <- merge(data,
+                expand.grid(age = 0:9, sex = c("F", "M"), reg = letters[1:4]),
+                by = c("age", "sex"))
+  data$deaths <- rpois(n = nrow(data), lambda = 100)
+  data$exposure <- 100
+  data$unused <- 33
+  data$income <- 3 * data$age
+  data_forecast <- expand.grid(age = 0:9, time = 2006:2007, sex = c("F", "M"),
+                               KEEP.OUT.ATTRS = FALSE)
+  data_forecast$region <- NA_character_
+  data_forecast$unused <- NA_real_
+  data_forecast$income <- NA_real_
+  mod <- mod_pois(deaths ~ age * sex + sex * time,
+                  data = data,
+                  exposure = exposure) |>
+    set_covariates(~income + reg)
+  expect_error(make_data_forecast_labels_covariates(mod = mod,
+                                                    data_forecast = data_forecast),
+               "Unable to derive covariate values for forecasted periods.")
 })
 
 
@@ -617,6 +716,26 @@ test_that("'make_data_forecast_newdata' works", {
   expect_identical(ans_obtained, newdata)
 })
 
+test_that("'make_data_forecast_newdata' works with covariates", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$deaths <- rpois(n = nrow(data), lambda = 100)
+  data$exposure <- 100
+  data$unused <- 33
+  data$income <- data$age  + 1
+  formula <- deaths ~ age * sex + sex * time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = exposure)
+  mod <- set_n_draw(mod, n = 10)
+  mod <- set_covariates(mod, ~ income)
+  newdata <- make_data_forecast_labels(mod = mod,
+                                       labels_forecast = 2006:2008)
+  ans_obtained <- make_data_forecast_newdata(mod = mod, newdata = newdata)
+  expect_identical(ans_obtained, newdata)
+})
+
+
 test_that("'make_data_forecast_newdata' raises correct error with variables missing", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
@@ -638,7 +757,7 @@ test_that("'make_data_forecast_newdata' raises correct error with variables miss
                "Variables in model but not in `newdata`: \"age\" and \"time\".")
 })
 
-test_that("'make_data_forecast_newdata' raises correct error when periods overlap", {
+test_that("'make_data_forecast_newdata' raises correct error when periods overlap - time is integer", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$deaths <- rpois(n = nrow(data), lambda = 100)
@@ -652,8 +771,28 @@ test_that("'make_data_forecast_newdata' raises correct error when periods overla
   newdata <- make_data_forecast_labels(mod = mod,
                                        labels_forecast = 2005:2008)
   expect_error(make_data_forecast_newdata(mod = mod, newdata = newdata),
-               "Time periods in `newdata` and `data` overlap.")
+               "Times in `newdata` and `data` overlap.")
 })
+
+test_that("'make_data_forecast_newdata' raises correct error when periods overlap - time is date", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      time = as.Date(paste0(2000:2005,"-01-01")),
+                      sex = c("F", "M"))
+  data$deaths <- rpois(n = nrow(data), lambda = 100)
+  data$exposure <- 100
+  data$unused <- 33
+  formula <- deaths ~ age * sex + sex * time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = exposure)
+  mod <- set_n_draw(mod, n = 10)
+  newdata <- make_data_forecast_labels(mod = mod,
+                                       labels_forecast = as.Date(paste0(2005:2008, "-01-01")))
+  expect_error(make_data_forecast_newdata(mod = mod, newdata = newdata),
+               "Times in `newdata` and `data` overlap.")
+})
+
 
 
 ## 'make_dimnames_terms_forecast' ---------------------------------------------

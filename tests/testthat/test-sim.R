@@ -162,7 +162,7 @@ test_that("'draw_vals_coef' works with n = 10", {
 
 ## 'draw_vals_components_unfitted' --------------------------------------------
 
-test_that("'draw_vals_components_unfitted' works", {
+test_that("'draw_vals_components_unfitted' works - no covariates", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -179,6 +179,52 @@ test_that("'draw_vals_components_unfitted' works", {
   comb <- merge(ans, ans_est, by = c("component", "term", "level"), all.x = TRUE,
                 all.y = TRUE)
   expect_true(identical(nrow(comb), nrow(ans)))
+})
+
+
+test_that("'draw_vals_components_unfitted' works - with covariates", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$income <- rnorm(n = nrow(data))
+  formula <- deaths ~ age * time + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_prior(mod, age ~ Sp())
+  mod <- set_prior(mod, age:time ~ Sp())
+  mod <- set_covariates(mod, ~ income)
+  n_sim <- 2
+  ans <- draw_vals_components_unfitted(mod = mod, n_sim = n_sim)
+  ans_est <- components(fit(mod))
+  comb <- merge(ans, ans_est, by = c("component", "term", "level"), all.x = TRUE,
+                all.y = TRUE)
+  expect_true(identical(nrow(comb), nrow(ans)))
+})
+
+
+## 'draw_vals_covariates' -----------------------------------------------------
+
+test_that("'draw_vals_covariates' works", {
+  set.seed(0)
+  data <- expand.grid(age = 0:3,
+                      time = 2000:2002,
+                      reg = letters[1:3],
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_covariates(mod, ~ reg)
+  set.seed(0)
+  ans_obtained <- draw_vals_covariates(mod, n_sim = 5)
+  set.seed(0)
+  coef <- rnorm(n = 10, sd = 1)
+  ans_expected <- list(coef = matrix(coef, nr = 2, dimnames = list(c("regb", "regc"), NULL)))
+  expect_identical(ans_obtained, ans_expected)
 })
 
 
@@ -1260,6 +1306,33 @@ test_that("'report_sim' works with fitted model", {
   set.seed(0)
   ans2 <- suppressMessages(report_sim(mod_est = mod, mod_sim = mod, n_sim = 1))
   expect_identical(ans1, ans2)
+})
+
+
+
+## 'vals_covariates_to_dataframe' ---------------------------------------------
+
+test_that("'vals_covariates_to_dataframe' works", {
+  set.seed(0)
+  data <- expand.grid(age = 0:3,
+                      time = 2000:2002,
+                      reg = letters[1:3],
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_covariates(mod, ~ reg)
+  set.seed(0)
+  vals <- draw_vals_covariates(mod, n_sim = 5)
+  ans_obtained <- vals_covariates_to_dataframe(vals)
+  ans_expected <- tibble::tibble(term = "covariates",
+                                 component = "coef",
+                                 level = c("regb", "regc"),
+                                 .fitted = rvec::rvec(unname(vals[[1]])))
+  expect_identical(ans_obtained, ans_expected)
 })
 
 

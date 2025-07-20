@@ -85,6 +85,65 @@ check_con_n_by <- function(con, n_by, nm) {
 
 
 ## HAS_TESTS
+#' Check Formula Used When Creating Covariates
+#'
+#' @param formula One-sided formula describing covariates
+#' @param mod Object of class 'bage_mod'
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd
+check_covariates_formula <- function(formula, mod) {
+  formula_mod <- mod$formula
+  data <- mod$data
+  nm_offset_data <- get_nm_offset_data(mod)
+  nm_offset_mod <- get_nm_offset_mod(mod)
+  terms_formula_mod <- stats::terms(formula_mod)
+  nms_data <- names(data)
+  ## 'formula' is formula
+  if (!inherits(formula, "formula"))
+    cli::cli_abort(c("{.arg formula} is not a formula.",
+                     i = "{.arg formula} has class {.class {class(formula)}}."))
+  ## 'formula' does not include response
+  terms_formula <- stats::terms(formula)
+  has_response <- attr(terms_formula, "response")
+  if (has_response)
+    cli::cli_abort(c("{.arg formula} includes a response variable.",
+                     i = "{.arg formula}: {.code {deparse1(formula)}}."))
+  ## 'formula' does not use any variables already used by main model
+  nms_vars_formula <- rownames(attr(terms_formula, "factors"))
+  nm_response <- rownames(attr(terms_formula_mod, "factors"))[[1L]]
+  nms_vars_mod <- rownames(attr(terms_formula_mod, "factors"))[-1L]
+  if (nm_response %in% nms_vars_formula)
+    cli::cli_abort(c("{.arg formula} includes response from {.arg mod}.",
+                     i = "{.arg formula}: {deparse(formula)}.",
+                     i = "response: {.val {nm_response}}."))
+  if (any(nms_vars_mod %in% nms_vars_formula)) {
+    in_mod <- intersect(nms_vars_formula, nms_vars_mod)
+    n <- length(in_mod)
+    cli::cli_abort(c("{.arg formula} includes {cli::qty(n)} variable{?s} from {.arg mod}.",
+                     i = "{.arg formula}: {deparse(formula)}.",
+                     i = "variable{?s} from {.arg mod}: {.val {in_mod}}."))
+  }
+  is_offset_specified <- !is.null(nm_offset_data)
+  if (is_offset_specified && (nm_offset_data %in% nms_vars_formula))
+    cli::cli_abort(c("{.arg formula} includes {nm_offset_mod} from {.arg mod}.",
+                     i = "{.arg formula}: {deparse(formula)}.",
+                     i = "{nm_offset_mod}: {.val {nm_offset_data}}."))
+  ## all variables used in 'formula' are present in 'data'
+  is_in_data <- nms_vars_formula %in% nms_data
+  i_not_in_data <- match(FALSE, is_in_data, nomatch = 0L)
+  if (i_not_in_data > 0L) {
+    nm_not_found <- nms_vars_formula[[i_not_in_data]]
+    cli::cli_abort(c("variable {.var {nm_not_found}} from {.arg formula} not found in data.",
+                     i = "{.arg formula}: {deparse(formula)}.",
+                     i = "variable{?s} in data: {.val {nms_data}}."))
+  }
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
 #' Check that 'est' Object Returned by TMB has No NAs
 #'
 #' @param est Named list
@@ -116,8 +175,8 @@ check_est <- function(est) {
 #' @noRd
 check_flag <- function(x, nm_x) {
     if (!identical(length(x), 1L))
-        cli::cli_abort(c("{.arg {nm_x}} does not have length 1",
-                         i = "{.arg {nm_x}} has length {length(x)}."))
+        cli::cli_abort(c("{.arg {nm_x}} does not have length {.val {1}}.",
+                         i = "{.arg {nm_x}} has length {.val {length(x)}}."))
     if (!is.logical(x))
         cli::cli_abort(c("{.arg {nm_x}} does not have class {.cls logical}.",
                          i = "{.arg {nm_x}} has class {.cls {class(x)}}"))
@@ -180,7 +239,7 @@ check_formula_has_intercept <- function(formula) {
 #'
 #' @noRd
 check_formula_has_response <- function(formula) {
-    has_response <- attr(stats::terms(formula), "response") > 0L
+    has_response <- attr(stats::terms(formula), "response")
     if (!has_response)
         cli::cli_abort(c("{.arg formula} does not include a response variable.",
                          i = "{.arg formula}: {.code {deparse1(formula)}}."))
@@ -201,12 +260,11 @@ check_formula_has_response <- function(formula) {
 #'
 #' @noRd
 check_formula_has_variable <- function(name, formula) {
-    factors <- attr(stats::terms(formula), "factors")
-    varnames <- rownames(factors)[-1L]
-    if (!(name %in% varnames))
-        cli::cli_abort(c("{.arg formula} does not have variable {.val {name}}.",
-                         i = "{.arg formula}: {deparse1(formula)}"))
-    invisible(TRUE)
+  vars <- all.vars(formula[-2L])
+  if (!(name %in% vars))
+    cli::cli_abort(c("{.arg formula} does not have variable {.val {name}}.",
+                     i = "{.arg formula}: {deparse1(formula)}"))
+  invisible(TRUE)
 }
 
 
@@ -220,16 +278,16 @@ check_formula_has_variable <- function(name, formula) {
 #'
 #' @noRd
 check_formula_vnames_in_data <- function(formula, data) {
-    nms_formula <- rownames(attr(stats::terms(formula), "factors"))
-    nms_data <- names(data)
-    is_in_data <- nms_formula %in% nms_data
-    i_not_in_data <- match(FALSE, is_in_data, nomatch = 0L)
-    if (i_not_in_data > 0L) {
-        nm_var <- nms_formula[[i_not_in_data]]
-        cli::cli_abort(c("Variable {.var {nm_var}} from {.arg formula} not found in {.arg data}.",
-                         i = "{.arg formula}: {.code {deparse(formula)}}."))
-    }
-    invisible(TRUE)
+  nms_formula <- all.vars(formula)
+  nms_data <- names(data)
+  is_in_data <- nms_formula %in% nms_data
+  i_not_in_data <- match(FALSE, is_in_data, nomatch = 0L)
+  if (i_not_in_data > 0L) {
+    nm_var <- nms_formula[[i_not_in_data]]
+    cli::cli_abort(c("Variable {.var {nm_var}} from {.arg formula} not found in {.arg data}.",
+                     i = "{.arg formula}: {.code {deparse(formula)}}."))
+  }
+  invisible(TRUE)
 }
 
 
@@ -254,7 +312,7 @@ check_has_disp_if_condition_on_expected <- function(x) {
 }
 
 
-## NO_TESTS
+## HAS_TESTS
 #' Check That No Arguments Absorbed By Dots in Function
 #'
 #' @param dots Arguments absorbed
@@ -278,6 +336,23 @@ check_has_no_dots <- function(...) {
       cli::cli_abort("{.arg {nms[i_nonblank]}} is not a valid argument.")
     }
   }
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
+#' Check if Vector Has Infinite Values
+#'
+#' @param x Vector
+#' @param nm_x Name for 'x' to use in error messages.
+#'
+#' @returns TRUE, invisibly
+#' 
+#' @noRd
+check_inf <- function(x, nm_x) {
+  n_inf <- sum(is.infinite(x))
+  if (n_inf > 0L)
+    cli::cli_abort("{.arg {nm_x}} has infinite {cli::qty(n_inf)} value{?s}.")
   invisible(TRUE)
 }
 
@@ -368,28 +443,6 @@ check_is_ssvd <- function(x, nm_x) {
 
 
 ## HAS_TESTS
-#' Check that Along Dimension of Interaction has at Least 'min' Elements
-#'
-#' @param n_along Number of elements
-#' @param min Minimum number of elements
-#' @param nm Name of term
-#' @param prior Object of class 'bage_prior'
-#'
-#' @returns TRUE, invisibly
-#'
-#' @noRd
-check_n_along_ge <- function(n_along, min, nm, prior) {
-  if (n_along < min)
-    cli::cli_abort(c(paste("{.var {str_call_prior(prior)}} prior cannot be",
-                           "used for {.var {nm}} term."),
-                     i = paste("{.var {str_call_prior(prior)}} prior can only be",
-                               "used with interactions where the 'along' dimension has at least {min} element{?s}."),
-                     i = "The 'along' dimension of {.var {nm}} has {n_along} element{?s}."))
-  invisible(TRUE)
-}
-
-
-## HAS_TESTS
 #' Check that term has has least 'min' elements
 #'
 #' @param length_effect Number of elements
@@ -464,12 +517,12 @@ check_mod_est_sim_compatible <- function(mod_est, mod_sim) {
                          i = "{.arg mod_est} has class {.cls {class(mod_est)}}.",
                          i = "{.arg mod_sim} has class {.cls {class(mod_sim)}}."))
     ## outcome variables are same
-    nm_outcome_sim <- get_nm_outcome(mod_est)
-    nm_outcome_est <- get_nm_outcome(mod_sim)
-    if (!identical(nm_outcome_sim, nm_outcome_est))
+    nm_outcome_data_sim <- get_nm_outcome_data(mod_est)
+    nm_outcome_data_est <- get_nm_outcome_data(mod_sim)
+    if (!identical(nm_outcome_data_sim, nm_outcome_data_est))
         cli::cli_abort(c("{.arg mod_est} and {.arg mod_sim} have different outcome variables.",
-                         i = "Outcome variable for {.arg mod_est}: {.val {nm_outcome_sim}}.",
-                         i = "Outcome variable for {.arg mod_sim}: {.val {nm_outcome_est}}."))
+                         i = "Outcome variable for {.arg mod_est}: {.val {nm_outcome_data_sim}}.",
+                         i = "Outcome variable for {.arg mod_sim}: {.val {nm_outcome_data_est}}."))
     ## apart from outcome variable, data are the same
     data_sim <- mod_est$data
     data_est <- mod_sim$data
@@ -480,7 +533,7 @@ check_mod_est_sim_compatible <- function(mod_est, mod_sim) {
                                "different variables."),
                          i = "Data for {.arg mod_est} has variables {.val {nms_sim}}.",
                          i = "Data for {.arg mod_sim} has variables {.val {nms_est}}."))
-    for (nm in setdiff(nms_sim, nm_outcome_sim)) {
+    for (nm in setdiff(nms_sim, nm_outcome_data_sim)) {
         var_sim <- data_sim[[nm]]
         var_est <- data_est[[nm]]
         is_same <- var_sim == var_est
@@ -508,24 +561,148 @@ check_mod_est_sim_compatible <- function(mod_est, mod_sim) {
 #'
 #' @noRd
 check_mod_has_obs <- function(mod) {
-  is_in_lik <- make_is_in_lik(mod)
-    msg1 <- "No data for fitting model."
-  if (length(is_in_lik) == 0L)
-    cli::cli_abort(msg1)
+  is_in_lik <- get_is_in_lik(mod)
   if (!any(is_in_lik)) {
-    has_offset <- !is.null(mod$vname_offset)
+    msg <- "No data for fitting model."
+    if (length(is_in_lik) == 0L)
+      cli::cli_abort(msg)
+    is_in_lik_effects <- get_is_in_lik_effects(mod)
+    is_in_lik_offset <- get_is_in_lik_offset(mod)
+    is_in_lik_outcome <- get_is_in_lik_outcome(mod)
+    n_na_effects <- sum(!is_in_lik_effects)
+    if (n_na_effects > 0L)
+      msg <- c(msg, i = "Number of rows where predictor is {.val {NA}}: {.val {n_na_effects}}.")
+    nm_offset_data <- get_nm_offset_data(mod)
+    has_offset <- !is.null(nm_offset_data)
     if (has_offset) {
-      nm_offset <- nm_offset(mod)
-      msg2 <- paste("Every case has {nm_offset} {.val {0}},",
-                    "{nm_offset} {.val {NA}}, or outcome {.val {NA}}.")
+      nm_offset_mod <- get_nm_offset_mod(mod)
+      n_na_offset <- sum(!is_in_lik_offset)
+      if (n_na_offset > 0L)
+        msg <- c(msg, i = "Number of rows where {nm_offset_mod} is {.val {NA}}: {.val {n_na_offset}}.")
     }
-    else
-      msg2 <- "Every case has outcome {.val {NA}}."
-    message <- c(msg1, i = msg2)
-    cli::cli_abort(message)
+    n_na_outcome <- sum(!is_in_lik_outcome)
+    if (n_na_outcome > 0L)
+      msg <- c(msg, i = "Number of rows where outcome is {.val {NA}}: {.val {n_na_outcome}}.")
+    cli::cli_abort(msg)
   }
   invisible(TRUE)
 }
+
+
+## HAS_TESTS
+#' Check that 'mult_high_rate' Argument for Detecting Suspicious Rates Valid
+#'
+#' OK for 'mult_high_rate' to be NULL or Inf
+#' (in which case test for suspicious rates
+#' not done.)
+#' 
+#' @param mult_high_rate Non-negative
+#'
+#' @returns TRUE invisibly
+#'
+#' @noRd
+check_mult_high_rate <- function(mult_high_rate) {
+  if (is.null(mult_high_rate))
+    return(invisible(TRUE))
+  if (identical(mult_high_rate, Inf))
+    return(invisible(TRUE))
+  if (!is.numeric(mult_high_rate))
+    cli::cli_abort(c("{.arg mult_high_rate} not NULL or numeric.",
+                     i = paste("{.arg mult_high_rate} has class",
+                               "{.cls {class(mult_high_rate)}}.")))
+  if (length(mult_high_rate) != 1L)
+    cli::cli_abort(c("{.arg mult_high_rate} has length {.val {length(mult_high_rate)}}.",
+                     i = "Should have length {.val {1}}."))
+  if (is.na(mult_high_rate))
+    cli::cli_abort("{.arg mult_high_rate} is {.val {NA}}.")
+  if (mult_high_rate <= 0)
+    cli::cli_abort(c("{.arg mult_high_rate} non-positive.",
+                     "{.arg mult_high_rate} is {.val {mult_high_rate}}."))
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
+#' Check that Along Dimension of Interaction has at Least 'min' Elements
+#'
+#' @param n_along Number of elements
+#' @param min Minimum number of elements
+#' @param nm Name of term
+#' @param prior Object of class 'bage_prior'
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd
+check_n_along_ge <- function(n_along, min, nm, prior) {
+  if (n_along < min)
+    cli::cli_abort(c(paste("{.var {str_call_prior(prior)}} prior cannot be",
+                           "used for {.var {nm}} term."),
+                     i = paste("{.var {str_call_prior(prior)}} prior can only be",
+                               "used with interactions where the 'along' dimension has at least {min} element{?s}."),
+                     i = "The 'along' dimension of {.var {nm}} has {n_along} element{?s}."))
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
+#' Check if Vector Has NaNs
+#'
+#' @param x Vector
+#' @param nm_x Name for 'x' to use in error messages.
+#'
+#' @returns TRUE, invisibly
+#' 
+#' @noRd
+check_nan <- function(x, nm_x) {
+  if (any(is.nan(x)))
+    cli::cli_abort("{.arg {nm_x}} has {.val {NaN}}.")
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
+#' Check that 'new_seeds' is List of Numeric Scalars with Correct Names
+#'
+#' @param new_seeds A named list of numeric scalars.
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd
+check_new_seeds <- function(new_seeds) {
+  if (!is.null(new_seeds)) {
+    nms_expected <- c("seed_components",
+                      "seed_augment",
+                      "seed_forecast_components",
+                      "seed_forecast_augment")
+    if (!is.list(new_seeds))
+      cli::cli_abort(c("{.arg new_seeds} is not a list.",
+                       i = "{.arg new_seeds} has class {.cls {class(new_seeds)}}."))
+    if (!identical(length(new_seeds), length(nms_expected)))
+      cli::cli_abort(c("{.arg new_seeds} does not have {length(nms_expected)} elements.",
+                       i = "{.arg new_seeds} has {length(new_seeds)} element{?s}."))
+    nms_seeds <- names(new_seeds)
+    if (is.null(nms_seeds))
+      cli::cli_abort("{.arg new_seeds} does not have names.")
+    if (!setequal(nms_seeds, nms_expected))
+      cli::cli_abort(c("{.arg new_seeds} does not have expected names.",
+                       i = "Names supplied: {.val {nms_seeds}}.",
+                       i = "Names expected: {.val {nms_expected}}."))
+    is_numeric <- vapply(new_seeds, is.numeric, TRUE)
+    i_not_numeric <- match(FALSE, is_numeric, nomatch = 0L)
+    if (i_not_numeric > 0L)
+      cli::cli_abort(c("{.arg new_seeds} has non-numeric element.",
+                       i = paste("Element {.val {nms_seeds[[i_not_numeric]]}} has class",
+                                 "{.cls {class(new_seeds[[i_not_numeric]])}}.")))
+    is_length_1 <- lengths(new_seeds) == 1L
+    i_not_length_1 <- match(FALSE, is_length_1, nomatch = 0L)
+    if (i_not_length_1 > 0L)
+      cli::cli_abort(c("{.arg new_seeds} has element not of length 1.",
+                       i = paste("Element {.val {nms_seeds[[i_not_length_1]]}} has length",
+                                 "{length(new_seeds[[i_not_length_1]])}.")))
+  }
+  invisible(TRUE)
+}
+ 
 
 
 ## HAS_TESTS
@@ -542,8 +719,8 @@ check_number <- function(x, nm_x) {
     cli::cli_abort(c("{.arg {nm_x}} is non-numeric.",
                      i = "{.arg {nm_x}} has class {.cls {class(x)}}."))
   if (length(x) != 1L)
-    cli::cli_abort(c("{.arg {nm_x}} has length {length(x)}.",
-                     i = "Should have length 1."))
+    cli::cli_abort(c("{.arg {nm_x}} has length {.val {length(x)}}.",
+                     i = "Should have length {.val {1}}."))
   if (is.na(x))
     cli::cli_abort("{.arg {nm_x}} is {.val {NA}}.")
   if (any(is.infinite(x)))
@@ -566,7 +743,7 @@ check_numeric <- function(x, nm_x) {
     cli::cli_abort(c("{.arg {nm_x}} is non-numeric.",
                      i = "{.arg {nm_x}} has class {.cls {class(x)}}."))
   if (length(x) == 0L)
-    cli::cli_abort("{.arg {nm_x}} has length 0.")
+    cli::cli_abort("{.arg {nm_x}} has length {.val {0}}.")
   if (anyNA(x))
     cli::cli_abort("{.arg {nm_x}} has {.val {NA}}.")
   if (any(is.infinite(x)))
@@ -578,30 +755,30 @@ check_numeric <- function(x, nm_x) {
 ## HAS_TESTS
 #' Check offset occurs in 'data'
 #'
-#' @param vname_offset The name of the variable being
+#' @param nm_offset_data The name of the variable being
 #' used as an offset, or a formula
-#' @param nm_offset The name used to refer to the
+#' @param nm_offset_mod The name used to refer to the
 #' offset in user-visible functions
 #' @param data A data frame
 #'
 #' @return TRUE, invisibly
 #'
 #' @noRd
-check_offset_in_data <- function(vname_offset, nm_offset, data) {
-  is_formula <- startsWith(vname_offset, "~")
+check_offset_in_data <- function(nm_offset_data, nm_offset_mod, data) {
+  is_formula <- startsWith(nm_offset_data, "~")
   if (is_formula) {
-    ans <- tryCatch(eval_offset_formula(vname_offset = vname_offset, data = data),
+    ans <- tryCatch(eval_offset_formula(nm_offset_data = nm_offset_data, data = data),
                     error = function(e) e)
     if (inherits(ans, "error"))
-      cli::cli_abort(c("Problem with formula used for {.arg {nm_offset}}.",
-                       i = "Formula: {.val {vname_offset}}.",
+      cli::cli_abort(c("Problem with formula used for {.arg {nm_offset_mod}}.",
+                       i = "Formula: {.val {nm_offset_data}}.",
                        i = ans$message))
   }
   else {
     nms_data <- names(data)
-    if (!(vname_offset %in% nms_data)) {
-      cli::cli_abort(c("{.arg {nm_offset}} not found in {.arg data}.",
-                       i = "{.arg {nm_offset}}: {.val {vname_offset}}."))
+    if (!(nm_offset_data %in% nms_data)) {
+      cli::cli_abort(c("{.arg {nm_offset_mod}} not found in {.arg data}.",
+                       i = "{.arg {nm_offset_mod}}: {.val {nm_offset_data}}."))
     }
   }
   invisible(TRUE)
@@ -611,33 +788,33 @@ check_offset_in_data <- function(vname_offset, nm_offset, data) {
 ## HAS_TESTS
 #' Check that Offset Has No Negative Values
 #'
-#' @param vname_offset The name of the variable being
+#' @param nm_offset_data The name of the variable being
 #' used as an offset, or a formula
-#' @param nm_offset The name used to refer to the
+#' @param nm_offset_mod The name used to refer to the
 #' offset in user-visible functions
 #' @param data A data frame
 #'
 #' @return TRUE, invisibly
 #'
 #' @noRd
-check_offset_nonneg <- function(vname_offset, nm_offset, data) {
-  is_formula <- startsWith(vname_offset, "~")
+check_offset_nonneg <- function(nm_offset_data, nm_offset_mod, data) {
+  is_formula <- startsWith(nm_offset_data, "~")
   if (is_formula) {
-    offset <- eval_offset_formula(vname_offset = vname_offset, data = data)
+    offset <- eval_offset_formula(nm_offset_data = nm_offset_data, data = data)
   }
   else {
-    offset <- data[[vname_offset]]
+    offset <- data[[nm_offset_data]]
   }
   n_neg <- sum(offset < 0, na.rm = TRUE)
   if (n_neg > 0L)
-    cli::cli_abort(c("{.arg {nm_offset}} has negative {cli::qty(n_neg)} value{?s}.",
-                     i = "{nm_offset}: {.val {vname_offset}}."))
+    cli::cli_abort(c("{.arg {nm_offset_mod}} has negative {cli::qty(n_neg)} value{?s}.",
+                     i = "{nm_offset_mod}: {.val {nm_offset_data}}."))
   invisible(TRUE)
 }
 
 
 ## HAS_TESTS
-#' Raise Error of Model Object Created Using Old Version of 'bage'
+#' Raise Error if Model Object Created Using Old Version of 'bage'
 #'
 #' @param mod Object of class 'bage_mod'
 #'
@@ -646,13 +823,36 @@ check_offset_nonneg <- function(vname_offset, nm_offset, data) {
 #' @noRd 
 check_old_version <- function(x, nm_x) {
   check_bage_mod(x = x, nm_x = nm_x)
-  is_old_version <- !("draws_hyperrandfree" %in% names(x))
+  is_norm <- inherits(x, "bage_mod_norm")
+  has_covariates <- has_covariates(x)
+  nms <- names(x)
+  is_old_version <- (!("draws_hyperrandfree" %in% nms)
+    || ("seed_stored_draws" %in% nms)
+    || (is_norm && !("offset_mean" %in% nms)))
   if (is_old_version) {
     cli::cli_abort(c("{.arg {nm_x}} appears to have been created with an old version of {.pkg bage}.",
-                     i = "Please recreate the object using the current version.",
-                     i = paste("Alternatively, install the old version using, for instance,",
-                               '{.code devtools::install_version("bage", version = "0.7.4")}')))
+                     i = "Please recreate the object using the current version."))
   }
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
+#' Check 'original_scale' Argument to 'augment'
+#'
+#' Includes warning when argument ignored.
+#'
+#' @param original_scale Logical scalar
+#' @param mod Object of class 'bage_mod'
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd
+check_original_scale <- function(original_scale, mod) {
+  check_flag(x = original_scale, nm_x = "original_scale")
+  if (isTRUE(original_scale) && !inherits(mod, "bage_mod_norm"))
+    cli::cli_warn(paste("{.fun components} ignores {.arg original_scale} if {.arg object} was",
+                        "not created with {.fun mod_norm}."))
   invisible(TRUE)
 }
 
@@ -714,22 +914,22 @@ check_prior_time <- function(prior, nm, var_time) {
 #'
 #' Applied only when offset is the name of a variable.
 #'
-#' @param vname_offset The name of the variable being
+#' @param nm_offset_data The name of the variable being
 #' used as an offset, or a formula
-#' @param nm_offset The name used to refer to the
+#' @param nm_offset_mod The name used to refer to the
 #' offset in user-visible functions
 #' @param formula Formula specifying model
 #'
 #' @return TRUE, invisibly
 #'
 #' @noRd
-check_offset_not_in_formula <- function(vname_offset, nm_offset, formula) {
-  is_offset_formula <- startsWith(vname_offset, "~")
-  nms_formula <- rownames(attr(stats::terms(formula), "factors"))
+check_offset_not_in_formula <- function(nm_offset_data, nm_offset_mod, formula) {
+  is_offset_formula <- startsWith(nm_offset_data, "~")
+  nms_formula <- all.vars(formula)
   if (!is_offset_formula) {
-    if (vname_offset %in% nms_formula) {
-      cli::cli_abort(c("{.arg {nm_offset}} included in {.arg formula}.",
-                       i = "{.arg {nm_offset}}: {.val {vname_offset}}.",
+    if (nm_offset_data %in% nms_formula) {
+      cli::cli_abort(c("{.arg {nm_offset_mod}} included in {.arg formula}.",
+                       i = "{.arg {nm_offset_mod}}: {.val {nm_offset_data}}.",
                        i = "{.arg formula}: {.val {deparse1(formula)}}."))
     }
   }
@@ -742,9 +942,9 @@ check_offset_not_in_formula <- function(vname_offset, nm_offset, formula) {
 #' or equal to offset variable
 #'
 #' @param formula A formula
-#' @param vname_offset The name of the variable being
+#' @param nm_offset_data The name of the variable being
 #' used as an offset, or a formula
-#' @param nm_offset The name used to refer to the
+#' @param nm_offset_mod The name used to refer to the
 #' offset in user-visible functions
 #' @param data A data frame
 #'
@@ -752,24 +952,24 @@ check_offset_not_in_formula <- function(vname_offset, nm_offset, formula) {
 #'
 #' @noRd
 check_resp_le_offset <- function(formula,
-                                 vname_offset,
-                                 nm_offset,
+                                 nm_offset_data,
+                                 nm_offset_mod,
                                  data) {
   nm_response <- deparse1(formula[[2L]])
   response <- data[[nm_response]]
-  is_offset_formula <- startsWith(vname_offset, "~")
+  is_offset_formula <- startsWith(nm_offset_data, "~")
   if (is_offset_formula)
-    offset <- eval_offset_formula(vname_offset = vname_offset, data = data)
+    offset <- eval_offset_formula(nm_offset_data = nm_offset_data, data = data)
   else
-    offset <- data[[vname_offset]]
+    offset <- data[[nm_offset_data]]
   is_gt_offset <- !is.na(response) & !is.na(offset) & (response > offset)
   i_gt_offset <- match(TRUE, is_gt_offset, nomatch = 0L)
   if (i_gt_offset > 0L) {
-    cli::cli_abort(c("Response greater than {.var {nm_offset}}.",
+    cli::cli_abort(c("Response greater than {.var {nm_offset_mod}}.",
                      i = "Response: {.var {nm_response}}.",
-                     i = "{.var {nm_offset}}: {.val {vname_offset}}.",
+                     i = "{.var {nm_offset_mod}}: {.val {nm_offset_data}}.",
                      i = "Value for response: {.val {response[[i_gt_offset]]}}",
-                     i = "Value for {.var {nm_offset}}: {.val {offset[[i_gt_offset]]}}"))
+                     i = "Value for {.var {nm_offset_mod}}: {.val {offset[[i_gt_offset]]}}"))
   }
   invisible(TRUE)
 }
@@ -780,9 +980,9 @@ check_resp_le_offset <- function(formula,
 #' offset variable is zero
 #'
 #' @param formula A formula
-#' @param vname_offset The name of the variable being
+#' @param nm_offset_data The name of the variable being
 #' used as an offset
-#' @param nm_offset The name used to refer to the
+#' @param nm_offset_mod The name used to refer to the
 #' offset in user-visible functions
 #' @param data A data frame
 #'
@@ -790,24 +990,24 @@ check_resp_le_offset <- function(formula,
 #'
 #' @noRd
 check_resp_zero_if_offset_zero <- function(formula,
-                                           vname_offset,
-                                           nm_offset,
+                                           nm_offset_data,
+                                           nm_offset_mod,
                                            data) {
   nm_response <- deparse1(formula[[2L]])
   response <- data[[nm_response]]
-  is_offset_formula <- startsWith(vname_offset, "~")
+  is_offset_formula <- startsWith(nm_offset_data, "~")
   if (is_offset_formula)
-    offset <- eval_offset_formula(vname_offset = vname_offset, data = data)
+    offset <- eval_offset_formula(nm_offset_data = nm_offset_data, data = data)
   else
-    offset <- data[[vname_offset]]
+    offset <- data[[nm_offset_data]]
   response_pos <- response > 0
   offset_pos <- offset > 0
   is_pos_nonpos <- !is.na(response) & !is.na(offset) & response_pos & !offset_pos
   i_pos_nonpos <- match(TRUE, is_pos_nonpos, nomatch = 0L)
   if (i_pos_nonpos > 0L)
-    cli::cli_abort(c("Response is non-zero but {.var {nm_offset}} is zero.",
+    cli::cli_abort(c("Response is non-zero but {.var {nm_offset_mod}} is zero.",
                      i = "Response: {.var {nm_response}}.",
-                     i = "{.var {nm_offset}}: {.var {vname_offset}}.",
+                     i = "{.var {nm_offset_mod}}: {.var {nm_offset_data}}.",
                      i = "Value for {.var {nm_response}}: {.val {response[[i_pos_nonpos]]}}."))
   invisible(TRUE)
 }
@@ -855,7 +1055,7 @@ check_scale <- function(x, nm_x, zero_ok) {
         cli::cli_abort(c("{.arg {nm_x}} is non-numeric.",
                          i = "{.arg {nm_x}} has class {.cls {class(x)}}."))
     if (length(x) != 1L)
-        cli::cli_abort(c("{.arg {nm_x}} does not have length 1.",
+        cli::cli_abort(c("{.arg {nm_x}} does not have length {.val {1}}.",
                          i = "{.arg {nm_x}} has length {.val {length(x)}}."))
     if (is.na(x))
         cli::cli_abort("{.arg {nm_x}} is {.val {NA}}.")
@@ -990,7 +1190,7 @@ check_vars_inner <- function(vars_inner) {
                      i = "{.arg vars_inner} has class {.cls {class(vars_inner)}}."))
   ## not length 0
   if (identical(length(vars_inner), 0L))
-    cli::cli_abort("{.arg vars_inner} has length 0.")
+    cli::cli_abort("{.arg vars_inner} has length {.val {0}}.")
   ## no NAs
   n_na <- sum(is.na(vars_inner))
   if (n_na > 0L)
@@ -1022,7 +1222,7 @@ check_widths <- function(widths) {
         cli::cli_abort(c("{.arg widths} is non-numeric",
                          i = "{.arg widths} has class {.cls {class(widths)}}."))
     if (length(widths) == 0L)
-        cli::cli_abort("{.arg widths} has length 0.")
+        cli::cli_abort("{.arg widths} has length {.val {0}}.")
     n_na <- sum(is.na(widths))
     if (n_na > 0L)
         cli::cli_abort("{.arg widths} has {cli::qty(n_na)} NA{?s}.")

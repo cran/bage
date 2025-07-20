@@ -914,6 +914,12 @@ draw_vals_hyper.bage_prior_linar <- function(prior, n_sim) {
 
 ## HAS_TESTS
 #' @export
+draw_vals_hyper.bage_prior_linex <- function(prior, n_sim) {
+  list()
+}
+
+## HAS_TESTS
+#' @export
 draw_vals_hyper.bage_prior_norm <- function(prior, n_sim) {
   sd <- draw_vals_sd(prior = prior, n_sim = n_sim)
   list(sd = sd)
@@ -1146,7 +1152,7 @@ draw_vals_hyperrand.bage_prior_lin <- function(prior,
     trend <- Matrix::as.matrix(trend)
     error <- Matrix::as.matrix(error)
     n_by <- ncol(matrix_along_by_effect)
-    slope <- matrix(nrow = n_by, ncol = n_sim)
+    slope <- matrix(NA_real_, nrow = n_by, ncol = n_sim)
     for (i_by in seq_len(n_by)) {
       i_1 <- matrix_along_by_effect[1L, i_by] + 1L
       i_2 <- matrix_along_by_effect[2L, i_by] + 1L
@@ -1200,7 +1206,7 @@ draw_vals_hyperrand.bage_prior_linar <- function(prior,
     trend <- Matrix::as.matrix(trend)
     error <- Matrix::as.matrix(error)
     n_by <- ncol(matrix_along_by_effect)
-    slope <- matrix(nrow = n_by, ncol = n_sim)
+    slope <- matrix(NA_real_, nrow = n_by, ncol = n_sim)
     for (i_by in seq_len(n_by)) {
       i_1 <- matrix_along_by_effect[1L, i_by] + 1L
       i_2 <- matrix_along_by_effect[2L, i_by] + 1L

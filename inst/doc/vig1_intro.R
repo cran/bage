@@ -7,11 +7,13 @@ knitr::opts_chunk$set(
 )
 
 ## ----setup--------------------------------------------------------------------
-library(bage)
-library(poputils)
-library(dplyr)
-library(tidyr)
-library(ggplot2)
+suppressPackageStartupMessages({
+  library(bage)
+  library(poputils)
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+})
 
 ## -----------------------------------------------------------------------------
 head(nzl_injuries)
@@ -31,7 +33,7 @@ mod <- mod_pois(injuries ~ age * sex + age * ethnicity + year,
                 data = nzl_injuries,
                 exposure = popn)
 
-## ----echo=FALSE, out.width="90%", fig.cap = "Structure of model. Rectangles denote data, ellipses denote unknown quantities that are inferred within the model, solid arrows denote probabilistic relationships, and dashed arrows denote deterministic relationships."----
+## ----echo=FALSE, out.width="90%"----------------------------------------------
 knitr::include_graphics("vig1_dag.png")
 
 ## -----------------------------------------------------------------------------
@@ -103,6 +105,12 @@ mod_births <- mod_pois(births ~ age * region + age * time,
   set_prior(age:time ~ SVD_RW(HFD)) |>
   fit()
 mod_births
+
+## -----------------------------------------------------------------------------
+mod_pois(births ~ age * region + age * time,
+         data = kor_births,
+         exposure = popn) |>
+  set_covariates(~ gdp_pc_2023 + dens_2020)
 
 ## -----------------------------------------------------------------------------
 aug_forecast <- mod |>

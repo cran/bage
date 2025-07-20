@@ -79,21 +79,21 @@ estimates of the true value for the outcome.
 }
 
 \examples{
+set.seed(0)
+
 ## specify model
 mod <- mod_pois(divorces ~ age + sex + time,
                 data = nzl_divorces,
                 exposure = population) |>
   set_n_draw(n_draw = 100) ## smaller sample, so 'augment' faster
 
-## draw from the prior distribution
-mod |> augment()
-
 ## fit model
 mod <- mod |>
   fit()
 
 ## draw from the posterior distribution
-mod |> augment()
+mod |>
+  augment()
 
 ## insert a missing value into outcome variable
 divorces_missing <- nzl_divorces
@@ -120,7 +120,7 @@ mod_pois(divorces ~ age + sex + time,
 }
 \seealso{
 \itemize{
-\item \code{\link[=components]{components()}} Extract values for hyper-parameters from a model
+\item \code{\link[=components]{components()}} Extract values for hyper-parameters
 \item \code{\link[=tidy]{tidy()}} Short summary of a model
 \item \code{\link[=mod_pois]{mod_pois()}} Specify a Poisson model
 \item \code{\link[=mod_binom]{mod_binom()}} Specify a binomial model
