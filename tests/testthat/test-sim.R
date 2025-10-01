@@ -73,6 +73,165 @@ test_that("'aggregate_report_comp' works with valid inputs", {
 })
 
 
+## 'draw_fitted' --------------------------------------------------------------
+
+test_that("'draw_fitted' works with 'pois'", {
+  set.seed(0)
+  expected <- exp(rvec::rnorm_rvec(n = 20, n_draw = 50))
+  disp <- rvec::runif_rvec(n = 1, n_draw = 50)
+  set.seed(1)
+  ans_obtained <- draw_fitted(nm_distn = "pois",
+                              expected = expected,
+                              disp = disp)
+  set.seed(1)
+  ans_expected <- rvec::rgamma_rvec(n = 20,
+                                    shape = 1 / disp,
+                                    rate = 1 / (disp * expected))
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'draw_fitted' works with 'binom'", {
+  set.seed(0)
+  expected <- rvec::rbeta_rvec(n = 20, shape1 = 3, shape2 = 4, n_draw = 50)
+  disp <- rvec::runif_rvec(n = 1, n_draw = 50)
+  set.seed(1)
+  ans_obtained <- draw_fitted(nm_distn = "binom",
+                              expected = expected,
+                              disp = disp)
+  set.seed(1)
+  ans_expected <- rvec::rbeta_rvec(n = 20,
+                                   shape1 = expected / disp,
+                                   shape2 = (1 - expected) / disp)
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'draw_fitted' throws expected error with invalid 'nm_distn'", {
+  set.seed(0)
+  expected <- rvec::rbeta_rvec(n = 20, shape1 = 3, shape2 = 4, n_draw = 50)
+  disp <- rvec::runif_rvec(n = 1, n_draw = 50)
+  expect_error(draw_fitted(nm_distn = "wrong",
+                           expected = expected,
+                           disp = disp),
+               "Internal error")
+})
+
+
+## 'draw_outcome_true' ---------------------------------------------------
+
+test_that("'draw_outcome_true' works with pois - offset numeric, no NA", {
+  set.seed(0)
+  offset <- runif(n = 20, max = 100)
+  fitted <- rvec::rpois_rvec(n = 20, lambda = 10, n_draw = 50)
+  set.seed(1)
+  ans_obtained <- draw_outcome_true(nm_distn = "pois",
+                                    fitted = fitted,
+                                    offset = offset,
+                                    disp = NULL)
+  set.seed(1)
+  ans_expected <- rvec::rpois_rvec(n = 20, lambda = offset * fitted)
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'draw_outcome_true' works with pois - offset rvec, has NA", {
+  set.seed(0)
+  offset <- rvec::runif_rvec(n = 20, max = 100, n_draw = 10)
+  offset[1] <- NA
+  fitted <- rvec::rpois_rvec(n = 20, lambda = 10, n_draw = 10)
+  set.seed(1)
+  ans_obtained <- draw_outcome_true(nm_distn = "pois",
+                                    fitted = fitted,
+                                    offset = offset,
+                                    disp = NULL)
+  set.seed(1)
+  ans_expected <- vctrs::vec_c(NA,
+                               rvec::rpois_rvec(n = 19,
+                                                lambda = offset[-1] * fitted[-1]))
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'draw_outcome_true' works with pois - no offset, fitted has NA", {
+  set.seed(0)
+  offset <- rep(1, 20)
+  fitted <- rvec::rpois_rvec(n = 20, lambda = 10, n_draw = 10)
+  fitted[1] <- NA
+  set.seed(1)
+  ans_obtained <- draw_outcome_true(nm_distn = "pois",
+                                    fitted = fitted,
+                                    offset = offset,
+                                    disp = NULL)
+  set.seed(1)
+  ans_expected <- vctrs::vec_c(NA,
+                               rvec::rpois_rvec(n = 19,
+                                                lambda = fitted[-1]))
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'draw_outcome_true' works with binom", {
+  set.seed(0)
+  offset <- rpois(n = 20, lambda = 100)
+  fitted <- rvec::rbeta_rvec(n = 20, shape1 = 1, shape2 = 2, n_draw = 50)
+  set.seed(1)
+  ans_obtained <- draw_outcome_true(nm_distn = "binom",
+                                    fitted = fitted,
+                                    offset = offset,
+                                    disp = NULL)
+  set.seed(1)
+  ans_expected <- rvec::rbinom_rvec(n = 20,
+                                    size = offset,
+                                    prob = fitted)
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'draw_outcome_true' works with norm - has weights, no NA", {
+  set.seed(0)
+  offset <- runif(n = 20)
+  fitted <- rvec::rnorm_rvec(n = 20, mean = 3, sd = 2, n_draw = 50)
+  disp <- rvec::runif_rvec(n = 1, n_draw = 50)
+  set.seed(1)
+  ans_obtained <- draw_outcome_true(nm_distn = "norm",
+                                    fitted = fitted,
+                                    offset = offset,
+                                    disp = disp)
+  set.seed(1)
+  ans_expected <- rvec::rnorm_rvec(n = 20,
+                                   mean = fitted,
+                                   sd = disp / sqrt(offset))
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'draw_outcome_true' works with norm - no weights, fitted has NA", {
+  set.seed(0)
+  offset <- rep(1, 20)
+  fitted <- rvec::rnorm_rvec(n = 20, mean = 3, sd = 2, n_draw = 50)
+  fitted[20] <- NA
+  disp <- rvec::runif_rvec(n = 1, n_draw = 50)
+  set.seed(1)
+  ans_obtained <- draw_outcome_true(nm_distn = "norm",
+                                    fitted = fitted,
+                                    offset = offset,
+                                    disp = disp)
+  set.seed(1)
+  ans_expected <- vctrs::vec_c(
+    rvec::rnorm_rvec(n = 19,
+                     mean = fitted[-20],
+                     sd = disp / sqrt(offset[-20])),
+    NA)
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'draw_outcome_true' throws expected error with invalid 'nm_distn'", {
+  set.seed(0)
+  offset <- runif(n = 20)
+  fitted <- rvec::rnorm_rvec(n = 20, mean = 3, sd = 2, n_draw = 50)
+  disp <- rvec::runif_rvec(n = 1, n_draw = 50)
+  expect_error(draw_outcome_true(nm_distn = "wrong",
+                                 fitted = fitted,
+                                 offset = offset,
+                                 disp = disp),
+               "Internal error")
+})
+
+
 ## 'draw_vals_ar' -------------------------------------------------------------
 
 test_that("'draw_vals_ar' works with bage_prior_ar - n_by = 1", {
@@ -162,7 +321,7 @@ test_that("'draw_vals_coef' works with n = 10", {
 
 ## 'draw_vals_components_unfitted' --------------------------------------------
 
-test_that("'draw_vals_components_unfitted' works - no covariates", {
+test_that("'draw_vals_components_unfitted' works", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -181,8 +340,7 @@ test_that("'draw_vals_components_unfitted' works - no covariates", {
   expect_true(identical(nrow(comb), nrow(ans)))
 })
 
-
-test_that("'draw_vals_components_unfitted' works - with covariates", {
+test_that("'draw_vals_components_unfitted' works - with covariates, datamod", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -195,6 +353,7 @@ test_that("'draw_vals_components_unfitted' works - with covariates", {
   mod <- set_prior(mod, age ~ Sp())
   mod <- set_prior(mod, age:time ~ Sp())
   mod <- set_covariates(mod, ~ income)
+  mod <- set_datamod_undercount(mod, prob = data.frame(mean = 0.9, disp = 0.1))
   n_sim <- 2
   ans <- draw_vals_components_unfitted(mod = mod, n_sim = n_sim)
   ans_est <- components(fit(mod))
@@ -917,7 +1076,6 @@ test_that("'length_interval' works", {
   expect_equal(ans_obtained, ans_expected)
 })
 
-
 ## 'make_report_aug' ----------------------------------------------------------
 
 test_that("'make_report_aug' works with valid inputs - Poisson", {
@@ -981,7 +1139,6 @@ test_that("'make_report_aug' works with valid inputs - normal", {
                     ".length_60", ".length_80"))
   expect_identical(nrow(ans_obtained), nrow(aug_sim))
 })
-
 
 
 ## 'make_report_comp' ---------------------------------------------------------
@@ -1269,7 +1426,7 @@ test_that("'report_sim' works with rr3 model", {
                         data = data,
                         exposure = popn) |>
                         set_prior(age ~ SVD(HMD)) |>
-                        set_datamod_outcome_rr3()
+                        set_confidential_rr3()
     set.seed(0)
     ans_obtained <- report_sim(mod_est, n_sim = 2)
     expect_setequal(names(ans_obtained), c("components", "augment"))
@@ -1309,7 +1466,6 @@ test_that("'report_sim' works with fitted model", {
 })
 
 
-
 ## 'vals_covariates_to_dataframe' ---------------------------------------------
 
 test_that("'vals_covariates_to_dataframe' works", {
@@ -1333,6 +1489,39 @@ test_that("'vals_covariates_to_dataframe' works", {
                                  level = c("regb", "regc"),
                                  .fitted = rvec::rvec(unname(vals[[1]])))
   expect_identical(ans_obtained, ans_expected)
+})
+
+
+## 'vals_datamod_to_dataframe' ------------------------------------------------
+
+test_that("'vals_datamod_to_dataframe' works with bage_datamod_miscount", {
+  set.seed(0)
+  prob_mean <- c(0.5, 0.2, 0.3, 0.4)
+  prob_disp <- rep(0.4, 4)
+  prob_levels <- 1:4
+  prob_matrix_outcome <- Matrix::Matrix(kronecker(rep(1, 3), diag(4)))
+  prob_arg <- data.frame(sex = prob_levels, mean = prob_mean, disp = prob_disp)
+  rate_mean <- c(0.3, 0.3, 0.2)
+  rate_disp <- c(0.5, 0.2, 0.6)
+  rate_levels <- 1:3
+  rate_matrix_outcome <- Matrix::Matrix(kronecker(diag(3), rep(1, 4)))
+  rate_arg <- data.frame(age = rate_levels, mean = rate_mean, disp = rate_disp)
+  datamod <- new_bage_datamod_miscount(prob_mean = prob_mean,
+                                       prob_disp = prob_disp,
+                                       prob_levels = prob_levels,
+                                       prob_matrix_outcome = prob_matrix_outcome,
+                                       prob_arg = prob_arg,
+                                       rate_mean = rate_mean,
+                                       rate_disp = rate_disp,
+                                       rate_levels = rate_levels,
+                                       rate_matrix_outcome = rate_matrix_outcome,
+                                       rate_arg = rate_arg,
+                                       nms_by = c("sex", "age"))
+  vals_datamod <- draw_datamod_param(datamod, n_sim = 1000)
+  ans <- vals_datamod_to_dataframe(vals_datamod = vals_datamod,
+                                   datamod = datamod)
+  expect_setequal(names(ans), c("term", "component", "level", ".fitted"))
+  expect_true(rvec::is_rvec(ans$.fitted))
 })
 
 

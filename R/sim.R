@@ -42,6 +42,102 @@ aggregate_report_comp <- function(report_comp) {
 
 
 ## HAS_TESTS
+#' Draw Values for Fitted, Given Values
+#' for '.expected' and 'disp'
+#'
+#' Used only with simulation and unfitted models,
+#' since does not use information on outcomes.
+#'
+#' Used only with Poisson and binomial,
+#' in models that include dispersion.
+#'
+#' @param nm_distn Name of distribution, eg "pois"
+#' @param fitted Rates/probs/means. An rvec.
+#' @param disp Dispersion. An rvec.
+#'
+#' @returns An rvec
+#'
+#' @noRd
+draw_fitted <- function(nm_distn,
+                        expected,
+                        disp) {
+  n <- length(expected)
+  if (nm_distn == "pois") {
+    shape <- 1 / disp
+    rate <- 1 / (disp * expected)
+    ans <- rvec::rgamma_rvec(n = n, shape = shape, rate = rate)
+  }
+  else if (nm_distn == "binom") {
+    shape1 <- expected / disp
+    shape2 <- (1 - expected) / disp
+    ans <- rvec::rbeta_rvec(n = n, shape1 = shape1, shape2 = shape2)
+  }
+  else
+    cli::cli_abort("Internal error: Invalid value for {.var nm_distn}.")
+  ans
+}
+
+
+## HAS_TESTS
+#' Draw Values for Outcome, Given Values for '.fitted',
+#' and, Where Appropriate, 'disp'
+#'
+#' Used only with simulation and unfitted models,
+#' since does not use information on outcomes.
+#'
+#' If distribution is normal, assume that 'fitted'
+#' and 'disp' are on the original scale.
+#'
+#' @param nm_distn Name of distribution, eg "pois"
+#' @param fitted Rates/probs/means. An rvec.
+#' @param offset True values for offset
+#' @param disp Dispersion. An rvec. Normal model only
+#'
+#' @returns An rvec
+#'
+#' @noRd
+draw_outcome_true <- function(nm_distn,
+                              fitted,
+                              offset,
+                              disp) {
+  n_draw <- rvec::n_draw(fitted)
+  n_val <- length(fitted)
+  has_disp <- !is.null(disp)
+  fitted <- as.numeric(fitted)
+  if (rvec::is_rvec(offset))
+    offset <- as.numeric(offset)
+  else
+    offset <- rep(offset, times = n_draw)
+  if (has_disp) {
+    disp <- as.numeric(disp)
+    disp <- rep(disp, each = n_val)
+  }
+  is_ok <- !is.na(offset) & !is.na(fitted)
+  n_ok <- sum(is_ok)
+  ans <- rep.int(NA_real_, times = n_val * n_draw)
+  if (nm_distn == "pois") {
+    lambda <- fitted[is_ok] * offset[is_ok]
+    ans[is_ok] <- rpois_guarded(lambda)
+  }
+  else if (nm_distn == "binom") {
+    size <- offset[is_ok]
+    prob <- fitted[is_ok]
+    ans[is_ok] <- rbinom_guarded(size = size, prob = prob)
+  }
+  else if (nm_distn == "norm") {
+    mean <- fitted[is_ok]
+    sd <- disp[is_ok] / sqrt(offset[is_ok])
+    ans[is_ok] <- stats::rnorm(n = n_ok, mean = mean, sd = sd)
+  }
+  else
+    cli::cli_abort("Internal error: Invalid value for {.var nm_distn}.")
+  ans <- matrix(ans, nrow = n_val, ncol = n_draw)
+  ans <- rvec::rvec_dbl(ans)
+  ans
+}
+
+
+## HAS_TESTS
 #' Generate AR Values to Use in a Prior with an AR Component
 #'
 #' @param coef Matrix, each column of which is a vector
@@ -195,6 +291,7 @@ draw_vals_components_unfitted <- function(mod, n_sim) {
   var_sexgender <- mod$var_sexgender
   has_covariates <- has_covariates(mod)
   has_disp <- has_disp(mod)
+  has_datamod_param <- has_datamod_param(mod)
   seed_components <- mod$seed_components
   seed_restore <- make_seed() ## create randomly-generated seed
   set.seed(seed_components) ## set pre-determined seed
@@ -242,6 +339,14 @@ draw_vals_components_unfitted <- function(mod, n_sim) {
     vals_disp <- vals_disp_to_dataframe(vals_disp)
     ans <- vctrs::vec_rbind(ans, vals_disp)
   }
+  if (has_datamod_param) {
+    datamod <- mod$datamod
+    vals_datamod <- draw_datamod_param(datamod = datamod,
+                                       n_sim = n_sim)
+    vals_datamod <- vals_datamod_to_dataframe(vals_datamod = vals_datamod,
+                                              datamod = datamod)
+    ans <- vctrs::vec_rbind(ans, vals_datamod)
+  }    
   set.seed(seed_restore) ## set randomly-generated seed, to restore randomness
   ans    
 }
@@ -1028,7 +1133,7 @@ perform_aug <- function(est,
   nms_vars <- intersect(names(sim), nms_vars)
   for (nm in nms_vars) {
     i_nm <- match(nm, names(sim))
-    sim[[i_nm]] <- as.matrix(sim[[i_nm]])[, i_sim]
+    sim[[i_nm]] <- rvec::extract_draw(sim[[i_nm]], i = i_sim)
   }
   ans <- vector(mode = "list", length = length(nms_vars))
   names(ans) <- nms_vars
@@ -1081,7 +1186,7 @@ perform_comp <- function(est,
                          widths) {
   names(est)[match(".fitted", names(est))] <- ".fitted_est"
   names(sim)[match(".fitted", names(sim))] <- ".fitted_sim"
-  sim[[".fitted_sim"]] <- as.matrix(sim[[".fitted_sim"]])[, i_sim]  
+  sim[[".fitted_sim"]] <- rvec::extract_draw(sim[[".fitted_sim"]], i = i_sim)  
   merged <- merge(est, sim, sort = FALSE)
   prior_class <- merge(prior_class_est, prior_class_sim, by = "term")
   prior_class$is_class_diff <- prior_class$class.x != prior_class$class.y
@@ -1221,7 +1326,7 @@ report_sim <- function(mod_est,
   mod_sim$n_draw <- n_sim
   comp_sim <- components(mod_sim, quiet = TRUE)
   aug_sim <- augment(mod_sim, quiet = TRUE)
-  nm_outcome_obs <- get_nm_outcome_obs(mod_sim)
+  nm_outcome_obs <- get_nm_outcome_data(mod_sim)
   outcome_obs_sim <- aug_sim[[nm_outcome_obs]]
   outcome_obs_sim <- as.matrix(outcome_obs_sim)
   prior_class_est <- make_prior_class(mod_est)
@@ -1238,7 +1343,7 @@ report_sim <- function(mod_est,
     mod_est <- set_seeds(mod_est)
     mod_est <- fit(mod_est, method = method, vars_inner = vars_inner)
     comp_est <- components(mod_est)
-    aug_est <- augment(mod_est)
+    aug_est <- augment(mod_est, quiet = TRUE)
     results_comp <- perform_comp(est = comp_est,
                                  sim = comp_sim,
                                  prior_class_est = prior_class_est,
@@ -1294,23 +1399,6 @@ report_sim <- function(mod_est,
 
 
 ## HAS_TESTS
-#' Convert Simulated Values for 'disp' to a Data Frame
-#'
-#' @param vals_disp An rvec
-#'
-#' @returns A tibble with columns 'component'
-#' 'term', 'level', and '.fitted'
-#' 
-#' @noRd
-vals_disp_to_dataframe <- function(vals_disp) {
-  tibble::tibble(term = "disp",
-                 component = "disp",
-                 level = "disp",
-                 .fitted = vals_disp)
-}
-
-
-## HAS_TESTS
 #' Convert a List of Simulated Covariates to a Data Frame
 #'
 #' @param vals_covariates A named list of matrices
@@ -1333,6 +1421,44 @@ vals_covariates_to_dataframe <- function(vals_covariates) {
                  component = component,
                  level = level,
                  .fitted = .fitted)
+}
+
+## HAS_TESTS
+#' Convert Simulated Values for 'datamod' to a Data Frame
+#'
+#' @param vals_data A matrix
+#' @param datamod Object of class 'bage_datamod'
+#'
+#' @returns A tibble with columns 'component'
+#' 'term', 'level', and '.fitted'
+#' 
+#' @noRd
+vals_datamod_to_dataframe <- function(vals_datamod, datamod) {
+  term <- rep("datamod", times = nrow(vals_datamod))
+  component <- make_datamod_comp(datamod)
+  level <- make_level_datamod(datamod)
+  .fitted <- rvec::rvec_dbl(vals_datamod)
+  tibble::tibble(term = term,
+                 component = component,
+                 level = level,
+                 .fitted = .fitted)
+}
+
+
+## HAS_TESTS
+#' Convert Simulated Values for 'disp' to a Data Frame
+#'
+#' @param vals_disp An rvec
+#'
+#' @returns A tibble with columns 'component'
+#' 'term', 'level', and '.fitted'
+#' 
+#' @noRd
+vals_disp_to_dataframe <- function(vals_disp) {
+  tibble::tibble(term = "disp",
+                 component = "disp",
+                 level = "disp",
+                 .fitted = vals_disp)
 }
 
 

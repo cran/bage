@@ -782,6 +782,48 @@ make_matrix_unconstr_constr_along <- function(dim_after) {
 }
 
 
+#' Make Matrix Mapping from Value on to Outcome
+#'
+#' Make matrix mapping from data frame with
+#' values (eg ratios used in data models)
+#' to 'data' data frame for model.
+#'
+#' Do not assume that all variables
+#' found in 'by_val'
+#' can be found in 'data'.
+#'
+#' Assume that 'by_val' is unique.
+#' 
+#' Assume that all combinations of 'by'
+#' variables found in 'data' can be found
+#' in 'by_val', and that all combinations of
+#' variables found in 'by_val'
+#' can be found in 'data'.
+#'
+#' @param data Dataset for model
+#' @param by_val Data frame with variables defining
+#' level for value. 
+#'
+#' @returns A sparse matrix
+#'
+#' @noRd    
+make_matrix_val_outcome <- function(data, by_val) {
+  n <- nrow(data)
+  if (length(by_val) > 0L) {
+    nms <- names(by_val)
+    key_data <- Reduce(paste_dot, data[nms])
+    key_val <- Reduce(paste_dot, by_val)
+    key_val <- intersect(key_val, key_data)
+    j <- match(key_data, key_val)
+  }
+  else {
+    j <- rep.int(1L, times = n)
+  }
+  i <- seq_len(n)
+  Matrix::sparseMatrix(x = 1, i = i, j = j)
+}
+
+
 ## HAS_TESTS
 #' Make Offset used in Converting 'effectfree' to 'effect' for SVD Priors
 #'
@@ -900,5 +942,3 @@ make_offset_sub_orig_svd <- function(prior,
   ans <- as.double(ans)
   ans
 }
-
-  

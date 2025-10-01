@@ -57,8 +57,11 @@ The \code{weights} argument can take three forms:
 \item the name of a variable in \code{data}, with or without
 quote marks, eg \code{"wt"} or \code{wt};
 \item the number \code{1}, in which no weights are used; or
-\item a formula, which is evaluated with \code{data} as its
-environment (see below for example).
+\item \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}}
+a formula, which is evaluated with \code{data} as its
+environment (see below for example). This option
+has been deprecated, because it makes forecasting
+and measurement error models more complicated.
 }
 }
 
@@ -123,6 +126,13 @@ mod <- mod_norm(value ~ diag:age + year,
 mod <- mod_norm(value ~ diag:age + year,
                 data = nld_expenditure,
                 weights = ~sqrt(value))
+## but formulas are now deprecrated, and the
+## recommended approach is to transform
+## the input data outside the model:
+nld_expenditure$wt <- sqrt(nld_expenditure$value)
+mod <- mod_norm(value ~ diag:age + year,
+                data = nld_expenditure,
+                weights = wt)
 }
 \seealso{
 \itemize{
@@ -138,7 +148,7 @@ together with original data
 \item \code{\link[=report_sim]{report_sim()}} Check model using a simulation study
 \item \code{\link[=replicate_data]{replicate_data()}} Check model using replicate data
 data for a model
-\item \href{https://bayesiandemography.github.io/bage/articles/vig2_math.html}{Mathematical Details}
+\item \href{https://bayesiandemography.github.io/bage/articles/vig02_math.html}{Mathematical Details}
 Detailed description of models
 }
 }

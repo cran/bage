@@ -144,6 +144,116 @@ check_covariates_formula <- function(formula, mod) {
 
 
 ## HAS_TESTS
+#' Check that 'by' Variables in Data Frame Holding Values
+#' for a Data Model are Valid
+#'
+#' @param by_val Data frame with 'by' variables
+#' @param data Data frame with main data from model
+#' @param nm_val Name for data frame with data model values,
+#' to be used in error messages
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd
+check_datamod_by_val <- function(by_val, data, nm_val, nm_data) {
+  nms_by <- names(by_val)
+  nms_data <- names(data)
+  nm_in_data <- nms_by %in% nms_data
+  i_not_in_data <- match(FALSE, nm_in_data, nomatch = 0L)
+  if (i_not_in_data > 0L) {
+    nm_nomatch <- nms_by[[i_not_in_data]]
+    cli::cli_abort(paste("Variable {.var {nm_nomatch}} from {.arg {nm_val}}",
+                         "not found in {.arg {nm_data}}."))
+  }
+  key_by <- Reduce(paste_dot, by_val)
+  key_data <- Reduce(paste_dot, data[nms_by])
+  data_in_by <- key_data %in% key_by
+  i_not_in_by <- match(FALSE, data_in_by, nomatch = 0L)
+  if (i_not_in_by > 0L) {
+    row <- data[i_not_in_by, nms_by, drop = FALSE]
+    levels <- sprintf("{.var %s}={.val %s}", names(row), row)
+    levels <- paste(levels, collapse = ", ")
+    n_by <- length(nms_by)
+    if (n_by > 1L)
+      cli::cli_abort(c(paste("{.arg {nm_val}} does not include all",
+                             "combinations of 'by' variables."),
+                       i = paste0("{.arg {nm_data}} has ", levels,
+                                  ", but {.arg {nm_val}} does not.")))
+    else
+      cli::cli_abort(c(paste("{.arg {nm_val}} does not include all",
+                             "levels of 'by' variable."),
+                       i = paste0("{.arg {nm_data}} has ", levels,
+                                  ", but {.arg {nm_val}} does not.")))
+  }
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
+#' Check that Data Frame Holding Values for a Data Model is Valid
+#'
+#' @param x Data frame with values
+#' @param nm_x Name for 'x' to be used in error messages
+#' @param measure_vars Names of measure variables in 'x'
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd
+check_datamod_val <- function(x, nm_x, measure_vars) {
+  check_is_dataframe(x = x, nm_x = nm_x)
+  nms <- names(x)
+  ## no duplicate variables
+  i_dup <- match(TRUE, duplicated(nms), nomatch = 0L)
+  if (i_dup > 0L)
+    cli::cli_abort(paste("{.arg {nm_x}} has more than one variable",
+                         "called {.val {nms[[i_dup]]}}."))
+  ## check measure variables
+  for (var in measure_vars) {
+    i_var <- match(var, nms, nomatch = 0L)
+    if (i_var == 0L)
+      cli::cli_abort(paste("{.arg {nm_x}} does not have a variable",
+                           "called {.val {var}}."))
+    if (!is.numeric(x[[i_var]])) {
+      cls <- class(x[[i_var]])
+      cli::cli_abort(c("Variable {.var {var}} in {.arg {nm_x}} is non-numeric.",
+                       i = "{.var {var}} has class {.cls {cls}}."))
+    }
+    n_na <- sum(is.na(x[[i_var]]))
+    if (n_na > 0L)
+      cli::cli_abort(paste("Variable {.var {var}} in {.arg {nm_x}}",
+                           "has {cli::qty(n_na)} NA{?s}."))
+    n_inf <- sum(is.infinite(x[[i_var]]))
+    if (n_inf > 0L)
+      cli::cli_abort(paste("Variable {.var {var}} in {.arg {nm_x}}",
+                           "has {cli::qty(n_na)} non-finite value{?s}."))
+  }
+  ## check by variables
+  nms_by <- setdiff(nms, measure_vars)
+  if ((length(nms_by) == 0L) && nrow(x) > 1L)
+    cli::cli_abort(paste("{.arg {nm_x}} has more than one row,",
+                         "but does not have any 'by' variables."))
+  by_val <- x[nms_by]
+  i_dup <- match(TRUE, duplicated(by_val), nomatch = 0L)
+  if (i_dup > 0L) {
+    row <- by_val[i_dup, , drop = FALSE]
+    levels <- sprintf("{.var %s}={.val %s}", names(row), row)
+    levels <- paste(levels, collapse = ", ")
+    n_by <- length(nms_by)
+    if (n_by > 1L) {
+      cli::cli_abort(c(paste("{.arg {nm_x}} has duplicated combinations",
+                             "of 'by' variables."),
+                       i = paste0("Two rows with ", levels, ".")))
+    }
+    else {
+      cli::cli_abort(c("{.arg {nm_x}} has duplicated levels for 'by' variable.",
+                       i = paste0("Two rows with ", levels, ".")))
+    }
+  }
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
 #' Check that 'est' Object Returned by TMB has No NAs
 #'
 #' @param est Named list
@@ -465,6 +575,27 @@ check_length_effect_ge <- function(length_effect, min, nm, prior) {
 
 
 ## HAS_TESTS
+#' Check All Elements of Numeric Vector are Less than One
+#'
+#' @param x A numeric vector
+#' @param nm_x Name of 'x' to be used in error messages
+#' @param nm_df Name of data frame containing 'x',
+#' to be used in error messages
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd
+check_lt_one <- function(x, nm_x, nm_df) {
+  n_ge_one <- sum(!is.na(x) & (x >= 1))
+  if (n_ge_one > 0L)
+    cli::cli_abort(paste("Variable {.var {nm_x}} in {.arg {nm_df}}",
+                         "has {cli::qty(n_ge_one)} value{?s}",
+                         "greater than or equal to 1."))
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
 #' Check that 'min' and 'max' Arguments for AR Valid
 #'
 #' @param min Minimum value for damping coefficient(s)
@@ -573,8 +704,8 @@ check_mod_has_obs <- function(mod) {
     if (n_na_effects > 0L)
       msg <- c(msg, i = "Number of rows where predictor is {.val {NA}}: {.val {n_na_effects}}.")
     nm_offset_data <- get_nm_offset_data(mod)
-    has_offset <- !is.null(nm_offset_data)
-    if (has_offset) {
+    has_varying_offset <- has_varying_offset(mod)
+    if (has_varying_offset) {
       nm_offset_mod <- get_nm_offset_mod(mod)
       n_na_offset <- sum(!is_in_lik_offset)
       if (n_na_offset > 0L)
@@ -751,6 +882,24 @@ check_numeric <- function(x, nm_x) {
   invisible(TRUE)
 }
 
+
+## HAS_TESTS
+#' Check offset occurs in 'data'
+#'
+#' @param nm_offset_data The name of the variable being
+#' used as an offset, or a formula
+#'
+#' @return TRUE, invisibly
+#'
+#' @noRd
+check_offset_formula_not_used <- function(nm_offset_data) {
+  is_formula <- !is.null(nm_offset_data) && startsWith(nm_offset_data, "~")
+  if (is_formula)
+    lifecycle::deprecate_warn(when = "0.9.5",
+                              what = I("Using a formula to specify exposure, size, or weights"),
+                              with = I("the name of a variable in `data`, or `1`,"))
+  invisible(TRUE)
+}
 
 ## HAS_TESTS
 #' Check offset occurs in 'data'
@@ -938,6 +1087,27 @@ check_offset_not_in_formula <- function(nm_offset_data, nm_offset_mod, formula) 
 
 
 ## HAS_TESTS
+#' Check All Elements of Numeric Vector are Positive
+#'
+#' @param x A numeric vector
+#' @param nm_x Name of 'x' to be used in error messages
+#' @param nm_df Name of data frame containing 'x',
+#' to be used in error messages
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd
+check_positive <- function(x, nm_x, nm_df) {
+  n_nonpos <- sum(!is.na(x) & (x <= 0))
+  if (n_nonpos > 0L)
+    cli::cli_abort(paste("Variable {.var {nm_x}} in {.arg {nm_df}}",
+                         "has {cli::qty(n_nonpos)} value{?s}",
+                         "less than or equal to 0."))
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
 #' Check that response variable less than
 #' or equal to offset variable
 #'
@@ -1032,6 +1202,30 @@ check_response_nonneg <- function(formula, data, nm_distn) {
     cli::cli_abort(c(paste("Model uses {nm_distn} distribution but response variable",
                            "has negative {cli::qty(n_neg)}  value{?s}."),
                      i = "Response variable: {.var {nm_response}}."))
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
+#' Check that Response Variable in Formula is
+#' Does Not Involve a Function Call
+#'
+#' @param formula A formula
+#'
+#' @return TRUE, invisibly
+#'
+#' @noRd
+check_response_not_call <- function(formula) {
+  response <- formula[[2L]]
+  if (is.call(response)) {
+    str_resp <- deparse1(response)
+    nm_fun <- deparse1(response[[1L]])
+    cli::cli_abort(c("Response includes function call.",
+                     i = "Response: {.var {str_resp}}.",
+                     i = paste("Use function {.fun {nm_fun}} to create a",
+                               "new variable in {.arg data} and use",
+                               "that as the response?")))
+  }
   invisible(TRUE)
 }
         

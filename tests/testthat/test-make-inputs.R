@@ -1,4 +1,28 @@
 
+## 'alert_replacing_existing_datamod' -----------------------------------------
+
+test_that("'alert_replacing_existing_datamod' works with valid inputs", {
+  datamod_new <- new_bage_datamod_undercount(prob_mean = 0.5,
+                                             prob_disp = 0.1,
+                                             prob_levels = "prob",
+                                             prob_matrix_outcome = Matrix::sparseMatrix(x = rep(1, 5), i = 1:5, j = rep(1, 5)),
+                                             prob_arg = data.frame(mean = 1,
+                                                                   disp = 0.5),
+                                             nms_by = character())
+  datamod_old <- new_bage_datamod_overcount(rate_mean = 0.5,
+                                             rate_disp = 0.1,
+                                             rate_levels = "rate",
+                                             rate_matrix_outcome = Matrix::sparseMatrix(x = rep(1, 5), i = 1:5, j = rep(1, 5)),
+                                             rate_arg = data.frame(mean = 1,
+                                                                   disp = 0.5),
+                                            nms_by = character())
+  expect_message(alert_replacing_existing_datamod(datamod_new = datamod_new,
+                                                  datamod_old = datamod_old),
+                 "Replacing existing \"overcount\" data model with new \"undercount\" data model.")
+})
+
+
+
 ## 'default_prior' ------------------------------------------------------------
 
 test_that("'default_prior' works with ordinary term", {
@@ -154,6 +178,47 @@ test_that("'dimnames_to_nm_split' works with 2D dimnames", {
   ans_expected <- c("age", "reg")
   expect_identical(ans_obtained, ans_expected)
 })
+
+
+## 'error_offset_formula_used' ------------------------------------------------
+
+test_that("'error_offset_formula_used' returns TRUE with non-formula", {
+  expect_true(error_offset_formula_used(nm_offset_data = "popn",
+                                        nm_offset_mod = "exposure",
+                                        nm_fun = "forecast"))
+})
+
+test_that("'error_offset_formula_used' raises expected error with formula, Poisson", {
+  expect_error(error_offset_formula_used(nm_offset_data = "~popn",
+                                        nm_offset_mod = "exposure",
+                                        nm_fun = "forecast"),
+               "`forecast\\(\\)` cannot be used with models where exposure specified using formula.")
+})
+
+test_that("'error_offset_formula_used' raises expected error with formula, binomial", {
+  expect_error(error_offset_formula_used(nm_offset_data = "~popn",
+                                        nm_offset_mod = "size",
+                                        nm_fun = "forecast"),
+               "`forecast\\(\\)` cannot be used with models where size specified using formula.")
+})
+
+test_that("'error_offset_formula_used' raises expected error with formula, normal", {
+  expect_error(error_offset_formula_used(nm_offset_data = "~popn",
+                                        nm_offset_mod = "weights",
+                                        nm_fun = "forecast"),
+               "`forecast\\(\\)` cannot be used with models where weights specified using formula.")
+})
+
+test_that("'error_offset_formula_used' throws error with invalid nm_offset_mod", {
+  expect_error(error_offset_formula_used(nm_offset_data = "~popn",
+                                        nm_offset_mod = "wrong",
+                                        nm_fun = "forecast"),
+               "Internal error")
+})
+
+
+
+
 
 
 ## 'eval_offset_formula' ------------------------------------------------------
@@ -491,6 +556,12 @@ test_that("'get_is_in_lik_outcome' works with NAs", {
 })
 
 
+## 'init_val_sd' --------------------------------------------------------------
+
+test_that("'init_val_sd' works", {
+  expect_identical(init_val_sd(), log(0.05))
+})
+
 
 ## 'make_agesex' --------------------------------------------------------------
 
@@ -630,6 +701,53 @@ test_that("'make_data_df' works", {
 })
 
 
+## 'make_datamod_levels' -----------------------------------------------------
+
+test_that("'make_datamod_levels' works with valid inputs - multiple rows", {
+  data <- expand.grid(age = 0:4, time = 2000:2005, sex = c("F", "M"))
+  by_val <- expand.grid(age = 0:5, sex = c("F", "M"))
+  ans_obtained <- make_datamod_levels(data = data,
+                                      by_val = by_val,
+                                      nm_component = "rate")
+  ans_expected <- paste(0:4, rep(c("F", "M"), each = 5), sep = ".")
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'make_datamod_levels' works with valid inputs - one row", {
+  data <- expand.grid(age = 0:4, time = 2000:2005, sex = c("F", "M"))
+  by_val <- data.frame(mean = 1)[-1]
+  ans_obtained <- make_datamod_levels(data = data,
+                                      by_val = by_val,
+                                      nm_component = "rate")
+  ans_expected <- "rate"
+  expect_identical(ans_obtained, ans_expected)
+})
+
+
+## 'make_datamod_measure' -----------------------------------------------------
+
+test_that("'make_datamod_measure' works with valid inputs - multiple rows", {
+  data <- expand.grid(age = 0:4, time = 2000:2005, sex = c("F", "M"))
+  by_val <- expand.grid(age = 0:5, sex = c("F", "M"))
+  measure <- 1:12
+  ans_obtained <- make_datamod_measure(data = data,
+                                       by_val = by_val,
+                                       measure = measure)
+  ans_expected <- measure[-c(6, 12)]
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'make_datamod_measure' works with valid inputs - one row", {
+  data <- expand.grid(age = 0:4, time = 2000:2005, sex = c("F", "M"))
+  by_val <- data.frame(mean = 1)[-1]
+  ans_obtained <- make_datamod_measure(data = data,
+                                       by_val = by_val,
+                                       measure = 0.5)
+  ans_expected <- 0.5
+  expect_identical(ans_obtained, ans_expected)
+})
+
+
 ## 'make_dimnames_terms' ------------------------------------------------------
 
 test_that("'make_dimnames_terms' works - includes intercept", {
@@ -664,6 +782,20 @@ test_that("'make_dimnames_terms' works - no intercept", {
                          "age:sex" = list(age = as.character(0:9), sex = c("F", "M")))
     expect_identical(ans_obtained, ans_expected)
 })
+
+test_that("'make_dimnames_terms' throws error when variable has single value", {
+    set.seed(0)
+    data <- expand.grid(age = 0:9,
+                        time = 2000:2005,
+                        sex = "F")
+    data$popn <- rpois(n = nrow(data), lambda = 100)
+    data$deaths <- rpois(n = nrow(data), lambda = 10)
+    formula <- deaths ~ age * sex + time
+    expect_error(make_dimnames_terms(data = data, formula = formula),
+                 "`formula` includes variable with single value.")
+})
+
+
 
 
 ## 'make_effectfree' ----------------------------------------------------------
@@ -716,7 +848,7 @@ test_that("'make_hyper' works with valid inputs", {
                   data = data,
                   exposure = popn)
   ans_obtained <- make_hyper(mod)
-  ans_expected <- c(agegp = 0, "agegp:SEX" = 0)
+  ans_expected <- c(agegp = log(0.05), "agegp:SEX" = log(0.05))
   expect_identical(ans_obtained, ans_expected)
 })
 
@@ -878,7 +1010,7 @@ test_that("'make_lengths_hyperrandfree' works with valid inputs", {
 })
 
 
-## 'make_levels_effects' ----------------------------------------------------------
+## 'make_levels_effects' ------------------------------------------------------
 
 test_that("'make_levels_effects' works with valid inputs - pois, complete levels", {
     set.seed(0)
@@ -1000,8 +1132,7 @@ test_that("'make_levels_forecast_all' works with no intercept", {
 })
 
 
-## 'make_map_effectfree_fixed' ---------------------------------------------------
-
+## 'make_map_effectfree_fixed' ------------------------------------------------
 test_that("'make_map_effectfree_fixed' works with valid inputs", {
     set.seed(0)
     data <- expand.grid(time = 0:2,
@@ -1161,7 +1292,7 @@ test_that("'make_matrices_effect_outcome' works with valid inputs - no intercept
 })
 
 
-## 'make_matrices_effectfree_effect' ------------------------------------------------
+## 'make_matrices_effectfree_effect' ------------------------------------------
 
 test_that("'make_matrices_effectfree_effect' works with valid inputs", {
     set.seed(0)
@@ -1323,6 +1454,15 @@ test_that("'make_outcome' works with valid inputs", {
     expect_identical(ans_obtained, ans_expected)
 })
 
+test_that("'make_outcome' throws error when variable not found", {
+    data <- expand.grid(age = 0:2, time = 2000:2001, sex = 1:2)
+    data$deaths <- seq_len(nrow(data))
+    formula <- wrong ~ age:sex + time
+    expect_error(make_outcome(formula = formula,
+                              data = data),
+                 "Internal error: response \"wrong\" not found in `data`.")
+})
+
 
 ## 'make_outcome_offset_matrices' ---------------------------------------------
 
@@ -1340,8 +1480,7 @@ test_that("'make_outcome_offset_matrices' works with model with offset", {
                   data = data,
                   exposure = popn)
   ans_obtained <- make_outcome_offset_matrices(mod, aggregate = TRUE)
-  data_ag <- aggregate(data[c("deaths", "popn")], data[c("age", "region", "sex")], sum)
-  data_ag <- data_ag[with(data_ag, order(age, sex, region)), ]
+  data_ag <- aggregate(data[c("deaths", "popn")], data[c("age", "sex", "region")], sum)
   ans_expected <- list(outcome = data_ag[["deaths"]],
                        offset = data_ag[["popn"]],
                        matrices_effect_outcome = make_matrices_effect_outcome(data_ag,
@@ -1433,12 +1572,11 @@ test_that("'make_outcome_offset_matrices' works with model with numeric covariat
   data_ag <- make_data_df(mod)
   outcome_df <- aggregate(data_ag["deaths"], data_ag[c("age", "sex", "region", "income")], sum)
   offset_df <- aggregate(data_ag["popn"], data_ag[c("age", "sex", "region", "income")], sum)
-  data_ag <- merge(outcome_df, offset_df, by = c("age", "sex", "region", "income"))
-  ans_expected <- list(outcome = data_ag[["deaths"]],
-                       offset = data_ag[["popn"]],
-                       matrices_effect_outcome = make_matrices_effect_outcome(data_ag,
+  ans_expected <- list(outcome = outcome_df[["deaths"]],
+                       offset = offset_df[["popn"]],
+                       matrices_effect_outcome = make_matrices_effect_outcome(offset_df,
                                                                               mod$dimnames_terms),
-                       matrix_covariates = matrix(scale(data_ag$income),
+                       matrix_covariates = matrix(scale(offset_df$income),
                                                   nrow = nrow(data),
                                                   dimnames = list(NULL, "income")))
   expect_equal(ans_obtained, ans_expected)
@@ -1463,12 +1601,12 @@ test_that("'make_outcome_offset_matrices' works with model with categorical cova
   outcome_df <- aggregate(data_ag["deaths"], data_ag[c("age", "sex", "region", "time")], sum)
   offset_df <- aggregate(data_ag["popn"], data_ag[c("age", "sex", "region", "time")], sum)
   data_ag <- merge(outcome_df, offset_df, by = c("age", "sex", "region", "time"))
-  ans_expected <- list(outcome = data_ag[["deaths"]],
-                       offset = data_ag[["popn"]],
-                       matrices_effect_outcome = make_matrices_effect_outcome(data_ag,
+  ans_expected <- list(outcome = outcome_df[["deaths"]],
+                       offset = offset_df[["popn"]],
+                       matrices_effect_outcome = make_matrices_effect_outcome(outcome_df,
                                                                               mod$dimnames_terms),
-                       matrix_covariates = cbind(time2 = rep(c(0L, 1L, 0L), times = 40),
-                                                 time3 = rep(c(0L, 0L, 1L), times = 40)))
+                       matrix_covariates = cbind(time2 = rep(c(0L, 1L, 0L), each = 40),
+                                                 time3 = rep(c(0L, 0L, 1L), each = 40)))
   expect_equal(ans_obtained, ans_expected)
 })
 

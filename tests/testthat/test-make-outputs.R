@@ -92,7 +92,7 @@ test_that("'draw_vals_components_fitted' works - no covariates", {
   expect_true(mean(abs(as.numeric(sum(ans$.fitted[i])))) > 0)
 })
 
-test_that("'draw_vals_components_fitted' works - has covariates", {
+test_that("'draw_vals_components_fitted' works - has covariates, datamod", {
   set.seed(0)
   data <- expand.grid(age = 0:3,
                       time = 2000:2002,
@@ -106,6 +106,9 @@ test_that("'draw_vals_components_fitted' works - has covariates", {
                   exposure = popn)
   mod <- set_n_draw(mod, n = 5)
   mod <- set_covariates(mod, ~ reg)
+  prob <- data.frame(age = 0:4, mean = c(0.8, 0.9, 0.8, 0.5, 0.8), disp = 0.1)
+  rate <- data.frame(mean = 0.1, disp = 0.2)
+  mod <- set_datamod_miscount(mod, prob = prob, rate = rate)
   mod <- fit(mod)
   set.seed(0)
   ans <- draw_vals_components_fitted(mod)
@@ -113,6 +116,9 @@ test_that("'draw_vals_components_fitted' works - has covariates", {
   i <- ans$term == "age:sex" & ans$component == "effect"
   expect_true(mean(abs(as.numeric(sum(ans$.fitted[i])))) > 0)
   expect_true("covariates" %in% ans$term)
+  expect_true("datamod" %in% ans$term)
+  expect_true("prob" %in% ans$component)
+  expect_true("rate" %in% ans$component)
 })
 
 
@@ -247,6 +253,101 @@ test_that("'get_term_from_est' works", {
 })
 
 
+## 'get_datamod_disp' ----------------------------------------------------
+
+test_that("'get_datamod_disp' works", {
+  disp <- c(0.5, 0.2, 0.3, 0.4)
+  disp_levels <- 1:4
+  disp_matrix_outcome <- Matrix::Matrix(kronecker(rep(1, 3), diag(4)))
+  cv_arg <- data.frame(age = disp_levels, cv = sqrt(disp))
+  datamod <- new_bage_datamod_exposure(disp = disp,
+                                       disp_levels = disp_levels,
+                                       disp_matrix_outcome = disp_matrix_outcome,
+                                       cv_arg = cv_arg,
+                                       nms_by = c("age", "sex"))
+  ans_obtained <- get_datamod_disp(datamod)
+  ans_expected <- as.numeric(disp_matrix_outcome %*% disp)
+  expect_identical(ans_obtained, ans_expected)
+})
+
+
+## 'get_datamod_prob' ----------------------------------------------------
+
+test_that("'get_datamod_prob' works", {
+  prob_mean <- c(0.5, 0.2, 0.3, 0.4)
+  prob_disp <- c(0.3, 0.2, 0.3, 0.2)
+  prob_levels <- 1:4
+  prob_matrix_outcome <- Matrix::Matrix(kronecker(rep(1, 3), diag(4)))
+  prob_arg <- data.frame(age = prob_levels,
+                         mean = prob_mean,
+                         disp = prob_disp)
+  datamod <- new_bage_datamod_undercount(prob_mean = prob_mean,
+                                         prob_disp = prob_disp,
+                                         prob_levels = prob_levels,
+                                         prob_matrix_outcome = prob_matrix_outcome,
+                                         prob_arg = prob_arg,
+                                         nms_by = "age")
+  components <- tibble::tibble(
+    term = c("(Intercept)", rep("datamod", 4)),
+    component = c("(Intercept)", rep("prob", 4)),
+    level = c("(Intercept)", 0:3),
+    .fitted = rvec::runif_rvec(n = 5, n_draw = 10)
+  )
+  ans_obtained <- get_datamod_prob(datamod = datamod,
+                                   components = components)
+  ans_expected <- as.matrix(prob_matrix_outcome) %*% components$.fitted[-1]
+  expect_identical(ans_obtained, ans_expected)
+})
+
+
+## 'get_datamod_rate' ----------------------------------------------------
+
+test_that("'get_datamod_rate' works", {
+  rate_mean <- c(0.5, 0.2, 0.3, 0.4)
+  rate_disp <- c(0.3, 0.2, 0.3, 0.2)
+  rate_levels <- 1:4
+  rate_matrix_outcome <- Matrix::Matrix(kronecker(rep(1, 3), diag(4)))
+  rate_arg <- data.frame(age = rate_levels,
+                         mean = rate_mean,
+                         disp = rate_disp)
+  datamod <- new_bage_datamod_overcount(rate_mean = rate_mean,
+                                        rate_disp = rate_disp,
+                                        rate_levels = rate_levels,
+                                        rate_matrix_outcome = rate_matrix_outcome,
+                                        rate_arg = rate_arg,
+                                        nms_by = "age")
+  components <- tibble::tibble(
+    term = c("(Intercept)", rep("datamod", 4)),
+    component = c("(Intercept)", rep("rate", 4)),
+    level = c("(Intercept)", 0:3),
+    .fitted = rvec::runif_rvec(n = 5, n_draw = 10)
+  )
+  ans_obtained <- get_datamod_rate(datamod = datamod,
+                                   components = components)
+  ans_expected <- as.matrix(rate_matrix_outcome) %*% components$.fitted[-1]
+  expect_identical(ans_obtained, ans_expected)
+})
+
+
+## 'get_datamod_sd' ---------------------------------------------------------
+
+test_that("'get_datamod_sd' works", {
+  sd_sd <- c(0.5, 0.2, 0.3, 0.4)
+  sd_levels <- 1:4
+  sd_matrix_outcome <- Matrix::Matrix(kronecker(rep(1, 3), diag(4)))
+  sd_arg <- data.frame(age = sd_levels, sd = sd_sd)
+  datamod <- new_bage_datamod_noise(sd_sd = sd_sd,
+                                    sd_levels = sd_levels,
+                                    sd_matrix_outcome = sd_matrix_outcome,
+                                    nms_by = "age",
+                                    sd_arg = sd_arg,
+                                    outcome_sd = 2)
+  ans_obtained <- get_datamod_sd(datamod)
+  ans_expected <- as.numeric(sd_matrix_outcome %*% sd_sd)
+  expect_identical(ans_obtained, ans_expected)
+})
+
+
 ## 'get_disp' -----------------------------------------------------------------
 
 test_that("'get_disp' works - unfitted", {
@@ -264,6 +365,8 @@ test_that("'get_disp' works - unfitted", {
   set.seed(1)
   ans_expected <- draw_vals_disp(mod, n_sim = 5)
   expect_identical(ans_obtained, ans_expected)
+  mod <- set_disp(mod, mean = 0)
+  expect_identical(get_disp(mod), NULL)  
 })
 
 test_that("'get_disp' works - fitted", {
@@ -282,10 +385,182 @@ test_that("'get_disp' works - fitted", {
   set.seed(1)
   ans_expected <- rvec::rvec(matrix(mod$draws_disp, nr = 1))
   expect_identical(ans_obtained, ans_expected)
+  mod <- set_disp(mod, mean = 0)
+  expect_identical(get_disp(mod), NULL)  
 })  
 
 
-## 'make_combined_matrix_effect_outcome' -----------------------------------------
+## 'impute_outcome_true' ------------------------------------------------------
+
+test_that("'impute_outcome_true' works with pois, offset complete, has disp", {
+  set.seed(0)
+  outcome <- rpois(n = 20, lambda = 10)
+  outcome[c(2, 10)] <- NA
+  offset <- rep(20, 20)
+  expected <- rvec::rgamma_rvec(n = 20, shape = 1, rate = 2, n_draw = 50)
+  disp <- rvec::runif_rvec(n = 1, n_draw = 50)
+  set.seed(1)
+  ans_obtained <- impute_outcome_true(nm_distn = "pois",
+                                      outcome = outcome,
+                                      offset = offset,
+                                      expected = expected,
+                                      disp = disp)
+  set.seed(1)
+  lambda <- rvec::rgamma_rvec(n = 2,
+                              shape = 1/disp,
+                              rate = 1/(expected[c(2, 10)] * offset[c(2, 10)] * disp))
+  imputed <- rvec::rpois_rvec(n = 2, lambda = lambda)
+  ans_expected <- rvec::rvec_dbl(matrix(outcome, nrow = 20, ncol = 50))
+  ans_expected[c(2, 10)] <- imputed
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'impute_outcome_true' works with pois, offset complete, outcome is rvec, no disp", {
+  set.seed(0)
+  outcome <- rvec::rpois_rvec(n = 20, lambda = 10, n_draw = 50)
+  outcome[c(2, 10)] <- NA
+  offset <- rep(20, 20)
+  expected <- rvec::rgamma_rvec(n = 20, shape = 1, rate = 2, n_draw = 50)
+  set.seed(1)
+  ans_obtained <- impute_outcome_true(nm_distn = "pois",
+                                      outcome = outcome,
+                                      offset = offset,
+                                      expected = expected,
+                                      disp = NULL)
+  set.seed(1)
+  lambda <- expected[c(2, 10)] * offset[c(2, 10)]
+  imputed <- rvec::rpois_rvec(n = 2, lambda = lambda)
+  ans_expected <- outcome
+  ans_expected[c(2, 10)] <- imputed
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'impute_outcome_true' works with pois, offset complete, offset is rvec, no disp", {
+  set.seed(0)
+  outcome <- rpois(n = 20, lambda = 10)
+  outcome[c(2, 10)] <- NA
+  offset <- rvec::runif_rvec(n = 20, min = 1, max = 30, n_draw = 50)
+  expected <- rvec::rgamma_rvec(n = 20, shape = 1, rate = 2, n_draw = 50)
+  set.seed(1)
+  ans_obtained <- impute_outcome_true(nm_distn = "pois",
+                                      outcome = outcome,
+                                      offset = offset,
+                                      expected = expected,
+                                      disp = NULL)
+  set.seed(1)
+  lambda <- expected[c(2, 10)] * offset[c(2, 10)]
+  imputed <- rvec::rpois_rvec(n = 2, lambda = lambda)
+  ans_expected <- rvec::rvec_dbl(matrix(outcome, nrow = 20, ncol = 50))
+  ans_expected[c(2, 10)] <- imputed
+  expect_equal(ans_obtained, ans_expected)
+})
+
+
+test_that("'impute_outcome_true' works with binom, offset complete, has disp", {
+  set.seed(0)
+  offset <- rep(20, 20)
+  outcome <- rbinom(n = 20, size = 10, prob = 0.4)
+  outcome[c(2, 10)] <- NA
+  expected <- rvec::rbeta_rvec(n = 20, shape1 = 1, shape2 = 1, n_draw = 50)
+  disp <- rvec::runif_rvec(n = 1, n_draw = 50)
+  set.seed(1)
+  ans_obtained <- impute_outcome_true(nm_distn = "binom",
+                                      outcome = outcome,
+                                      offset = offset,
+                                      expected = expected,
+                                      disp = disp)
+  set.seed(1)
+  prob <- rvec::rbeta_rvec(n = 2,
+                           shape1 = expected[c(2,10)]/disp,
+                           shape2 = (1-expected[c(2,10)])/disp)
+  imputed <- rvec::rbinom_rvec(n = 2, size = offset[c(2,10)], prob = prob)
+  ans_expected <- rvec::rvec_dbl(matrix(outcome, nrow = 20, ncol = 50))
+  ans_expected[c(2, 10)] <- imputed
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'impute_outcome_true' works with binom, offset has NA, no disp", {
+  set.seed(0)
+  offset <- rep(20, 20)
+  offset[19] <- NA
+  outcome <- rbinom(n = 20, size = 10, prob = 0.4)
+  outcome[c(2, 10, 19)] <- NA
+  expected <- rvec::rbeta_rvec(n = 20, shape1 = 1, shape2 = 1, n_draw = 50)
+  set.seed(1)
+  ans_obtained <- impute_outcome_true(nm_distn = "binom",
+                                      outcome = outcome,
+                                      offset = offset,
+                                      expected = expected,
+                                      disp = NULL)
+  set.seed(1)
+  prob <- expected[c(2,10)]
+  imputed <- rvec::rbinom_rvec(n = 2, size = offset[c(2,10)], prob = prob)
+  ans_expected <- rvec::rvec_dbl(matrix(outcome, nrow = 20, ncol = 50))
+  ans_expected[c(2, 10)] <- imputed
+  ans_expected[19] <- NA
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'impute_outcome_true' works with norm, offset complete", {
+  set.seed(0)
+  offset <- 1:20
+  outcome <- rnorm(n = 20, mean = 100, sd = 5)
+  outcome[c(2, 10)] <- NA
+  expected <- rvec::rnorm_rvec(n = 20, mean = 100, sd = 5, n_draw = 50)
+  disp <- rvec::runif_rvec(n = 1, n_draw = 50)
+  set.seed(1)
+  ans_obtained <- impute_outcome_true(nm_distn = "norm",
+                                      outcome = outcome,
+                                      offset = offset,
+                                      expected = expected,
+                                      disp = disp)
+  set.seed(1)
+  imputed <- rvec::rnorm_rvec(n = 2,
+                              mean = expected[c(2, 10)],
+                              sd = disp / sqrt(offset[c(2,10)]))
+  ans_expected <- rvec::rvec_dbl(matrix(outcome, nrow = 20, ncol = 50))
+  ans_expected[c(2, 10)] <- imputed
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'impute_outcome_true' raises error when nothing to impute", {
+  set.seed(0)
+  offset <- 1:20
+  outcome <- rnorm(n = 20, mean = 100, sd = 5)
+  expected <- rvec::rnorm_rvec(n = 20, mean = 100, sd = 5, n_draw = 50)
+  disp <- rvec::runif_rvec(n = 1, n_draw = 50)
+  set.seed(1)
+  expect_error(impute_outcome_true(nm_distn = "norm",
+                                   outcome = outcome,
+                                   offset = offset,
+                                   expected = expected,
+                                   disp = disp),
+               "Internal error: `impute_outcome_true\\(\\)` called")
+})
+
+test_that("'impute_outcome_true' raises error with invalid nm_distn", {
+  set.seed(0)
+  offset <- 1:20
+  outcome <- rnorm(n = 20, mean = 100, sd = 5)
+  outcome[1] <- NA
+  expected <- rvec::rnorm_rvec(n = 20, mean = 100, sd = 5, n_draw = 50)
+  disp <- rvec::runif_rvec(n = 1, n_draw = 50)
+  set.seed(1)
+  expect_error(impute_outcome_true(nm_distn = "wrong",
+                                   outcome = outcome,
+                                   offset = offset,
+                                   expected = expected,
+                                   disp = disp),
+               "Internal error: Invalid value")
+})
+
+
+
+
+  
+
+
+## 'make_combined_matrix_effect_outcome' --------------------------------------
 
 test_that("'make_combined_matrix_effect_outcome' works with valid inputs", {
     set.seed(0)
@@ -394,6 +669,27 @@ test_that("'make_comp_components' works - has svd", {
   ans <- make_comp_components(mod)
   expect_identical(length(term), length(ans))
   expect_setequal(ans, c("effect", "hyper", "svd", "spline", "disp"))
+})
+
+test_that("'make_comp_components' works - has datamods", {
+  set.seed(0)
+  data <- expand.grid(age = poputils::age_labels(type = "lt", max = 60),
+                      time = 2000:2005,
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_n_draw(mod, n = 5)
+  mod <- set_datamod_overcount(mod, rate = data.frame(mean = 0.1, disp = 0.1))
+  set.seed(0)
+  mod <- fit(mod)
+  term <- make_term_components(mod)
+  ans <- make_comp_components(mod)
+  expect_identical(length(term), length(ans))
+  expect_setequal(ans, c("effect", "hyper", "disp", "rate"))
 })
 
 
@@ -556,6 +852,47 @@ test_that("'make_draws_components' works - has covariates", {
   set.seed(0)
   ans_obtained <- make_draws_components(mod)
   expect_true(rvec::is_rvec(ans_obtained))
+})
+
+test_that("'make_draws_components' works - has datamodels", {
+  set.seed(0)
+  data <- expand.grid(age = poputils::age_labels(type = "lt", max = 60),
+                      time = 2000:2005,
+                      sex = c("F", "M"),
+                      reg = letters[1:3])
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_n_draw(mod, n = 5)
+  prob <- data.frame(sex = c("F", "M"),
+                     mean = c(0.95, 0.9),
+                     disp = c(0.1, 0.2))
+  rate <- data.frame(mean = 0.1, disp = 0.1)
+  mod <- set_datamod_miscount(mod, prob = prob, rate = rate)
+  mod <- fit(mod)
+  set.seed(0)
+  ans_obtained <- make_draws_components(mod)
+  expect_true(rvec::is_rvec(ans_obtained))
+})
+
+
+## 'make_draws_datamod_param' -------------------------------------------------
+
+test_that("'make_draws_datamod_param' works", {
+  set.seed(0)
+  est <- list(effectfree = rnorm(10),
+              hyper = rnorm(2),
+              hyperrand = numeric(),
+              log_disp = 0.5,
+              coef_covariates = rnorm(4),
+              datamod_param = rnorm(10))
+  draws_post <- matrix(rnorm(27 * 5), nrow = 27)
+  ans_obtained <- make_draws_datamod_param(est = est, draws_post = draws_post)
+  ans_expected <- draws_post[18:27,]
+  expect_identical(unname(ans_obtained), ans_expected)
 })
 
 
@@ -987,6 +1324,26 @@ test_that("'make_comp_covariates' works with covariates", {
                   exposure = popn) |>
     set_covariates(~ income)
   expect_identical(make_comp_covariates(mod), "coef")
+})
+
+
+## 'make_comp_datamod' --------------------------------------------------------
+
+test_that("'make_comp_datamod' works", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age + sex:time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_datamod_miscount(mod,
+                              prob = data.frame(mean = 0.8, disp = 0.1),
+                              rate = data.frame(mean = 0.1, disp = 0.1))                              
+  ans_obtained <- make_comp_datamod(mod)
+  ans_expected <- c("prob", "rate")
+  expect_identical(ans_obtained, ans_expected)                      
 })
 
 
@@ -1760,7 +2117,7 @@ test_that("'make_stored_draws' works with valid inputs - no covariates", {
   expect_identical(ans, ans2)
 })
 
-test_that("'make_stored_draws' works with valid inputs - has covariates", {
+test_that("'make_stored_draws' works with valid inputs - has covariates, datamod", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -1773,12 +2130,14 @@ test_that("'make_stored_draws' works with valid inputs - has covariates", {
   mod <- set_prior(mod, sex ~ Known(c(0.1, -0.1)))
   mod <- set_n_draw(mod, n = 10)
   mod <- set_covariates(mod, ~income)
+  mod <- set_datamod_undercount(mod, prob = data.frame(mean = 0.9, disp = 0.2))
   est <- list(effectfree = c(rnorm(11), 0.1, -0.1),
               hyper = rnorm(1),
               hyperrandfree = numeric(),
+              log_disp = runif(1),
               coef_covariates = runif(1),
-              disp = runif(1))
-  prec <- crossprod(matrix(rnorm(196), nr = 14))
+              datamod_param = runif(1))
+  prec <- crossprod(matrix(rnorm(225), nr = 15))
   map <- make_fit_map(mod)
   ans <- make_stored_draws(mod = mod,
                            est = est,
@@ -1786,19 +2145,24 @@ test_that("'make_stored_draws' works with valid inputs - has covariates", {
                            map = map)
   expect_identical(ncol(ans$draws_effectfree), 10L)
   expect_identical(ncol(ans$draws_hyper), 10L)
-  expect_identical(ncol(ans$draws_coef_covariates), 10L)
   expect_identical(length(ans$draws_disp), 10L)
+  expect_identical(ncol(ans$draws_coef_covariates), 10L)
+  expect_identical(ncol(ans$draws_datamod_param), 10L)
   ans2 <- make_stored_draws(mod = mod,
                             est = est,
                             prec = prec,
                             map = map)
   expect_identical(ans, ans2)
+  set.seed(mod$seed_components)
+  draws_post <- make_draws_post(est = est, prec = prec, map = map, n_draw = 10)
+  expect_identical(ans$draws_datamod_param,
+                   draws_post[17,,drop = FALSE])
 })
 
 
 ## 'make_stored_point' --------------------------------------------------------
 
-test_that("'make_stored_point' works with valid inputs - no covariates", {
+test_that("'make_stored_point' works with valid inputs - no covariates, datamod", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -1845,64 +2209,29 @@ test_that("'make_stored_point' works with valid inputs - with covariates", {
   expect_identical(ans$point_coef_covariates, est$coef_covariates)
 })
 
-
-## 'make_par_disp' ------------------------------------------------------------
-
-test_that("'make_par_disp' works with bage_mod_pois", {
+test_that("'make_stored_point' works with valid inputs - with datamod", {
   set.seed(0)
-  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"), reg = letters[1:5])
   data$popn <- rpois(n = nrow(data), lambda = 100)
   data$deaths <- rpois(n = nrow(data), lambda = 10)
-  formula <- deaths ~ age + time + sex
+  formula <- deaths ~ age + sex
   mod <- mod_pois(formula = formula,
                   data = data,
                   exposure = popn)
-  mod <- set_n_draw(mod, n = 10)
-  mod <- fit(mod)
-  components <- components(mod)
-  meanpar <- exp(make_linpred_from_components(mod = mod,
-                                              components = components,
-                                              data = mod$data,
-                                              dimnames_terms = mod$dimnames_terms))
-  disp <- components$.fitted[components$component == "disp"]
-  set.seed(1)
-  ans_obtained <- make_par_disp(mod,
-                                meanpar = meanpar,
-                                disp = disp)
-  set.seed(1)
-  ans_expected <- rvec::rgamma_rvec(n = length(meanpar),
-                                    data$deaths + 1/disp,
-                                    data$popn + 1/(disp*meanpar))
-  expect_equal(ans_obtained, ans_expected)
-})
-
-test_that("'make_par_disp' works with bage_mod_binom", {
-  set.seed(0)
-  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
-  data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rbinom(n = nrow(data), size = data$popn, prob = 0.3)
-  formula <- deaths ~ age + time + sex
-  mod <- mod_binom(formula = formula,
-                   data = data,
-                   size = popn)
-  mod <- fit(mod)
-  mod <- set_n_draw(mod, n = 10)
-  components <- components(mod)
-  invlogit <- function(x) 1 / (1 + exp(-x))
-  meanpar <- invlogit(make_linpred_from_components(mod = mod,
-                                                   components = components,
-                                                   data = mod$data,
-                                                   dimnames_terms = mod$dimnames_terms))
-  disp <- components$.fitted[components$component == "disp"]
-  set.seed(1)
-  ans_obtained <- make_par_disp(mod,
-                                meanpar = meanpar,
-                                disp = disp)
-  set.seed(1)
-  ans_expected <- rvec::rbeta_rvec(n = length(meanpar),
-                                   data$deaths + meanpar/disp,
-                                   data$popn - data$deaths + (1 - meanpar)/disp)
-  expect_equal(ans_obtained, ans_expected)
+  mod <- set_prior(mod, sex ~ Known(c(0.1, -0.1)))
+  mod <- set_datamod_overcount(mod, rate = data.frame(mean = 0.1, disp = 0.2))
+  est <- list(effectfree = c(rnorm(11), 0.1, -0.1),
+              hyper = rnorm(1),
+              hyperrandfree = numeric(),
+              log_disp = runif(1),
+              datamod_param = rnorm(1))
+  ans <- make_stored_point(mod = mod,
+                           est = est)
+  expect_identical(ans$point_effectfree, est$effectfree)
+  expect_identical(ans$point_hyper, exp(est$hyper))
+  expect_identical(ans$point_hyperrandfree, double())
+  expect_identical(ans$point_disp, exp(est$log_disp))
+  expect_identical(ans$point_datamod_param, est$datamod_param)
 })
 
 
@@ -1972,7 +2301,7 @@ test_that("'make_level_components' works - no hyperrand", {
     expect_identical(length(ans), length(comp))
 })
 
-test_that("'make_level_components' works - has hyperrand", {
+test_that("'make_level_components' works - has hyperrand, has datamod", {
     set.seed(0)
     data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
     data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -1983,6 +2312,11 @@ test_that("'make_level_components' works - has hyperrand", {
                     exposure = popn)
     mod <- set_disp(mod, mean = 0)
     mod <- set_prior(mod, sex:time ~ Lin())
+    prob <- data.frame(mean = 0.9, disp = 0.1)
+    rate <- data.frame(sex = c("F" ,"M"),
+                       mean = c(0.1, 0.2),
+                       disp = c(0.1, 0.1))
+    mod <- set_datamod_miscount(mod, prob = prob, rate = rate)
     mod <- fit(mod)
     comp <- make_comp_components(mod)
     ans <- make_level_components(mod)
@@ -2444,6 +2778,28 @@ test_that("'make_term_components' works - has covariates", {
   expect_identical(length(ans), length(comp))
 })
 
+test_that("'make_term_components' works - has data model", {
+  set.seed(0)
+  data <- expand.grid(age = poputils::age_labels(type = "lt", max = 60),
+                      time = 2000:2005,
+                      sex = c("F", "M"),
+                      reg = c("a", "b"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_n_draw(mod, n = 1)
+  prob <- data.frame(sex = c("M", "F"), mean = 0.9, disp = 0.3)
+  rate <- data.frame(mean = 0.3, disp = 0.1)
+  mod <- set_datamod_miscount(mod, prob = prob, rate = rate)
+  mod <- fit(mod)
+  comp <- make_comp_components(mod)
+  ans <- make_term_components(mod)
+  expect_identical(length(ans), length(comp))
+})
+
 
 ## 'make_term_covariates' -------------------------------------------------------------
 
@@ -2476,6 +2832,40 @@ test_that("'make_term_covariates' works with covariates", {
     set_covariates(~ income)
   expect_identical(make_term_covariates(mod), "covariates")
 })
+
+## 'make_term_datamod' --------------------------------------------------------
+
+test_that("'make_term_datamod' works - has param", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age + sex:time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_datamod_undercount(mod, prob = data.frame(mean = 0.8, disp = 0.1))
+  ans_obtained <- make_term_datamod(mod)
+  ans_expected <- "datamod"
+  expect_identical(ans_obtained, ans_expected)                      
+})
+
+test_that("'make_term_datamod' works - no param", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age + sex:time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+    set_disp(mean = 0) |>
+    set_datamod_noise(sd = 1)
+  ans_obtained <- make_term_datamod(mod)
+  ans_expected <- character()
+  expect_identical(ans_obtained, ans_expected)                      
+})
+
 
 
 ## 'make_term_spline' ------------------------------------------------------------
@@ -2706,6 +3096,12 @@ test_that("'sort_components' raises correct effor with invalid component", {
                                 "sex",          "wrong",    "sd")
   expect_error(sort_components(components, mod = mod),
                "Internal error: \"wrong\" not a valid value for `component`.")
+  components <- tibble::tribble(~term,         ~component, ~level,
+                                "(Intercept)", "effect",   "(Intercept)",
+                                "time",         "season", "2000",
+                                "wrong",          "effect",    "sd")
+  expect_error(sort_components(components, mod = mod),
+               "Internal error: \"wrong\" not a valid value for `term`.")
 })
 
 

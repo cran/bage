@@ -1,5 +1,3 @@
-library(bage); library(testthat)
-
 ## 'augment' ---------------------------------------------------------------
 
 test_that("'augment' works with Poisson, disp - has data", {
@@ -13,7 +11,7 @@ test_that("'augment' works with Poisson, disp - has data", {
                     data = data,
                     exposure = popn)
     mod_fitted <- fit(mod)
-    ans <- augment(mod_fitted)
+    ans <- augment(mod_fitted, quiet = TRUE)
     expect_true(is.data.frame(ans))
     expect_identical(names(ans),
                      c(names(data), c(".observed", ".fitted", ".expected")))
@@ -33,7 +31,7 @@ test_that("'augment' calculates fitted in cells with missing outcome or offset -
                     exposure = popn)
     suppressWarnings(ans_unfit <- augment(mod, quiet = TRUE)) ## high value for lambda
     mod_fitted <- fit(mod)
-    ans_fit <- augment(mod_fitted)
+    ans_fit <- augment(mod_fitted, quiet = TRUE)
     expect_false(any(rvec::draws_any(is.na(ans_fit$.fitted))))
     expect_true(".deaths" %in% names(ans_fit))
     expect_true(all(rvec::draws_all(ans_fit$.deaths[-2] == ans_fit$deaths[-2])))
@@ -55,7 +53,7 @@ test_that("'augment' works with Poisson, disp - no data", {
                     exposure = popn)
     aug_notfitted <- suppressWarnings(augment(mod, quiet = TRUE)) ## high values for lambda
     mod_fitted <- fit(mod)
-    aug_fitted <- augment(mod_fitted)
+    aug_fitted <- augment(mod_fitted, quiet = TRUE)
     expect_identical(names(aug_fitted), names(aug_notfitted))
 })
 
@@ -71,7 +69,7 @@ test_that("'augment' works with binomial, no disp - has data", {
                     exposure = popn)
     mod <- set_disp(mod, mean = 0)
     mod_fitted <- fit(mod)
-    ans <- augment(mod_fitted)
+    ans <- augment(mod_fitted, quiet = TRUE)
     expect_true(is.data.frame(ans))
     expect_identical(names(ans),
                      c(names(data), c(".observed", ".fitted")))
@@ -88,7 +86,7 @@ test_that("'augment' works with normal - with data", {
                     data = data,
                     weights = 1)
     mod_fitted <- fit(mod)
-    ans <- augment(mod_fitted)
+    ans <- augment(mod_fitted, quiet = TRUE)
     expect_true(is.data.frame(ans))
     expect_identical(names(ans),
                      c(names(data), ".deaths", ".fitted"))
@@ -153,8 +151,10 @@ test_that("'augment' gives message when used unfitted and quiet is FALSE", {
     set_prior(age ~ NFix(sd = 0.1)) |>
     set_prior(time ~ NFix(sd = 0.1)) |>
     set_prior(sex ~ NFix(sd = 0.1))
-  expect_message(augment(mod),
-                 "Model not fitted, so values drawn straight from prior distribution.")
+  suppressMessages(
+    expect_message(augment(mod),
+                   "Model not fitted, so drawing values straight from prior distribution.")
+    )
 })
 
 
@@ -242,7 +242,7 @@ test_that("'disp' estimates not affected by weights in normal model", {
                         KEEP.OUT.ATTRS = FALSE)
     data$income <- rnorm(n = nrow(data), mean = 10, sd = 3)
     data$wt1 <- runif(n = nrow(data), max = 5)
-    data$wt2 <- 20 * data$wt1 
+    data$wt2 <- 20 * data$wt1
     formula <- income ~ age + sex + time
     mod1 <- mod_norm(formula = formula,
                     data = data,
@@ -320,10 +320,34 @@ test_that("'draw_vals_augment_fitted' works with Poisson, has disp", {
                     data = data,
                     exposure = popn)
     mod_fitted <- fit(mod)
-    ans <- draw_vals_augment_fitted(mod_fitted)
+    ans <- draw_vals_augment_fitted(mod_fitted, quiet = TRUE)
     expect_true(is.data.frame(ans))
     expect_identical(names(ans),
                      c(names(data), c(".observed", ".fitted", ".expected")))
+})
+
+test_that("'draw_vals_augment_fitted' works with Poisson, has disp, rr3", {
+    set.seed(0)
+    data <- expand.grid(age = 0:4, time = 2000:2002, sex = c("F", "M"),
+                        KEEP.OUT.ATTRS = FALSE)
+    data$popn <- rpois(n = nrow(data), lambda = 100)
+    data$deaths <- rpois(n = nrow(data), lambda = 3) * 3
+    formula <- deaths ~ age + sex + time
+    mod <- mod_pois(formula = formula,
+                    data = data,
+                    exposure = popn) |>
+      set_confidential_rr3()
+    mod_fitted <- fit(mod)
+    expect_message(
+      ans <- draw_vals_augment_fitted(mod_fitted, quiet = FALSE),
+      "Adding variable `\\.deaths` with true values for `deaths`."
+    )
+    expect_true(is.data.frame(ans))
+    expect_identical(names(ans),
+                     c(names(data), c(".deaths",
+                                      ".observed",
+                                      ".fitted",
+                                      ".expected")))
 })
 
 test_that("'draw_vals_augment_fitted' calculates fitted in cells with missing outcome or offset -  Poisson", {
@@ -339,7 +363,7 @@ test_that("'draw_vals_augment_fitted' calculates fitted in cells with missing ou
                     data = data,
                     exposure = popn)
     mod_fitted <- fit(mod)
-    ans <- draw_vals_augment_fitted(mod_fitted)
+    ans <- draw_vals_augment_fitted(mod_fitted, quiet = TRUE)
     expect_false(any(rvec::draws_any(is.na(ans$.fitted))))
 })
 
@@ -355,7 +379,7 @@ test_that("'draw_vals_augment_fitted' works with binomial, no disp", {
                     exposure = popn)
     mod <- set_disp(mod, mean = 0)
     mod_fitted <- fit(mod)
-    ans <- draw_vals_augment_fitted(mod_fitted)
+    ans <- draw_vals_augment_fitted(mod_fitted, quiet = TRUE)
     expect_true(is.data.frame(ans))
     expect_identical(names(ans),
                      c(names(data), c(".observed", ".fitted")))
@@ -373,7 +397,10 @@ test_that("'draw_vals_augment_fitted' works with normal", {
                     data = data,
                     weights = wt)
     mod_fitted <- fit(mod)
-    ans <- draw_vals_augment_fitted(mod_fitted)
+    expect_message(
+      ans <- draw_vals_augment_fitted(mod_fitted, quiet = FALSE),
+      "Adding variable `.deaths` with true values for `deaths`."
+    )
     expect_true(is.data.frame(ans))
     expect_setequal(names(ans),
                     c(names(data), ".deaths", ".fitted"))
@@ -382,77 +409,28 @@ test_that("'draw_vals_augment_fitted' works with normal", {
 })
 
 
-test_that("'draw_vals_augment_fitted' works with Poisson, has rr3", {
+test_that("'draw_vals_augment_fitted' gives message if imputes exposure", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"),
                       KEEP.OUT.ATTRS = FALSE)
   data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- poputils::rr3(rpois(n = nrow(data), lambda = 10))
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
   formula <- deaths ~ age + sex + time
   mod <- mod_pois(formula = formula,
                   data = data,
                   exposure = popn) |>
-                  set_datamod_outcome_rr3() |>
-                  set_n_draw(5)
+    set_disp(mean = 0) |>
+    set_datamod_exposure(cv = 0.01)
   mod_fitted <- fit(mod)
-  ans <- draw_vals_augment_fitted(mod_fitted)
-  expect_true(is.data.frame(ans))
-  expect_identical(names(ans),
-                   c(names(data), c(".deaths", ".observed", ".fitted", ".expected")))
-  aug_nodisp <- mod |>
-  set_disp(mean = 0) |>
-  fit() |>
-  augment()
-  expect_identical(names(aug_nodisp),
-                   c(names(data), c(".deaths", ".observed", ".fitted")))
-})
-
-test_that("'draw_vals_augment_fitted' works with binomial, has rr3", {
-  set.seed(0)
-  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"),
-                      KEEP.OUT.ATTRS = FALSE)
-  data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- poputils::rr3(rbinom(n = nrow(data), size = data$popn, prob = 0.4))
-  formula <- deaths ~ age + sex + time
-  mod <- mod_binom(formula = formula,
-                   data = data,
-                   size = popn) |>
-                   set_datamod_outcome_rr3() |>
-                   set_n_draw(5)
-  mod_fitted <- fit(mod)
-  ans <- draw_vals_augment_fitted(mod_fitted)
-  expect_true(is.data.frame(ans))
-  expect_identical(names(ans),
-                   c(names(data), c(".deaths", ".observed", ".fitted", ".expected")))
-  aug_nodisp <- mod |>
-  set_disp(mean = 0) |>
-  fit() |>
-  augment()
-  expect_identical(names(aug_nodisp),
-                   c(names(data), c(".deaths", ".observed", ".fitted")))
+  expect_message(draw_vals_augment_fitted(mod_fitted, quiet = FALSE),
+                 "Adding variable `.popn` with true values for `popn`.")
 })
 
 
-## 'draw_vals_augment_unfitted' --------------------------------------------------------
 
-test_that("'draw_vals_augment_unfitted' works with normal", {
-  set.seed(0)
-  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"),
-                      KEEP.OUT.ATTRS = FALSE)
-  data$deaths <- rpois(n = nrow(data), lambda = 100)
-  data$wt <- runif(n = nrow(data), max = 1000)
-  formula <- deaths ~ age + sex + time
-  mod <- mod_norm(formula = formula,
-                  data = data,
-                  weights = wt)
-  ans <- draw_vals_augment_unfitted(mod)
-  expect_true(is.data.frame(ans))
-  expect_identical(names(ans), c(names(data), ".fitted"))
-  expect_true(abs(rvec::draws_mean(mean(ans$.fitted)) - 100) < 2)
-  expect_true(abs(rvec::draws_mean(mean(ans$.fitted)) - 100) < 2)
-})
+## 'draw_vals_augment_unfitted' -----------------------------------------------
 
-test_that("'draw_vals_augment_unfitted' works with 'bage_mod_pois' - has disp", {
+test_that("'draw_vals_augment_unfitted' works with 'bage_mod_pois' - has disp, no exposure", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$deaths <- rpois(n = nrow(data), lambda = 20)
@@ -461,33 +439,30 @@ test_that("'draw_vals_augment_unfitted' works with 'bage_mod_pois' - has disp", 
                   data = data,
                   exposure = 1)
   mod <- set_n_draw(mod, 10)
-  ans_obtained <- draw_vals_augment_unfitted(mod)
-  vals_components <- draw_vals_components_unfitted(mod, n_sim = 10)
-  vals_disp <- vals_components$.fitted[vals_components$component == "disp"]
-  vals_expected <- exp(make_linpred_from_components(mod = mod,
-                                                    components = vals_components,
-                                                    data = mod$data,
-                                                    dimnames_terms = mod$dimnames_terms))
+  ans_obtained <- draw_vals_augment_unfitted(mod, quiet = TRUE)
   set.seed(mod$seed_augment)
-  vals_fitted <- draw_vals_fitted(mod = mod,
-                                  vals_expected = vals_expected,
-                                  vals_disp = vals_disp)
-  vals_outcome <- draw_vals_outcome_true(datamod = NULL,
-                                         nm_distn = "pois",
-                                         outcome_obs = rep(NA_real_, times = nrow(data)),
-                                         fitted = vals_fitted,
-                                         disp = vals_disp,
-                                         offset = mod$offset)
+  components <- draw_vals_components_unfitted(mod, n_sim = 10)
+  disp <- components$.fitted[components$component == "disp"]
+  expected <- exp(make_linpred_from_components(mod = mod,
+                                               components = components,
+                                               data = mod$data,
+                                               dimnames_terms = mod$dimnames_terms))
+  fitted <- draw_fitted(nm_distn = "pois",
+                        expected = expected,
+                        disp = disp)
+  outcome <- draw_outcome_true(nm_distn = "pois",
+                               fitted = fitted,
+                               disp = disp,
+                               offset = mod$offset)
   ans_expected <- tibble::as_tibble(data)
-  ans_expected$deaths <- vals_outcome
-  ans_expected$.observed <- vals_outcome / mod$offset
-  ans_expected$.fitted <- vals_fitted
-  ans_expected$.expected <- vals_expected
+  ans_expected$deaths <- outcome
+  ans_expected$.fitted <- fitted
+  ans_expected$.expected <- expected
   expect_equal(ans_obtained, ans_expected)
-  expect_identical(names(augment(fit(mod))), names(ans_obtained))
+  expect_identical(names(augment(fit(mod, quiet = TRUE))), names(ans_obtained))
 })
 
-test_that("'draw_vals_augment_unfitted' works with 'bage_mod_pois' - no disp", {
+test_that("'draw_vals_augment_unfitted' works with 'bage_mod_pois' - no disp, has exposure", {
   set.seed(0)
   n_sim <- 10
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
@@ -499,31 +474,221 @@ test_that("'draw_vals_augment_unfitted' works with 'bage_mod_pois' - no disp", {
                   exposure = popn)
   mod <- set_disp(mod, mean = 0)
   mod <- set_n_draw(mod, 10)
-  ans_obtained <- draw_vals_augment_unfitted(mod)
-  vals_components <- draw_vals_components_unfitted(mod = mod,
-                                                   n_sim = n_sim)
-  vals_fitted <- exp(make_linpred_from_components(mod = mod,
-                                                  components = vals_components,
-                                                  data = mod$data,
-                                                  dimnames_term = mod$dimnames_terms))
+  ans_obtained <- draw_vals_augment_unfitted(mod, quiet = TRUE)
   set.seed(mod$seed_augment)
-  vals_outcome <- draw_vals_outcome_true(datamod = NULL,
-                                         nm_distn = "pois",
-                                         outcome_obs = rep(NA_real_, times = nrow(data)),
-                                         fitted = vals_fitted,
-                                         disp = vals_disp,
-                                         offset = mod$offset)
+  components <- draw_vals_components_unfitted(mod = mod,
+                                              n_sim = n_sim)
+  fitted <- exp(make_linpred_from_components(mod = mod,
+                                             components = components,
+                                             data = mod$data,
+                                             dimnames_term = mod$dimnames_terms))
+  outcome <- draw_outcome_true(nm_distn = "pois",
+                               fitted = fitted,
+                               disp = NULL,
+                               offset = mod$offset)
   ans_expected <- tibble::as_tibble(data)
-  ans_expected$deaths <- vals_outcome
-  ans_expected$.observed <- vals_outcome / data$popn
-  ans_expected$.fitted <- vals_fitted
+  ans_expected$deaths <- outcome
+  ans_expected$.observed <- outcome / data$popn
+  ans_expected$.fitted <- fitted
   expect_equal(ans_obtained, ans_expected)
-  expect_identical(names(augment(fit(mod))), names(ans_obtained))
+  expect_identical(names(augment(fit(mod), quiet = TRUE)), names(ans_obtained))
+})
+
+test_that("'draw_vals_augment_unfitted' works with 'bage_mod_pois' - has disp, has exposure, has NA", {
+  set.seed(0)
+  n_sim <- 10
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$deaths <- rpois(n = nrow(data), lambda = 20)
+  data$popn <- rpois(n = nrow(data), lambda = 30)
+  data$popn[1] <- NA
+  formula <- deaths ~ age + sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_disp(mod, mean = 0)
+  mod <- set_n_draw(mod, 10)
+  ans_obtained <- draw_vals_augment_unfitted(mod, quiet = TRUE)
+  set.seed(mod$seed_augment)
+  components <- draw_vals_components_unfitted(mod = mod,
+                                              n_sim = n_sim)
+  fitted <- exp(make_linpred_from_components(mod = mod,
+                                             components = components,
+                                             data = mod$data,
+                                             dimnames_term = mod$dimnames_terms))
+  outcome <- draw_outcome_true(nm_distn = "pois",
+                               fitted = fitted,
+                               disp = get_disp(mod),
+                               offset = mod$offset)
+  ans_expected <- tibble::as_tibble(data)
+  ans_expected$deaths <- outcome
+  ans_expected$.observed <- outcome / data$popn
+  ans_expected$.fitted <- fitted
+  expect_equal(ans_obtained, ans_expected)
+  expect_identical(names(augment(fit(mod), quiet = TRUE)), names(ans_obtained))
+})
+
+test_that("'draw_vals_augment_unfitted' works with 'bage_mod_pois' - has disp, has exposure, has RR3", {
+  set.seed(0)
+  n_sim <- 10
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"),
+                      KEEP.OUT.ATTRS = FALSE)
+  data$deaths <- rpois(n = nrow(data), lambda = 3) * 3
+  data$popn <- rpois(n = nrow(data), lambda = 30)
+  data$popn[1] <- NA
+  formula <- deaths ~ age + sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_disp(mod, mean = 0)
+  mod <- set_n_draw(mod, 10)
+  mod <- set_confidential_rr3(mod)
+  suppressMessages(
+    expect_message(
+      ans_obtained <- draw_vals_augment_unfitted(mod, quiet = FALSE),
+      "Overwriting existing values for `deaths`."
+    )
+  )
+  set.seed(mod$seed_augment)
+  components <- draw_vals_components_unfitted(mod = mod,
+                                              n_sim = n_sim)
+  fitted <- exp(make_linpred_from_components(mod = mod,
+                                             components = components,
+                                             data = mod$data,
+                                             dimnames_term = mod$dimnames_terms))
+  outcome_true <- draw_outcome_true(nm_distn = "pois",
+                               fitted = fitted,
+                               disp = get_disp(mod),
+                               offset = mod$offset)
+  outcome_obs <- poputils::rr3(outcome_true)
+  ans_expected <- tibble::as_tibble(data)
+  ans_expected$.deaths <- outcome_true
+  ans_expected$deaths <- outcome_obs
+  ans_expected <- ans_expected[c("age", "time", "sex", "deaths",
+                                 ".deaths", "popn")]
+  ans_expected$.observed <- outcome_obs / data$popn
+  ans_expected$.fitted <- fitted
+  expect_equal(ans_obtained, ans_expected)
+  expect_identical(names(augment(fit(mod), quiet = TRUE)), names(ans_obtained))
+})
+
+test_that("'draw_vals_augment_unfitted' works with 'bage_mod_pois' - no disp, has exposure, has datamod_noise", {
+  set.seed(0)
+  n_sim <- 10
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"),
+                      KEEP.OUT.ATTRS = FALSE)
+  data$deaths <- rpois(n = nrow(data), lambda = 3) * 3
+  data$popn <- rpois(n = nrow(data), lambda = 30)
+  data$popn[1] <- NA
+  formula <- deaths ~ age + sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_disp(mod, mean = 0)
+  mod <- set_n_draw(mod, 10)
+  mod <- set_datamod_noise(mod, sd = 0.2)
+  suppressMessages(
+    expect_message(
+      ans_obtained <- draw_vals_augment_unfitted(mod, quiet = FALSE),
+      "Overwriting existing values for `deaths`."
+    )
+  )
+  set.seed(mod$seed_augment)
+  components <- draw_vals_components_unfitted(mod = mod,
+                                              n_sim = n_sim)
+  fitted <- exp(make_linpred_from_components(mod = mod,
+                                             components = components,
+                                             data = mod$data,
+                                             dimnames_term = mod$dimnames_terms))
+  outcome_true <- draw_outcome_true(nm_distn = "pois",
+                                    fitted = fitted,
+                                    disp = get_disp(mod),
+                                    offset = mod$offset)
+  outcome_obs <- draw_outcome_obs_given_true(datamod = mod$datamod,
+                                             components = components,
+                                             outcome_true = outcome_true,
+                                             offset = mod$offset,
+                                             fitted = fitted)
+  ans_expected <- tibble::as_tibble(data)
+  ans_expected$.deaths <- outcome_true
+  ans_expected$deaths <- outcome_obs
+  ans_expected <- ans_expected[c("age", "time", "sex", "deaths",
+                                 ".deaths", "popn")]
+  ans_expected$.observed <- outcome_obs / data$popn
+  ans_expected$.fitted <- fitted
+  expect_equal(ans_obtained, ans_expected)
+  expect_identical(names(augment(fit(mod), quiet = TRUE)), names(ans_obtained))
+})
+
+test_that("'draw_vals_augment_unfitted' works with 'bage_mod_pois' - has datamod_exposure", {
+  set.seed(0)
+  n_sim <- 10
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"),
+                      KEEP.OUT.ATTRS = FALSE)
+  data$deaths <- rpois(n = nrow(data), lambda = 3) * 3
+  data$popn <- rpois(n = nrow(data), lambda = 30)
+  data$popn[1] <- NA
+  formula <- deaths ~ age + sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_disp(mod, mean = 0)
+  mod <- set_n_draw(mod, 10)
+  mod <- set_datamod_exposure(mod, cv = 0.2)
+  suppressMessages(
+    expect_message(
+      ans_obtained <- draw_vals_augment_unfitted(mod, quiet = FALSE),
+      "Overwriting existing values for `deaths`."
+    )
+  )
+  set.seed(mod$seed_augment)
+  components <- draw_vals_components_unfitted(mod = mod,
+                                              n_sim = n_sim)
+  fitted <- exp(make_linpred_from_components(mod = mod,
+                                             components = components,
+                                             data = mod$data,
+                                             dimnames_term = mod$dimnames_terms))
+  outcome_true <- draw_outcome_true(nm_distn = "pois",
+                                    fitted = fitted,
+                                    disp = get_disp(mod),
+                                    offset = mod$offset)
+  offset_obs <- draw_offset_obs_given_true(datamod = mod$datamod,
+                                           components = components,
+                                           offset_true = mod$offset)
+  ans_expected <- tibble::as_tibble(data)
+  ans_expected$deaths <- outcome_true
+  ans_expected$popn <- offset_obs
+  ans_expected$.popn <- mod$offset
+  ans_expected <- ans_expected[c("age", "time", "sex", "deaths",
+                                 "popn", ".popn")]
+  ans_expected$.observed <- outcome_true / offset_obs
+  ans_expected$.fitted <- fitted
+  expect_equal(ans_obtained, ans_expected)
+  expect_identical(names(augment(fit(mod), quiet = TRUE)), names(ans_obtained))
+})
+
+test_that("'draw_vals_augment_unfitted' works with bage_mod_norm", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"),
+                      KEEP.OUT.ATTRS = FALSE)
+  data$income <- rnorm(n = nrow(data), mean = 100, sd = 5)
+  data$wt <- runif(n = nrow(data), max = 1000)
+  formula <- income ~ age + sex + time
+  mod <- mod_norm(formula = formula,
+                  data = data,
+                  weights = wt)
+  expect_message(
+    ans <- draw_vals_augment_unfitted(mod, quiet = FALSE),
+    "Overwriting existing values for `income`."
+  )
+  expect_true(is.data.frame(ans))
+  expect_identical(names(ans), c(names(data), ".fitted"))
+  expect_true(abs(rvec::draws_mean(mean(ans$.fitted)) - 100) < 2)
+  expect_true(abs(rvec::draws_mean(mean(ans$.fitted)) - 100) < 2)
 })
 
 test_that("'draw_vals_augment_unfitted' works with 'bage_mod_norm'", {
   set.seed(0)
-  n_sim <- 1000
+  n_sim <- 10
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$income <- rnorm(n = nrow(data), mean = 200, sd = 30)
   data$wt <- rpois(n = nrow(data), lambda = 100)
@@ -531,96 +696,126 @@ test_that("'draw_vals_augment_unfitted' works with 'bage_mod_norm'", {
   mod <- mod_norm(formula = formula,
                   data = data,
                   weights = wt)
-  mod <- set_n_draw(mod, 1000)
-  set.seed(1)
-  ans_obtained <- draw_vals_augment_unfitted(mod)
-  vals_components <- draw_vals_components_unfitted(mod = mod,
-                                                   n_sim = n_sim)
-  vals_disp <- vals_components$.fitted[vals_components$component == "disp"]
-  vals_disp <- sqrt(mod$offset_mean) * mod$outcome_sd * vals_disp
-  scale_linpred <- get_fun_scale_linpred(mod)
-  vals_fitted <- scale_linpred(make_linpred_from_components(mod = mod,
-                                                            components = vals_components,
-                                                            data = mod$data,
-                                                            dimnames_term = mod$dimnames_terms))
+  mod <- set_n_draw(mod, n_sim)
+  ans_obtained <- draw_vals_augment_unfitted(mod, quiet = TRUE)
   set.seed(mod$seed_augment)
-  vals_outcome <- draw_vals_outcome_true(datamod = NULL,
-                                         nm_distn = "norm",
-                                         outcome_obs = rep(NA_real_, times = nrow(data)),
-                                         fitted = vals_fitted,
-                                         disp = vals_disp,
-                                         offset = mod$offset * mod$offset_mean)
+  components <- draw_vals_components_unfitted(mod = mod,
+                                              n_sim = n_sim)
+  disp <- components$.fitted[components$component == "disp"]
+  fitted <- make_linpred_from_components(mod = mod,
+                                         components = components,
+                                         data = mod$data,
+                                         dimnames_term = mod$dimnames_terms)
+  fitted <- fitted * mod$outcome_sd + mod$outcome_mean
+  disp <- disp * mod$outcome_sd * sqrt(mod$offset_mean)
+  outcome <- draw_outcome_true(nm_distn = "norm",
+                               fitted = fitted,
+                               disp = disp,
+                               offset = data$wt)
   ans_expected <- tibble::as_tibble(mod$data)
-  ans_expected$income <- vals_outcome
-  ans_expected$.fitted <- vals_fitted
+  ans_expected$income <- outcome
+  ans_expected$.fitted <- fitted
   expect_equal(ans_obtained, ans_expected)
-  expect_identical(names(augment(fit(mod))), names(ans_obtained))
-  expect_equal(rvec::draws_mean(mean(ans_obtained$.fitted)), mean(data$income), tolerance = 0.1)
+  expect_identical(names(augment(fit(mod), quiet = TRUE)), names(ans_obtained))
+  expect_equal(rvec::draws_mean(mean(ans_obtained$.fitted)),
+               mean(rvec::draws_mean(ans_obtained$income)), tolerance = 0.1)
+})
+
+test_that("'draw_vals_augment_unfitted' works with bage_mod_norm, noise data model", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"),
+                      KEEP.OUT.ATTRS = FALSE)
+  data$income <- rnorm(n = nrow(data), mean = 100, sd = 5)
+  data$wt <- runif(n = nrow(data), max = 1000)
+  formula <- income ~ age + sex + time
+  mod <- mod_norm(formula = formula,
+                  data = data,
+                  weights = wt) |>
+    set_datamod_noise(sd = 1)
+  suppressMessages(
+    expect_message(
+      ans <- draw_vals_augment_unfitted(mod, quiet = FALSE),
+      "Overwriting existing values for `income`.",
+      )
+  )
+  expect_true(is.data.frame(ans))
+  expect_setequal(names(ans), c(names(data), ".fitted", ".income"))
+  expect_true(abs(rvec::draws_mean(mean(ans$.fitted)) - 100) < 2)
+  expect_true(abs(rvec::draws_mean(mean(ans$.fitted)) - 100) < 2)
 })
 
 
-## 'draw_vals_fitted' ---------------------------------------------------------
+## 'draw_fitted_given_outcome' ------------------------------------------------
 
-test_that("'draw_vals_fitted' works with 'bage_mod_pois'", {
+test_that("'draw_fitted_given_outcome' works with 'bage_mod_pois'", {
   set.seed(0)
   n_sim <- 10
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
   data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$popn[1] <- NA
+  data$deaths[2] <- NA
   formula <- deaths ~ age + sex + time
   mod <- mod_pois(formula = formula,
                   data = data,
                   exposure = popn)
-  vals_disp <- draw_vals_disp(mod, n_sim = n_sim)
-  vals_components <- draw_vals_components_unfitted(mod = mod,
-                                                   n_sim = n_sim)
-  vals_expected <- exp(make_linpred_from_components(mod = mod,
-                                                    components = vals_components,
-                                                    data = mod$data,
-                                                    dimnames_term = mod$dimnames_terms))
+  expected <- exp(rvec::rnorm_rvec(n = nrow(data), n_draw = 10))
+  disp <- rvec::runif_rvec(n = 1, n_draw = 10)
+  offset <- rvec::rpois_rvec(n = nrow(data), lambda = 100, n_draw = 10)
+  offset[1] <- NA
   set.seed(1)
-  ans_obtained <- draw_vals_fitted(mod,
-                                   vals_expected = vals_expected,
-                                   vals_disp = vals_disp)
+  ans_obtained <- draw_fitted_given_outcome(mod,
+                                            outcome = data$deaths,
+                                            offset = offset,
+                                            expected = expected,
+                                            disp = disp)
   set.seed(1)
+  d <- data$deaths
+  p <- offset
+  d[1:2] <- 0
+  p[1:2] <- 0
   ans_expected <- rvec::rgamma_rvec(n = nrow(data),
-                                    shape = 1 / vals_disp,
-                                    rate = 1 / (vals_disp * vals_expected))
+                                    shape = d + 1 / disp,
+                                    rate = p  + 1 / (disp * expected))
   expect_equal(ans_obtained, ans_expected)
 })
 
-test_that("'draw_vals_fitted' works with 'bage_mod_binom'", {
+test_that("'draw_fitted_given_outcome' works with 'bage_mod_binom'", {
   set.seed(0)
   n_sim <- 10
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rbinom(n = nrow(data), size = data$popn, prob = 0.3)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$popn[1] <- NA
+  data$deaths[2] <- NA
   formula <- deaths ~ age + sex + time
   mod <- mod_binom(formula = formula,
-                   data = data,
-                   size = popn)
-  vals_disp <- draw_vals_disp(mod, n_sim = n_sim)
-  vals_components <- draw_vals_components_unfitted(mod = mod,
-                                                   n_sim = n_sim)
-  invlogit <- function(x) exp(x) / (1 + exp(x))
-  vals_expected <- invlogit(make_linpred_from_components(mod = mod,
-                                                         components = vals_components,
-                                                         data = mod$data,
-                                                         dimnames_term = mod$dimnames_terms))
+                  data = data,
+                  size = popn)
+  expected <- rvec::runif_rvec(n = nrow(data), n_draw = 10)
+  disp <- rvec::runif_rvec(n = 1, n_draw = 10)
+  offset <- rvec::rpois_rvec(n = nrow(data), lambda = 100, n_draw = 10)
+  offset[1] <- NA
   set.seed(1)
-  ans_obtained <- draw_vals_fitted(mod,
-                                   vals_expected = vals_expected,
-                                   vals_disp = vals_disp)
+  ans_obtained <- draw_fitted_given_outcome(mod,
+                                            outcome = data$deaths,
+                                            offset = offset,
+                                            expected = expected,
+                                            disp = disp)
   set.seed(1)
+  d <- data$deaths
+  p <- offset
+  d[1:2] <- 0
+  p[1:2] <- 0
   ans_expected <- rvec::rbeta_rvec(n = nrow(data),
-                                   shape1 = vals_expected / vals_disp,
-                                   shape2 = (1 - vals_expected) / vals_disp)
+                                   shape1 = d + expected / disp,
+                                   shape2 = p - d  + (1 - expected) / disp)
   expect_equal(ans_obtained, ans_expected)
 })
 
 
 ## 'fit' -----------------------------------------------------------------
- 
+
 test_that("'fit' works with valid inputs - pois has exposure", {
     set.seed(0)
     data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
@@ -717,7 +912,7 @@ test_that("'fit' works with AR1", {
     expect_s3_class(ans_obtained, "bage_mod")
 })
 
-test_that("'fit' gives the same imputed rate when outcome is NA and offset is NA", {
+test_that("'fit' gives the similar imputed rate when outcome is NA and offset is NA", {
     set.seed(0)
     data <- expand.grid(age = 0:4, time = 2000:2002, sex = c("F", "M"))
     data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -731,7 +926,7 @@ test_that("'fit' gives the same imputed rate when outcome is NA and offset is NA
                             data = data_outcome,
                             exposure = popn)
     mod_outcome <- fit(mod_outcome)
-    ans_outcome <- augment(mod_outcome)$.fitted[5]
+    ans_outcome <- rvec::draws_median(augment(mod_outcome, quiet = TRUE)$.fitted[5])
     ## offset NA
     set.seed(0)
     data_offset <- data
@@ -740,9 +935,9 @@ test_that("'fit' gives the same imputed rate when outcome is NA and offset is NA
                            data = data_offset,
                            exposure = popn)
     mod_offset <- fit(mod_offset)
-    ans_offset <- augment(mod_offset)$.fitted[5]
+    ans_offset <- rvec::draws_median(augment(mod_offset, quiet = TRUE)$.fitted[5])
     ## compare
-    expect_equal(ans_outcome, ans_offset)
+    expect_equal(ans_outcome, ans_offset, tolerance = 0.05)
 })
 
 test_that("'fit' works when all observed values for one year are NA", {
@@ -975,7 +1170,7 @@ test_that("'fit' and 'forecast' work with SVD_AR", {
   expect_true(is_fitted(mod))
   f <- forecast(mod, labels = 2011:2012)
   expect_setequal(c(names(f), ".deaths"),
-                  names(augment(mod)))
+                  names(augment(mod, quiet = TRUE)))
 })
 
 test_that("'fit' and 'forecast' work with SVD_RW", {
@@ -992,7 +1187,7 @@ test_that("'fit' and 'forecast' work with SVD_RW", {
   expect_true(is_fitted(mod))
   f <- forecast(mod, labels = 2011:2012)
   expect_setequal(c(names(f), ".deaths"),
-                  names(augment(mod)))
+                  names(augment(mod, quiet = TRUE)))
   mod <- mod |>
     set_prior(age:time ~ SVD_RW(LFP, sd = 0))
   mod <- fit(mod)
@@ -1013,7 +1208,7 @@ test_that("'fit' and 'forecast' work with SVD_RW2", {
   expect_true(is_fitted(mod))
   f <- forecast(mod, labels = 2011:2012)
   expect_setequal(c(names(f), ".deaths"),
-                  names(augment(mod)))
+                  names(augment(mod, quiet = TRUE)))
   mod <- mod |>
     set_prior(age:time ~ SVD_RW2(LFP, sd = 0))
   mod <- fit(mod)
@@ -1130,7 +1325,8 @@ test_that("'fit' works with covariates - no shrinkage", {
   mod <- set_covariates(mod, ~ income + distance)
   ans_obtained <- fit(mod)
   expect_s3_class(ans_obtained, "bage_mod")
-})  
+})
+
 
 
 ## 'forecast' -----------------------------------------------------------------
@@ -1163,7 +1359,7 @@ test_that("'forecast' works with fitted model - uses newdata", {
     newdata <- make_data_forecast_labels(mod, labels = 2005)
     newdata$deaths <- rpois(n = nrow(newdata), lambda = 10)
     ans_est <- forecast(mod, newdata = newdata, include_estimates = TRUE)
-    expect_identical(names(ans_est), names(augment(mod)))
+    expect_identical(names(ans_est), names(augment(mod, quiet = TRUE)))
 })
 
 
@@ -1298,6 +1494,24 @@ test_that("'forecast' throws error when neither labels nor newdata supplied", {
                  "No value supplied for `newdata` or for `labels`.")
 })
 
+test_that("'forecast' throws error when exposure specified via formula", {
+  set.seed(0)
+  data <- expand.grid(age = 0:4, time = 2000:2004, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex + sex * time
+  suppressWarnings(
+    mod <- mod_pois(formula = formula,
+                    data = data,
+                    exposure = ~popn + 1)
+  )
+  mod <- fit(mod)
+  newdata <- make_data_forecast_labels(mod, 2005:2006)
+  newdata$deaths <- rpois(n = nrow(newdata), lambda = 10)
+  expect_error(forecast(mod, newdata = newdata),
+               "`forecast\\(\\)` cannot be used with models where exposure specified using formula.")
+})
+
 
 ## 'forecast_augment' --------------------------------------------------------
 
@@ -1330,8 +1544,11 @@ test_that("'forecast_augment' works - Poisson, has disp, no forecasted offset", 
                                                    dimnames_terms = dimnames_forecast)
   ans <- forecast_augment(mod = mod,
                           data_forecast = data_forecast,
-                          linpred_forecast = linpred_forecast)
-  aug_est <- augment(mod)
+                          components_forecast = components_forecast,
+                          linpred_forecast = linpred_forecast,
+                          has_offset_forecast = FALSE,
+                          has_newdata = FALSE)
+  aug_est <- augment(mod, quiet = TRUE)
   expect_setequal(ans$age, aug_est$age)
   expect_setequal(ans$sex, aug_est$sex)
   expect_setequal(ans$time, 2006:2008)
@@ -1367,14 +1584,17 @@ test_that("'forecast_augment' works - Poisson, no offset", {
                                                    dimnames_terms = dimnames_forecast)
   ans <- forecast_augment(mod = mod,
                           data_forecast = data_forecast,
-                          linpred_forecast = linpred_forecast)
-  aug_est <- augment(mod)
+                          components_forecast = components_forecast,
+                          linpred_forecast = linpred_forecast,
+                          has_offset_forecast = FALSE,
+                          has_newdata = FALSE)
+  aug_est <- augment(mod, quiet = TRUE)
   expect_setequal(ans$age, aug_est$age)
   expect_setequal(ans$sex, aug_est$sex)
   expect_setequal(ans$time, 2006:2008)
   expect_identical(names(ans), names(aug_est))
-  expect_true(rvec::is_rvec(ans$deaths))
-  expect_true(all(is.na(ans$.observed)))
+  expect_false(rvec::is_rvec(ans$deaths))
+  expect_false(".observed" %in% names(ans))
 })
 
 test_that("'forecast_augment' works - Poisson, has disp, has forecasted offset", {
@@ -1407,8 +1627,11 @@ test_that("'forecast_augment' works - Poisson, has disp, has forecasted offset",
                                                    dimnames_terms = dimnames_forecast)
   ans <- forecast_augment(mod = mod,
                           data_forecast = data_forecast,
-                          linpred_forecast = linpred_forecast)
-  aug_est <- augment(mod)
+                          components_forecast = components_forecast,
+                          linpred_forecast = linpred_forecast,
+                          has_offset_forecast = TRUE,
+                          has_newdata = FALSE)
+  aug_est <- augment(mod, quiet = TRUE)
   expect_setequal(ans$age, aug_est$age)
   expect_setequal(ans$sex, aug_est$sex)
   expect_setequal(ans$time, 2006:2008)
@@ -1448,8 +1671,11 @@ test_that("'forecast_augment' works - Poisson, has disp, has forecasted offset, 
                                                    dimnames_terms = dimnames_forecast)
   ans <- forecast_augment(mod = mod,
                           data_forecast = data_forecast,
-                          linpred_forecast = linpred_forecast)
-  aug_est <- augment(mod)
+components_forecast = components_forecast,
+                          linpred_forecast = linpred_forecast,
+                          has_offset_forecast = TRUE,
+                          has_newdata = FALSE)
+  aug_est <- augment(mod, quiet = TRUE)
   expect_setequal(ans$age, aug_est$age)
   expect_setequal(ans$sex, aug_est$sex)
   expect_setequal(ans$time, 2006:2008)
@@ -1459,7 +1685,7 @@ test_that("'forecast_augment' works - Poisson, has disp, has forecasted offset, 
   expect_true(rvec::is_rvec(ans$.deaths))
 })
 
-test_that("'forecast_augment' works - Poisson, has disp, has forecasted offset, datamod", {
+test_that("'forecast_augment' works - Poisson, has disp, has forecasted offset, confidentialization", {
   set.seed(0)
   data <- expand.grid(age = 0:5, time = 2000:2005, sex = c("F", "M"))
   data$deaths <- rpois(n = nrow(data), lambda = 30) * 3
@@ -1470,7 +1696,7 @@ test_that("'forecast_augment' works - Poisson, has disp, has forecasted offset, 
                   data = data,
                   exposure = exposure)
   mod <- set_n_draw(mod, n = 10)
-  mod <- set_datamod_outcome_rr3(mod)
+  mod <- set_confidential_rr3(mod)
   mod <- fit(mod)
   components_est <- components(mod)
   data_forecast <- make_data_forecast_labels(mod = mod, labels_forecast = 2006:2008)
@@ -1491,8 +1717,11 @@ test_that("'forecast_augment' works - Poisson, has disp, has forecasted offset, 
                                                    dimnames_terms = dimnames_forecast)
   ans <- forecast_augment(mod = mod,
                           data_forecast = data_forecast,
-                          linpred_forecast = linpred_forecast)
-  aug_est <- augment(mod)
+                          components_forecast = components_forecast,
+                          linpred_forecast = linpred_forecast,
+                          has_offset_forecast = TRUE,
+                          has_newdata = FALSE)
+  aug_est <- augment(mod, quiet = TRUE)
   expect_setequal(ans$age, aug_est$age)
   expect_setequal(ans$sex, aug_est$sex)
   expect_setequal(ans$time, 2006:2008)
@@ -1533,8 +1762,11 @@ test_that("'forecast_augment' works - binomial, no disp", {
                                                    dimnames_terms = dimnames_forecast)
   ans <- forecast_augment(mod = mod,
                           data_forecast = data_forecast,
-                          linpred_forecast = linpred_forecast)
-  aug_est <- augment(mod)
+                          components_forecast = components_forecast,
+                          linpred_forecast = linpred_forecast,
+                          has_offset_forecast = FALSE,
+                          has_newdata = has_newdata)
+  aug_est <- augment(mod, quiet = TRUE)
   expect_setequal(ans$age, aug_est$age)
   expect_setequal(ans$sex, aug_est$sex)
   expect_setequal(ans$time, 2006:2008)
@@ -1570,8 +1802,10 @@ test_that("'forecast_augment' works - normal", {
                                                    dimnames_terms = dimnames_forecast)
   ans <- forecast_augment(mod = mod,
                           data_forecast = data_forecast,
-                          linpred_forecast = linpred_forecast)
-  aug_est <- augment(mod)
+                          linpred_forecast = linpred_forecast,
+                          has_offset_forecast = FALSE,
+                          has_newdata = has_newdata)
+  aug_est <- augment(mod, quiet = TRUE)
   expect_setequal(ans$age, aug_est$age)
   expect_setequal(ans$sex, aug_est$sex)
   expect_setequal(ans$time, 2006:2008)
@@ -1582,7 +1816,7 @@ test_that("'forecast_augment' works - normal, has forecasted offset", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 1000)
-  data$income <- rnorm(n = nrow(data))
+  data$income <- rnorm(n = nrow(data), mean = 1000, sd = 100)
   formula <- income ~ age + sex * time
   mod <- mod_norm(formula = formula,
                   data = data,
@@ -1608,8 +1842,11 @@ test_that("'forecast_augment' works - normal, has forecasted offset", {
                                                    dimnames_terms = dimnames_forecast)
   ans <- forecast_augment(mod = mod,
                           data_forecast = data_forecast,
-                          linpred_forecast = linpred_forecast)
-  aug_est <- augment(mod)
+                          components_forecast = components_forecast,
+                          linpred_forecast = linpred_forecast,
+                          has_offset_forecast = TRUE,
+                          has_newdata = has_newdata)
+  aug_est <- augment(mod, quiet = TRUE)
   expect_setequal(ans$age, aug_est$age)
   expect_setequal(ans$sex, aug_est$sex)
   expect_setequal(ans$time, 2006:2008)
@@ -1617,10 +1854,10 @@ test_that("'forecast_augment' works - normal, has forecasted offset", {
   expect_true(rvec::is_rvec(ans$income))
 })
 
-test_that("'forecast_augment' works - normal, no offset", {
+test_that("'forecast_augment' works - normal, no offset, no NA in outcome", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
-  data$income <- rnorm(n = nrow(data))
+  data$income <- rnorm(n = nrow(data), mean = 10000, sd = 500)
   formula <- income ~ age + sex * time
   mod <- mod_norm(formula = formula,
                   data = data,
@@ -1646,13 +1883,16 @@ test_that("'forecast_augment' works - normal, no offset", {
                                                    dimnames_terms = dimnames_forecast)
   ans <- forecast_augment(mod = mod,
                           data_forecast = data_forecast,
-                          linpred_forecast = linpred_forecast)
-  aug_est <- augment(mod)
+                          components_forecast = components_forecast,
+                          linpred_forecast = linpred_forecast,
+                          has_offset_forecast = FALSE,
+                          has_newdata = has_newdata)
+  aug_est <- augment(mod, quiet = TRUE)
   expect_setequal(ans$age, aug_est$age)
   expect_setequal(ans$sex, aug_est$sex)
   expect_setequal(ans$time, 2006:2008)
   expect_identical(names(ans), names(aug_est))
-  expect_true(rvec::is_rvec(ans$income))
+  expect_true(is.numeric(ans$income))
 })
 
 test_that("'forecast_augment' works - normal, has offset, offset not in forecast data", {
@@ -1685,8 +1925,11 @@ test_that("'forecast_augment' works - normal, has offset, offset not in forecast
                                                    dimnames_terms = dimnames_forecast)
   ans <- forecast_augment(mod = mod,
                           data_forecast = data_forecast,
-                          linpred_forecast = linpred_forecast)
-  aug_est <- augment(mod)
+                          components_forecast = components_forecast,
+                          linpred_forecast = linpred_forecast,
+                          has_offset_forecast = FALSE,
+                          has_newdata = has_newdata)
+  aug_est <- augment(mod, quiet = TRUE)
   expect_setequal(ans$age, aug_est$age)
   expect_setequal(ans$sex, aug_est$sex)
   expect_setequal(ans$time, 2006:2008)
@@ -1694,9 +1937,7 @@ test_that("'forecast_augment' works - normal, has offset, offset not in forecast
   expect_identical(ans$income, rep(NA_real_, nrow(ans)))
 })
 
-
-
-test_that("'forecast_augment' works - normal, estimated has imputed", {
+test_that("'forecast_augment' works - normal, estimated has imputed, has offset", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 1000)
@@ -1727,8 +1968,11 @@ test_that("'forecast_augment' works - normal, estimated has imputed", {
                                                    dimnames_terms = dimnames_forecast)
   ans <- forecast_augment(mod = mod,
                           data_forecast = data_forecast,
-                          linpred_forecast = linpred_forecast)
-  aug_est <- augment(mod)
+                          components_forecast = components_forecast,
+                          linpred_forecast = linpred_forecast,
+                          has_offset_forecast = TRUE,
+                          has_newdata = has_newdata)
+  aug_est <- augment(mod, quiet = TRUE)
   expect_setequal(ans$age, aug_est$age)
   expect_setequal(ans$sex, aug_est$sex)
   expect_setequal(ans$time, 2006:2008)
@@ -1738,14 +1982,87 @@ test_that("'forecast_augment' works - normal, estimated has imputed", {
 })
 
 
+test_that("'forecast_augment' works - normal, estimated has imputed, no offset", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$income <- rnorm(n = nrow(data))
+  data$income[1] <- NA
+  formula <- income ~ age + sex * time
+  mod <- mod_norm(formula = formula,
+                  data = data,
+                  weights = 1)
+  mod <- set_n_draw(mod, n = 10)
+  mod <- fit(mod)
+  components_est <- components(mod, quiet = TRUE)
+  labels_forecast <- 2006:2008
+  data_forecast <- make_data_forecast_labels(mod= mod, labels_forecast = labels_forecast)
+  set.seed(1)
+  components_forecast <- forecast_components(mod = mod,
+                                             components_est = components_est,
+                                             labels_forecast = labels_forecast)
+  components <- vctrs::vec_rbind(components_est, components_forecast)
+  dimnames_forecast <- make_dimnames_terms_forecast(dimnames_terms = mod$dimnames_terms,
+                                                    var_time = mod$var_time,
+                                                    labels_forecast = labels_forecast,
+                                                    time_only = FALSE)
+  linpred_forecast <- make_linpred_from_components(mod = mod,
+                                                   components = components,
+                                                   data = data_forecast,
+                                                   dimnames_terms = dimnames_forecast)
+  ans <- forecast_augment(mod = mod,
+                          data_forecast = data_forecast,
+                          components_forecast = components_forecast,
+                          linpred_forecast = linpred_forecast,
+                          has_offset_forecast = FALSE,
+                          has_newdata = has_newdata)
+  aug_est <- augment(mod, quiet = TRUE)
+  expect_setequal(ans$age, aug_est$age)
+  expect_setequal(ans$sex, aug_est$sex)
+  expect_setequal(ans$time, 2006:2008)
+  expect_identical(names(ans), names(aug_est))
+  expect_true(all(is.na(ans$.income)))
+  expect_true(all(is.na(ans$income)))
+})
+
+
 ## 'get_fun_ag_offset' --------------------------------------------------------
+
+test_that("'get_fun_ag_offset' works with Poisson - varying offset", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 1000)
+  data$deaths <- rbinom(n = nrow(data), size = data$popn, prob = 0.3)
+  formula <- deaths ~ age + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  f <- get_fun_ag_offset(mod)
+  ans_obtained <- f(mod$offset)
+  ans_expected <- sum(mod$offset)
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'get_fun_ag_offset' works with Poisson - offset = 1", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 1000)
+  data$deaths <- rbinom(n = nrow(data), size = data$popn, prob = 0.3)
+  formula <- deaths ~ age + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = 1)
+  f <- get_fun_ag_offset(mod)
+  ans_obtained <- f(mod$offset)
+  ans_expected <- 1
+  expect_identical(ans_obtained, ans_expected)
+})
 
 test_that("'get_fun_ag_offset' works with binom", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 1000)
   data$deaths <- rbinom(n = nrow(data), size = data$popn, prob = 0.3)
-  formula <- deaths ~ age + sex + time
+  formula <- deaths ~ age + sex
   mod <- mod_binom(formula = formula,
                    data = data,
                    size = popn)
@@ -1755,12 +2072,12 @@ test_that("'get_fun_ag_offset' works with binom", {
   expect_identical(ans_obtained, ans_expected)
 })
 
-test_that("'get_fun_ag_offset' works with norm", {
+test_that("'get_fun_ag_offset' works with norm, varying offset", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$wt <- rpois(n = nrow(data), lambda = 1000)
   data$income <- rnorm(n = nrow(data))
-  formula <- income ~ age + sex + time
+  formula <- income ~ age + sex
   mod <- mod_norm(formula = formula,
                   data = data,
                   weights = wt)
@@ -1768,6 +2085,21 @@ test_that("'get_fun_ag_offset' works with norm", {
   ans_obtained <- f(mod$offset)
   n <- length(mod$offset)
   ans_expected <- (n^2) / sum(1 / mod$offset)
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'get_fun_ag_offset' works with norm, offset = 1", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$income <- rnorm(n = nrow(data))
+  formula <- income ~ age + sex
+  mod <- mod_norm(formula = formula,
+                  data = data,
+                  weights = 1)
+  f <- get_fun_ag_offset(mod)
+  ans_obtained <- f(mod$offset)
+  n <- length(mod$offset)
+  ans_expected <- (n^2) / n
   expect_identical(ans_obtained, ans_expected)
 })
 
@@ -1816,17 +2148,58 @@ test_that("'get_fun_inv_transform' works with valid inputs", {
 })
 
 
-## 'get_fun_scale_linpred' --------------------------------------------------------
+## 'get_fun_orig_scale_disp' --------------------------------------------------
 
-test_that("'get_fun_scale_linpred' works with valid inputs", {
-    expect_equal(get_fun_scale_linpred(structure(list(outcome_mean = 3, outcome_sd = 2),
-                                                 class = c("bage_mod_norm", "bage_mod")))(1), 5)
+test_that("'get_fun_orig_scale_disp' works with valid inputs", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"),
+                      KEEP.OUT.ATTRS = FALSE)
+  data$income <- rnorm(n = nrow(data))
+  data$wt <- runif(n = nrow(data))
+  formula <- income ~ age + sex + time
+  mod <- mod_norm(formula = formula,
+                  data = data,
+                  weights = wt)
+  f <- get_fun_orig_scale_disp(mod)
+  x <- runif(1)
+  ans_obtained <- f(x)
+  ans_expected <- x * sd(data$income) * sqrt(mean(data$wt))
+  expect_equal(ans_obtained, ans_expected)
 })
 
 
-## 'get_nm_offset_data' -----------------------------------------------------------
+## 'get_fun_orig_scale_linpred' -----------------------------------------------
 
-test_that("'get_nm_offset_data' works with 'bage_mod_pois'", {
+test_that("'get_fun_orig_scale_linpred' works with valid inputs", {
+  expect_equal(get_fun_orig_scale_linpred(
+    structure(list(outcome_mean = 3, outcome_sd = 2),
+              class = c("bage_mod_norm", "bage_mod")))(1), 5)
+})
+
+
+## 'get_fun_orig_scale_offset' ------------------------------------------------
+
+test_that("'get_fun_orig_scale_offset' works with valid inputs", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"),
+                      KEEP.OUT.ATTRS = FALSE)
+  data$income <- rnorm(n = nrow(data))
+  data$wt <- runif(n = nrow(data))
+  formula <- income ~ age + sex + time
+  mod <- mod_norm(formula = formula,
+                  data = data,
+                  weights = wt)
+  f <- get_fun_orig_scale_offset(mod)
+  x <- runif(n = nrow(data))
+  ans_obtained <- f(x)
+  ans_expected <- x * mean(data$wt)
+  expect_equal(ans_obtained, ans_expected)
+})
+
+
+## 'get_nm_offset_data' -------------------------------------------------------
+
+test_that("'get_nm_offset_data' works with 'bage_mod_pois' - variable name", {
   set.seed(0)
   n_sim <- 10
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
@@ -1840,7 +2213,7 @@ test_that("'get_nm_offset_data' works with 'bage_mod_pois'", {
 })
 
 
-## 'get_nm_offset_mod' -----------------------------------------------------------
+## 'get_nm_offset_mod' --------------------------------------------------------
 
 test_that("'get_nm_offset_mod' works with 'bage_mod_pois'", {
   set.seed(0)
@@ -1882,7 +2255,7 @@ test_that("'get_nm_offset_mod' works with 'bage_mod_norm'", {
 })
 
 
-## 'get_nm_outcome_data' -----------------------------------------------------------
+## 'get_nm_outcome_data' ------------------------------------------------------
 
 test_that("'get_nm_outcome_data' works with 'bage_mod_pois'", {
   set.seed(0)
@@ -1898,21 +2271,18 @@ test_that("'get_nm_outcome_data' works with 'bage_mod_pois'", {
 })
 
 
-## 'get_nm_outcome_obs' -------------------------------------------------------
+## 'has_confidential' ---------------------------------------------------------
 
-test_that("'get_nm_outcome_obs' works with 'bage_mod_pois'", {
-  set.seed(0)
-  n_sim <- 10
-  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
-  data$deaths <- 3 * rpois(n = nrow(data), lambda = 10)
-  data$popn <- rpois(n = nrow(data), lambda = 30)
-  formula <- deaths ~ age + sex + time
-  mod <- mod_pois(formula = formula,
-                  data = data,
-                  exposure = popn)
-  expect_identical(get_nm_outcome_obs(mod), "deaths")
-  mod <- set_datamod_outcome_rr3(mod)
-  expect_identical(get_nm_outcome_obs(mod), ".deaths")
+test_that("'has_confidential' works with valid inputs", {
+    data <- data.frame(deaths = 1:10 * 3,
+                       time = 2001:2010,
+                       income = rnorm(10))
+    mod <- mod_pois(deaths ~ time,
+                    data = data,
+                    exposure = 1)
+    expect_false(has_confidential(mod))
+    mod <- set_confidential_rr3(mod)
+    expect_true(has_confidential(mod))
 })
 
 
@@ -1931,6 +2301,72 @@ test_that("'has_covariates' works with valid inputs", {
 })
 
 
+## 'has_datamod' --------------------------------------------------------------
+
+test_that("'has_datamod' works with valid inputs", {
+    data <- data.frame(deaths = 1:10 * 3,
+                       time = 2001:2010,
+                       income = rnorm(10))
+    mod <- mod_pois(deaths ~ time,
+                    data = data,
+                    exposure = 1)
+    expect_false(has_datamod(mod))
+    mod <- mod |>
+      set_datamod_undercount(prob = data.frame(mean = 0.9, disp = 0.2))
+    expect_true(has_datamod(mod))
+})
+
+
+## 'has_datamod_outcome' ------------------------------------------------------
+
+test_that("'has_datamod_outcome' works with valid inputs", {
+    data <- data.frame(deaths = 1:10 * 3,
+                       time = 2001:2010,
+                       popn = rep(100, 10),
+                       income = rnorm(10))
+    mod <- mod_pois(deaths ~ time,
+                    data = data,
+                    exposure = popn) |>
+      set_disp(mean = 0)
+    expect_false(has_datamod_outcome(mod))
+    mod <-
+      set_datamod_exposure(mod, cv = 0.1)
+    expect_true(has_datamod(mod))
+    suppressMessages(
+    mod <- set_datamod_undercount(mod,
+                                  prob = data.frame(mean = 0.9, disp = 0.2))
+    )
+    expect_true(has_datamod(mod))
+})
+
+
+## 'has_datamod_param' --------------------------------------------------------
+
+test_that("'has_datamod_param' works with Poisson", {
+  data <- data.frame(deaths = 1:10 * 3,
+                     time = 2001:2010)
+  mod <- mod_pois(deaths ~ time,
+                  data = data,
+                  exposure = 1)
+  expect_false(has_datamod_param(mod))
+  mod <- mod |>
+    set_datamod_overcount(rate = data.frame(mean = 0.1, disp = 0.2))
+  expect_true(has_datamod_param(mod))
+})
+
+test_that("'has_datamod_param' works with normal", {
+  data <- data.frame(time = 2001:2010,
+                     income = rnorm(10))
+  mod <- mod_norm(income ~ time,
+                  data = data,
+                  weights = 1)
+    expect_false(has_datamod_param(mod))
+  mod <- mod |>
+    set_datamod_noise(sd = 0.2)
+  expect_false(has_datamod_param(mod))
+})
+
+
 ## 'has_disp' -----------------------------------------------------------------
 
 test_that("'has_disp' works with valid inputs", {
@@ -1942,6 +2378,80 @@ test_that("'has_disp' works with valid inputs", {
     expect_true(has_disp(mod))
     mod <- set_disp(mod, mean = 0)
     expect_false(has_disp(mod))
+})
+
+
+## 'has_varying_offset' -------------------------------------------------------
+
+test_that("'has_varying_offset' works with Poisson, valid inputs", {
+  data <- data.frame(deaths = 1:10,
+                     popn = 21:30,
+                     time = 2001:2010)
+  mod <- mod_pois(deaths ~ time,
+                  data = data,
+                  exposure = popn)
+  expect_true(has_varying_offset(mod))
+  mod <- mod_pois(deaths ~ time,
+                  data = data,
+                  exposure = 1)
+  expect_false(has_varying_offset(mod))
+})
+
+test_that("'has_varying_offset' raises correct errors with Poisson", {
+  data <- data.frame(deaths = 1:10,
+                     popn = 21:30,
+                     time = 2001:2010)
+  mod <- mod_pois(deaths ~ time,
+                  data = data,
+                  exposure = popn)
+  mod_wrong <- mod
+  mod_wrong$offset <- NULL
+  expect_error(has_varying_offset(mod_wrong),
+               "Internal error: offset is NULL")
+  mod_wrong <- mod
+  mod_wrong$offset <- rep(NA, 10)
+  expect_error(has_varying_offset(mod_wrong),
+               "Internal error: offset all NA")
+  mod_wrong <- mod
+  mod_wrong$nm_offset_data <- NULL
+  expect_error(has_varying_offset(mod_wrong),
+               "Internal error: offset not all ones, but no nm_offset_data")
+  mod_wrong <- mod
+  mod_wrong$offset <- rep(1, 10)
+  mod_wrong$nm_offset_data <- "popn"
+  expect_error(has_varying_offset(mod_wrong),
+               "Internal error: offset all ones, but has nm_offset_data")
+})
+
+test_that("'has_varying_offset' works with binomial, valid inputs", {
+  data <- data.frame(deaths = 1:10,
+                     popn = 21:30,
+                     time = 2001:2010)
+  mod <- mod_binom(deaths ~ time,
+                  data = data,
+                  size = popn)
+  expect_true(has_varying_offset(mod))
+})
+
+test_that("'has_varying_offset' raises correct errors with Poisson", {
+  data <- data.frame(deaths = 1:10,
+                     popn = 21:30,
+                     time = 2001:2010)
+  mod <- mod_binom(deaths ~ time,
+                  data = data,
+                  size = popn)
+  mod_wrong <- mod
+  mod_wrong$offset <- NULL
+  expect_error(has_varying_offset(mod_wrong),
+               "Internal error: offset is NULL")
+  mod_wrong <- mod
+  mod_wrong$offset <- rep(NA, 10)
+  expect_error(has_varying_offset(mod_wrong),
+               "Internal error: offset all NA")
+  mod_wrong <- mod
+  mod_wrong$nm_offset_data <- NULL
+  expect_error(has_varying_offset(mod_wrong),
+               "Internal error: nm_offset_data is NULL")
 })
 
 
@@ -1959,9 +2469,367 @@ test_that("'is_fitted' works with valid inputs", {
 })
 
 
-## 'make_i_lik_mod' -----------------------------------------------------------
+## 'make_disp_obs' ------------------------------------------------------------
 
-test_that("'make_i_lik_mod' works with bage_mod_pois", {
+test_that("'make_disp_obs' works with Poisson, exposure data model", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  cv <- data.frame(time = 2000:2006, cv = 2)
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+    set_disp(mean = 0) |>
+    set_datamod_exposure(cv = cv)
+  ans_obtained <- make_disp_obs(mod = mod,
+                                components = NULL)
+  d <- get_datamod_disp(mod$datamod)
+  ans_expected <- 1 / (3 + d^{-1})
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_disp_obs' works with Poisson", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  rate <- data.frame(sex = c("F", "M"), mean = c(1.1, 1.2), disp = c(0.5, 0.3))
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+    fit()
+  ans_obtained <- make_disp_obs(mod = mod,
+                                components = NULL)
+  ans_expected <- rep(get_disp(mod), times = nrow(data))
+  expect_equal(ans_obtained, ans_expected)
+  mod <- mod |>
+    set_disp(mean = 0) |>
+    fit()
+  ans_obtained <- make_disp_obs(mod = mod,
+                                components = NULL)
+  ans_expected <- NULL
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_disp_obs' works with Poisson, overcount data model, mean_disp is 0", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  rate <- data.frame(sex = c("F", "M"), mean = c(1.1, 1.2), disp = c(0.5, 0.3))
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+    set_disp(mean = 0) |>
+    set_datamod_overcount(rate = rate)
+  ans_obtained <- make_disp_obs(mod = mod,
+                                components = NULL)
+  ans_expected <- NULL
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_disp_obs' works with binomial, undercount data model", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  prob <- data.frame(sex = c("F", "M"), mean = c(0.1, 0.2), disp = c(0.5, 0.3))
+  mod <- mod_binom(formula = formula,
+                  data = data,
+                  size = popn) |>
+    set_datamod_undercount(prob = prob) |>
+    fit()
+  ans_obtained <- make_disp_obs(mod = mod,
+                                components = NULL)
+  ans_expected <- rep(get_disp(mod), times = nrow(data))
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_disp_obs' works with binomial, mean_disp is 0", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  prob <- data.frame(sex = c("F", "M"), mean = c(0.1, 0.2), disp = c(0.5, 0.3))
+  mod <- mod_binom(formula = formula,
+                  data = data,
+                  size = popn) |>
+    set_n_draw(10) |>
+    fit()
+  ans_obtained <- make_disp_obs(mod = mod,
+                                components = NULL)
+  ans_expected <- rep(get_disp(mod), times = nrow(data))
+  expect_equal(ans_obtained, ans_expected)
+  mod <- mod |>
+    set_disp(mean = 0) |>
+    fit()
+  ans_obtained <- make_disp_obs(mod = mod,
+                                components = NULL)
+  ans_expected <- NULL
+  expect_equal(ans_obtained, ans_expected)
+})
+
+
+## 'make_expected_obs' --------------------------------------------------------
+
+test_that("'make_expected_obs' works with Poisson, no data model", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  components <- data.frame(term = c("(Intercept)", rep("datamod", 6)),
+                           component = c("(Intercept)", rep("disp", 6)),
+                           level = c("(Intercept)", 2000:2005),
+                           .fitted = rvec::runif_rvec(7, n_draw = 10))
+  expected <- rvec::runif_rvec(n = 120, n_draw = 10)
+  ans_obtained <- make_expected_obs(mod = mod,
+                                    components = components,
+                                    expected = expected)
+  ans_expected <- expected
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_expected_obs' works with Poisson, exposure data model", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  cv <- data.frame(time = 2000:2006, cv = 2)
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+    set_disp(mean = 0) |>
+    set_datamod_exposure(cv)
+  expected <- rvec::runif_rvec(n = 120, n_draw = 10)
+  ans_obtained <- make_expected_obs(mod = mod,
+                                    components = NULL,
+                                    expected = expected)
+  d <- get_datamod_disp(mod$datamod)
+  ans_expected <- ((3 + d^{-1})/(1 + d^{-1})) * expected
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_expected_obs' works with Poisson, miscount data model", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  prob <- data.frame(sex = c("F", "M"), mean = c(0.1, 0.2), disp = c(1, 3))
+  rate <- data.frame(time = 2000:2006, mean = 2, disp = c(0.5, 0.2, 0.3, 0.4, 0.2, 0.1, 0.1))
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+    set_datamod_miscount(prob = prob, rate = rate)
+  components <- data.frame(term = c("(Intercept)", rep("datamod", 8)),
+                           component = c("(Intercept)", rep(c("prob", "rate"), times = c(2, 6))),
+                           level = c("(Intercept)", c("F", "M", 2000:2005)),
+                           .fitted = rvec::runif_rvec(9, n_draw = 10))
+  expected <- rvec::runif_rvec(n = 120, n_draw = 10)
+  ans_obtained <- make_expected_obs(mod = mod,
+                                    components = components,
+                                    expected = expected)
+  p <- get_datamod_prob(mod$datamod, components)
+  r <- get_datamod_rate(mod$datamod, components)
+  ans_expected <- (p + r) * expected
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_expected_obs' works with Poisson, overcount data model", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  rate <- data.frame(time = 2000:2006, mean = 2, disp = c(0.5, 0.2, 0.3, 0.4, 0.2, 0.1, 0.1))
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+    set_datamod_overcount(rate = rate)
+  components <- data.frame(term = c("(Intercept)", rep("datamod", 6)),
+                           component = c("(Intercept)", rep("rate", times = 6)),
+                           level = c("(Intercept)", 2000:2005),
+                           .fitted = rvec::runif_rvec(7, n_draw = 10))
+  expected <- rvec::runif_rvec(n = 120, n_draw = 10)
+  ans_obtained <- make_expected_obs(mod = mod,
+                                    components = components,
+                                    expected = expected)
+  r <- get_datamod_rate(mod$datamod, components)
+  ans_expected <- (1 + r) * expected
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_expected_obs' works with Poisson throws error with invalid data model", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  rate <- data.frame(time = 2000:2006, mean = 2, disp = c(0.5, 0.2, 0.3, 0.4, 0.2, 0.1, 0.1))
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+    set_datamod_overcount(rate = rate)
+  components <- data.frame(term = c("(Intercept)", rep("datamod", 6)),
+                           component = c("(Intercept)", rep("rate", times = 6)),
+                           level = c("(Intercept)", 2000:2005),
+                           .fitted = rvec::runif_rvec(7, n_draw = 10))
+  expected <- rvec::runif_rvec(n = 120, n_draw = 10)
+  class(mod$datamod) <- "wrong"
+  expect_error(make_expected_obs(mod = mod,
+                                 components = components,
+                                 expected = expected),
+               "Internal error: Can't handle data model with class")
+})
+
+
+test_that("'make_expected_obs' works with Poisson, undercount data model", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  prob <- data.frame(sex = c("F", "M"), mean = c(0.1, 0.2), disp = c(1, 3))
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+    set_datamod_undercount(prob = prob)
+  components <- data.frame(term = c("(Intercept)", rep("datamod", 2)),
+                           component = c("(Intercept)", rep("prob", times = 2)),
+                           level = c("(Intercept)", c("F", "M")),
+                           .fitted = rvec::runif_rvec(3, n_draw = 10))
+  expected <- rvec::runif_rvec(n = 120, n_draw = 10)
+  ans_obtained <- make_expected_obs(mod = mod,
+                                    components = components,
+                                    expected = expected)
+  p <- get_datamod_prob(mod$datamod, components)
+  ans_expected <- p * expected
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_expected_obs'  with binom throws expected error with invalid data model", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- round(0.5 * data$popn)
+  formula <- deaths ~ age + time + sex
+  mean <- data.frame(sex = c("F", "M"), mean = c(0.1, 0.2))
+  sd <- data.frame(sex = c("F", "M"), sd = c(0.1, 0.2))
+  mod <- mod_binom(formula = formula,
+                   data = data,
+                   size = popn)
+  datamod <- new_bage_datamod_noise(sd_sd = 0.3,
+                                    sd_levels = "sd",
+                                    sd_matrix_outcome = Matrix::sparseMatrix(x = rep(1, 120),
+                                                                             i = seq_len(120),
+                                                                             j = rep(1, 120)),
+                                    sd_arg = sd,
+                                    nms_by = c("age", "sex"),
+                                    outcome_sd = 2)
+  mod$datamod <- datamod
+  components <- data.frame(term = c("(Intercept)", rep("datamod", 2)),
+                           component = c("(Intercept)", rep("prob", times = 2)),
+                           level = c("(Intercept)", c("F", "M")),
+                           .fitted = rvec::runif_rvec(3, n_draw = 10))
+  expected <- rvec::runif_rvec(n = 120, n_draw = 10)
+  expect_error(make_expected_obs(mod = mod,
+                                 components = components,
+                                 expected = expected),
+               "Internal error: Can't handle data model")
+})
+
+test_that("'make_expected_obs' works with binomial, no data model", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  mod <- mod_binom(formula = formula,
+                   data = data,
+                   size = popn)
+  components <- data.frame(term = c("(Intercept)", rep("datamod", 6)),
+                           component = c("(Intercept)", rep("disp", 6)),
+                           level = c("(Intercept)", 2000:2005),
+                           .fitted = rvec::runif_rvec(7, n_draw = 10))
+  expected <- rvec::runif_rvec(n = 120, n_draw = 10)
+  ans_obtained <- make_expected_obs(mod = mod,
+                                    components = components,
+                                    expected = expected)
+  ans_expected <- expected
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_expected_obs' works with Binomial, undercount data model", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  prob <- data.frame(sex = c("F", "M"), mean = c(0.1, 0.2), disp = c(1, 3))
+  mod <- mod_binom(formula = formula,
+                   data = data,
+                   size = popn) |>
+    set_datamod_undercount(prob = prob)
+  components <- data.frame(term = c("(Intercept)", rep("datamod", 2)),
+                           component = c("(Intercept)", rep("prob", times = 2)),
+                           level = c("(Intercept)", c("F", "M")),
+                           .fitted = rvec::runif_rvec(3, n_draw = 10))
+  expected <- rvec::runif_rvec(n = 120, n_draw = 10)
+  ans_obtained <- make_expected_obs(mod = mod,
+                                    components = components,
+                                    expected = expected)
+  p <- get_datamod_prob(mod$datamod, components)
+  ans_expected <- p * expected
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_expected_obs' with binomial throws expected error with invalid data model", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  mean <- data.frame(sex = c("F", "M"), mean = c(0.1, 0.2))
+  sd <- data.frame(sex = c("F", "M"), sd = c(0.1, 0.2))
+  mod <- mod_binom(formula = formula,
+                   data = data,
+                   size = popn)
+  datamod <- new_bage_datamod_noise(sd_sd = 0.3,
+                                    sd_levels = "sd",
+                                    sd_matrix_outcome = Matrix::sparseMatrix(x = rep(1, 120),
+                                                                             i = seq_len(120),
+                                                                             j = rep(1, 120)),
+                                    sd_arg = sd,
+                                    nms_by = c("age", "sex"),
+                                    outcome_sd = 2)
+  mod$datamod <- datamod
+  components <- data.frame(term = c("(Intercept)", rep("datamod", 2)),
+                           component = c("(Intercept)", rep("prob", times = 2)),
+                           level = c("(Intercept)", c("F", "M")),
+                           .fitted = rvec::runif_rvec(3, n_draw = 10))
+  expected <- rvec::runif_rvec(n = 120, n_draw = 10)
+  expect_error(make_expected_obs(mod = mod,
+                                 components = components,
+                                 expected = expected),
+               "Internal error: Can't handle data model")
+})
+
+
+
+## 'make_i_lik' ---------------------------------------------------------------
+
+test_that("'make_i_lik' works with bage_mod_pois", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -1970,30 +2838,47 @@ test_that("'make_i_lik_mod' works with bage_mod_pois", {
   mod <- mod_pois(formula = formula,
                   data = data,
                   exposure = popn)
-  expect_identical(make_i_lik_mod(mod), 303L)
-  mod0 <- set_disp(mod, mean = 0)
-  expect_identical(make_i_lik_mod(mod0), 301L)
-  expect_identical(make_i_lik_mod(set_datamod_outcome_rr3(mod)), 304L)
-  expect_identical(make_i_lik_mod(set_datamod_outcome_rr3(mod0)), 302L)
+  expect_identical(make_i_lik(mod), 100000L)
+  mod <- mod |>
+    set_datamod_overcount(rate = data.frame(mean = 0.2, disp = 3))
+  expect_identical(make_i_lik(mod), 104000L)
+  mod <- mod |>
+    set_confidential_rr3()
+  expect_identical(make_i_lik(mod), 104010L)
 })
 
-test_that("'make_i_lik_mod' works with bage_mod_binom", {
+
+## 'make_i_lik_part' ----------------------------------------------------------
+
+test_that("'make_i_lik_part' works with bage_mod_pois", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  expect_identical(make_i_lik_part(mod), 100000L)
+  mod0 <- set_disp(mod, mean = 0)
+  expect_identical(make_i_lik_part(mod0), 200000L)
+})
+
+test_that("'make_i_lik_part' works with bage_mod_binom", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 1000)
-  data$deaths <- 3 * rbinom(n = nrow(data), size = data$popn, prob = 0.02)
+  data$deaths <- rbinom(n = nrow(data), size = data$popn, prob = 0.02)
   formula <- deaths ~ age + time + sex
   mod <- mod_binom(formula = formula,
                   data = data,
                   size = popn)
-  expect_identical(make_i_lik_mod(mod), 103L)
+  expect_identical(make_i_lik_part(mod), 300000L)
   mod0 <- set_disp(mod, mean = 0)
-  expect_identical(make_i_lik_mod(mod0), 101L)
-  expect_identical(make_i_lik_mod(set_datamod_outcome_rr3(mod)), 104L)
-  expect_identical(make_i_lik_mod(set_datamod_outcome_rr3(mod0)), 102L)
+  expect_identical(make_i_lik_part(mod0), 400000L)
 })
 
-test_that("'make_i_lik_mod' works with bage_mod_norm", {
+test_that("'make_i_lik_part' works with bage_mod_norm", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$wt <- rpois(n = nrow(data), lambda = 1000)
@@ -2002,10 +2887,7 @@ test_that("'make_i_lik_mod' works with bage_mod_norm", {
   mod <- mod_norm(formula = formula,
                   data = data,
                   weights = wt)
-  expect_identical(make_i_lik_mod(mod), 201L)
-  mod$datamod_outcome <- "wrong"
-  expect_error(make_i_lik_mod(mod),
-               "Internal error: Invalid inputs.")
+  expect_identical(make_i_lik_part(mod), 500000L)
 })
 
 
@@ -2091,6 +2973,7 @@ test_that("'make_mod_disp' works with binom - large dataset", {
   mod$draws_effectfree  <- 1 ## to fool 'is_fitted'
   mod_disp <- make_mod_disp(mod)
   expect_true(identical(nrow(mod_disp$data), 10000L))
+  expect_identical(mod_disp$nm_offset_data, "offset_inner_outer")
 })
 
 test_that("'make_mod_disp' works with norm", {
@@ -2109,6 +2992,7 @@ test_that("'make_mod_disp' works with norm", {
   expect_equal(mod_disp$outcome, mod$outcome - mu)
   expect_true(mod_disp$mean_disp > 0)
   expect_identical(length(mod_disp$dimnames_terms), 1L)
+  expect_identical(mod_disp$nm_offset_data, "offset_inner_outer")
 })
 
 test_that("'make_mod_disp' works with norm - large dataset", {
@@ -2123,6 +3007,7 @@ test_that("'make_mod_disp' works with norm - large dataset", {
   mod$point_effectfree <- rnorm(1 + 6001 + 2)
   mod_disp <- make_mod_disp(mod)
   expect_true(identical(nrow(mod_disp$data), 10000L))
+  expect_identical(mod_disp$nm_offset_data, "offset_inner_outer")
 })
 
 
@@ -2181,6 +3066,7 @@ test_that("'make_mod_outer' works with pois", {
   mu <- exp(make_linpred_from_stored_draws(mod_inner, point = TRUE))
   expect_equal(mod_outer$offset, mod$offset * mu)
   expect_equal(mod_outer$mean_disp, 0)
+  expect_identical(mod_outer$nm_offset_data, "offset_inner_outer")
 })
 
 test_that("'make_mod_outer' works with binom", {
@@ -2202,6 +3088,7 @@ test_that("'make_mod_outer' works with binom", {
   expect_s3_class(mod_outer$priors[["age"]], "bage_prior_known")
   expect_equal(mod_outer$offset, mod$offset)
   expect_equal(mod_outer$mean_disp, 0)
+  expect_identical(mod_outer$nm_offset_data, "offset_inner_outer")
 })
 
 test_that("'make_mod_outer' works with norm", {
@@ -2223,151 +3110,53 @@ test_that("'make_mod_outer' works with norm", {
   mu <- make_linpred_from_stored_draws(mod_inner, point = TRUE)
   expect_equal(mod_outer$outcome, mod$outcome - mu)
   expect_true(mod_outer$mean_disp > 0)
+  expect_identical(mod_outer$nm_offset_data, "offset_inner_outer")
 })
 
 
-## 'make_observed' ------------------------------------------------------------
+## 'make_sd_obs' --------------------------------------------------------------
 
-test_that("'make_observed' works with bage_mod_pois", {
-    set.seed(0)
-    data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
-    data$popn <- rpois(n = nrow(data), lambda = 100)
-    data$deaths <- rpois(n = nrow(data), lambda = 10)
-    formula <- deaths ~ age + sex
-    mod <- mod_pois(formula = formula,
-                    data = data,
-                    exposure = popn)
-    ans_obtained <- make_observed(mod)
-    ans_expected <- as.double(mod$outcome / mod$offset)
-    expect_equal(ans_obtained, ans_expected)
-})
-
-test_that("'make_observed' works with bage_mod_binom", {
-    set.seed(0)
-    data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
-    data$popn <- rpois(n = nrow(data), lambda = 100)
-    data$deaths <- rbinom(n = nrow(data), size = data$popn, prob = 0.3)
-    formula <- deaths ~ age + sex
-    mod <- mod_binom(formula = formula,
-                     data = data,
-                     size = popn)
-    ans_obtained <- make_observed(mod)
-    ans_expected <- as.double(mod$outcome / mod$offset)
-    expect_equal(ans_obtained, ans_expected)
-})
-
-test_that("'make_observed' throws expected with bage_mod_norm", {
-    set.seed(0)
-    data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
-    data$popn <- rpois(n = nrow(data), lambda = 100)
-    data$deaths <- rpois(n = nrow(data), lambda = 10)
-    formula <- deaths ~ age + sex
-    mod <- mod_norm(formula = formula,
-                    data = data,
-                    weights = 1)
-    expect_error(make_observed(mod),
-                 "Internal error: `make_observed\\(\\)` called on object of class")
-})
-
-
-## 'make_par_disp' ---------------------------------------------------
-
-test_that("'make_par_disp' works with bage_mod_pois - no NAs", {
+test_that("'make_sd_obs' works with Poisson, noise data model", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+    set_disp(mean = 0) |>
+    set_datamod_noise(sd = 1)
+  ans_obtained <- make_sd_obs(mod)
+  ans_expected <- rep(1, times = nrow(data))
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_sd_obs' works with Poisson, no data model", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
   formula <- deaths ~ age + time + sex
   mod <- mod_pois(formula = formula,
                   data = data,
                   exposure = popn)
-  outcome <- data$deaths
-  meanpar <- rvec::rpois_rvec(n = 120, lambda = outcome, n_draw = 5)
-  disp <- rvec::runif_rvec(n = 1, min = 0.1, max = 0.5, n_draw = 5)
-  set.seed(0)
-  ans_obtained <- make_par_disp(mod,
-                                meanpar = meanpar,
-                                disp = disp)
-  set.seed(0)
-  ans_expected <- rvec::rgamma_rvec(n = length(meanpar),
-                                    data$deaths + 1/disp,
-                                    data$popn + 1/(disp*meanpar))
+  ans_obtained <- make_sd_obs(mod)
+  ans_expected <- NULL
   expect_equal(ans_obtained, ans_expected)
 })
 
-test_that("'make_par_disp' works with bage_mod_pois - has NAs", {
+test_that("'make_sd_obs' works with binomial, no data model", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rpois(n = nrow(data), lambda = 10)
-  data$popn[1] <- NA
-  data$deaths[2] <- NA
+  data$deaths <- round(0.5 * data$popn)
   formula <- deaths ~ age + time + sex
-  mod <- mod_pois(formula = formula,
+  mod <- mod_binom(formula = formula,
                   data = data,
-                  exposure = popn)
-  meanpar <- rvec::rpois_rvec(n = 120, lambda = 100, n_draw = 5)
-  disp <- rvec::runif_rvec(n = 1, min = 0.1, max = 0.5, n_draw = 5)
-  set.seed(0)
-  ans_obtained <- make_par_disp(mod,
-                                meanpar = meanpar,
-                                disp = disp)
-  set.seed(0)
-  data$popn[1:2] <- 0
-  data$deaths[1:2] <- 0
-  ans_expected <- rvec::rgamma_rvec(n = length(meanpar),
-                                    data$deaths + 1/disp,
-                                    data$popn + 1/(disp*meanpar))
-  expect_equal(ans_obtained, ans_expected)
-})
-
-test_that("'make_par_disp' works with bage_mod_binom", {
-  set.seed(0)
-  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
-  data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rbinom(n = nrow(data), size = data$popn, prob = 0.3)
-  formula <- deaths ~ age + time + sex
-  mod <- mod_binom(formula = formula,
-                   data = data,
-                   size = popn)
-  meanpar <- rvec::runif_rvec(n = 120, n_draw = 5)
-  disp <- rvec::runif_rvec(n = 1, min = 0.1, max = 0.8, n_draw = 5)
-  set.seed(0)
-  ans_obtained <- make_par_disp(mod,
-                                meanpar = meanpar,
-                                disp = disp)
-  set.seed(0)
-  ans_expected <- rvec::rbeta_rvec(n = length(meanpar),
-                                   data$deaths + meanpar/disp,
-                                   data$popn - data$deaths + (1 - meanpar)/disp)
-  expect_equal(ans_obtained, ans_expected)
-})
-
-test_that("'make_par_disp' works with bage_mod_binom - has NAs", {
-  set.seed(0)
-  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
-  data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rbinom(n = nrow(data), size = data$popn, prob = 0.3)
-  data$popn[1] <- NA
-  data$deaths[2] <- NA
-  formula <- deaths ~ age + time + sex
-  mod <- mod_binom(formula = formula,
-                   data = data,
-                   size = popn)
-  outcome <- data$deaths
-  offset <- data$popn
-  meanpar <- rvec::runif_rvec(n = 120, n_draw = 5)
-  disp <- rvec::runif_rvec(n = 1, min = 0.1, max = 0.8, n_draw = 5)
-  set.seed(0)
-  ans_obtained <- make_par_disp(mod,
-                                meanpar = meanpar,
-                                disp = disp)
-  set.seed(0)
-  data$popn[1:2] <- 0
-  data$deaths[1:2] <- 0
-  ans_expected <- rvec::rbeta_rvec(n = length(meanpar),
-                                   data$deaths + meanpar/disp,
-                                   data$popn - data$deaths + (1 - meanpar)/disp)
+                  size = popn)
+  ans_obtained <- make_sd_obs(mod)
+  ans_expected <- NULL
   expect_equal(ans_obtained, ans_expected)
 })
 
@@ -2378,6 +3167,24 @@ test_that("'model_descr' works with valid inputs", {
     expect_identical(model_descr(structure(1, class = "bage_mod_pois")), "Poisson")
     expect_identical(model_descr(structure(1, class = "bage_mod_binom")), "binomial")
     expect_identical(model_descr(structure(1, class = "bage_mod_norm")), "normal")
+})
+
+
+## 'n_draw' -------------------------------------------------------------------
+
+test_that("'n_draw' works with mod_pois", {
+    set.seed(0)
+    data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+    data$popn <- rpois(n = nrow(data), lambda = 100)
+    data$deaths <- 3 * rpois(n = nrow(data), lambda = 0.4 * data$popn)
+    data$income <- rnorm(n = nrow(data))
+    formula <- deaths ~ age + sex + time
+    mod <- mod_pois(formula = formula,
+                    data = data,
+                    exposure = popn)
+    expect_identical(n_draw(mod), 1000L)
+    mod <- set_n_draw(mod, n_draw = 10)
+    expect_identical(n_draw(mod), 10L)
 })
 
 
@@ -2402,13 +3209,13 @@ test_that("'print' works with mod_pois", {
     mod <- mod_pois(formula = formula,
                     data = data,
                     exposure = popn) |>
-      set_datamod_outcome_rr3() |>
-      set_covariates(~ income)
+      set_confidential_rr3() |>
+      set_covariates(~ income) |>
+      set_datamod_undercount(prob = data.frame(mean = 0.9, disp = 0.2))
     expect_snapshot(print(mod))
     ## don't use snapshot, since printed option includes timings, which can change
-    capture.output(print(fit(mod)), file = NULL) 
+    capture.output(print(fit(mod)), file = NULL)
 })
-
 
 test_that("'print' works with mod_pois - inner-outer fitting method", {
     set.seed(0)
@@ -2430,7 +3237,7 @@ test_that("'print' works with mod_pois - inner-outer fitting method", {
 
 ## 'replicate_data' -----------------------------------------------------------
 
-test_that("'replicate_data' works with mod_pois", {
+test_that("'replicate_data' works with mod_pois - has disp", {
     set.seed(0)
     data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
     data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -2439,6 +3246,30 @@ test_that("'replicate_data' works with mod_pois", {
     mod <- mod_pois(formula = formula,
                     data = data,
                     exposure = popn)
+    mod <- fit(mod)
+    set.seed(1)
+    ans <- replicate_data(mod)
+    expect_identical(names(ans), c(".replicate", names(data)))
+    expect_identical(nrow(ans), nrow(data) * 20L)
+    tab <- tapply(ans$deaths, ans$.replicate, sd)
+    expect_true(var(tab) > 0)
+    ans_fit <- replicate_data(mod, condition_on = "fitted")
+    expect_equal(mean(ans_fit$deaths), mean(ans$deaths), tolerance = 0.01)
+    set.seed(1)
+    ans2 <- replicate_data(mod, condition_on = "expected")
+    expect_equal(ans, ans2)
+})
+
+test_that("'replicate_data' works with mod_pois - no disp", {
+    set.seed(0)
+    data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+    data$popn <- rpois(n = nrow(data), lambda = 100)
+    data$deaths <- rpois(n = nrow(data), lambda = 0.4 * data$popn)
+    formula <- deaths ~ age + sex + time
+    mod <- mod_pois(formula = formula,
+                    data = data,
+                    exposure = popn) |>
+      set_disp(mean = 0)
     mod <- fit(mod)
     ans <- replicate_data(mod)
     expect_identical(names(ans), c(".replicate", names(data)))
@@ -2449,7 +3280,7 @@ test_that("'replicate_data' works with mod_pois", {
     expect_equal(mean(ans_fit$deaths), mean(ans$deaths), tolerance = 0.01)
 })
 
-test_that("'replicate_data' works with mod_pois, rr3 data model", {
+test_that("'replicate_data' works with mod_pois, rr3 confidential", {
     set.seed(10)
     data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
     data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -2458,7 +3289,7 @@ test_that("'replicate_data' works with mod_pois, rr3 data model", {
     mod <- mod_pois(formula = formula,
                     data = data,
                     exposure = popn)
-    mod <- set_datamod_outcome_rr3(mod)
+    mod <- set_confidential_rr3(mod)
     mod <- fit(mod)
     ans <- replicate_data(mod)
     expect_identical(names(ans), c(".replicate", names(data)))
@@ -2470,7 +3301,51 @@ test_that("'replicate_data' works with mod_pois, rr3 data model", {
     expect_true(all(ans_fit$deaths %% 3 == 0))
 })
 
-test_that("'replicate_data' works with mod_binom", {
+test_that("'replicate_data' works with mod_pois, exposure datamodel", {
+  set.seed(10)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- 3 * rpois(n = nrow(data), lambda = 0.1 * data$popn)
+  formula <- deaths ~ age + sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+    set_disp(mean = 0) |>
+    set_datamod_exposure(cv = 0.02) |>
+    fit()
+  ans <- replicate_data(mod)
+  expect_identical(names(ans), c(".replicate", names(data)))
+  expect_identical(nrow(ans), nrow(data) * 20L)
+  tab <- tapply(ans$deaths, ans$.replicate, sd)
+  expect_true(var(tab) > 0)
+  ans_fit <- replicate_data(mod, condition_on = "fitted")
+  expect_equal(mean(ans_fit$deaths), mean(ans$deaths), tolerance = 0.02)
+})
+
+
+test_that("'replicate_data' works with mod_pois, noise datamodel", {
+  set.seed(10)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- 3 * rpois(n = nrow(data), lambda = 0.1 * data$popn)
+  formula <- deaths ~ age + sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+    set_disp(mean = 0) |>
+    set_datamod_noise(sd = 2) |>
+    fit()
+  ans <- replicate_data(mod)
+  expect_identical(names(ans), c(".replicate", names(data)))
+  expect_identical(nrow(ans), nrow(data) * 20L)
+  tab <- tapply(ans$deaths, ans$.replicate, sd)
+  expect_true(var(tab) > 0)
+  ans_fit <- replicate_data(mod, condition_on = "fitted")
+  expect_equal(mean(ans_fit$deaths), mean(ans$deaths), tolerance = 0.02)
+})
+
+
+test_that("'replicate_data' works with mod_binom - has disp", {
     set.seed(0)
     data <- expand.grid(age = 0:29, time = 2000:2002, sex = c("F", "M"))
     data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -2480,6 +3355,7 @@ test_that("'replicate_data' works with mod_binom", {
                     data = data,
                     size = popn)
     mod <- fit(mod)
+    set.seed(1)
     ans <- replicate_data(mod)
     expect_identical(names(ans), c(".replicate", names(data)))
     expect_identical(nrow(ans), nrow(data) * 20L)
@@ -2487,9 +3363,30 @@ test_that("'replicate_data' works with mod_binom", {
     expect_true(var(tab) > 0)
     ans_fit <- replicate_data(mod, condition_on = "fitted")
     expect_equal(mean(ans_fit$deaths), mean(ans$deaths), tolerance = 0.01)
+    set.seed(1)
+    ans2 <- replicate_data(mod, condition_on = "expected")
+    expect_equal(ans, ans2)
 })
 
-test_that("'replicate_data' works with mod_binom, rr3 data model", {
+test_that("'replicate_data' works with mod_binom - no disp", {
+    set.seed(0)
+    data <- expand.grid(age = 0:29, time = 2000:2002, sex = c("F", "M"))
+    data$popn <- rpois(n = nrow(data), lambda = 100)
+    data$deaths <- rbinom(n = nrow(data), size = data$popn, prob = 0.3)
+    formula <- deaths ~ age + sex + time
+    mod <- mod_binom(formula = formula,
+                    data = data,
+                    size = popn) |>
+      set_disp(mean = 0)
+    mod <- fit(mod)
+    ans <- replicate_data(mod)
+    expect_identical(names(ans), c(".replicate", names(data)))
+    expect_identical(nrow(ans), nrow(data) * 20L)
+    tab <- tapply(ans$deaths, ans$.replicate, mean)
+    expect_true(var(tab) > 0)
+})
+
+test_that("'replicate_data' works with mod_binom, rr3 ", {
     set.seed(0)
     data <- expand.grid(age = 0:29, time = 2000:2002, sex = c("F", "M"))
     data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -2498,7 +3395,49 @@ test_that("'replicate_data' works with mod_binom, rr3 data model", {
     mod <- mod_binom(formula = formula,
                     data = data,
                     size = popn)
-    mod <- set_datamod_outcome_rr3(mod)
+    mod <- set_confidential_rr3(mod)
+    mod <- fit(mod)
+    ans <- replicate_data(mod)
+    expect_identical(names(ans), c(".replicate", names(data)))
+    expect_identical(nrow(ans), nrow(data) * 20L)
+    tab <- tapply(ans$deaths, ans$.replicate, mean)
+    expect_true(var(tab) > 0)
+    ans_fit <- replicate_data(mod, condition_on = "fitted")
+    expect_equal(mean(ans_fit$deaths), mean(ans$deaths), tolerance = 0.03)
+    expect_true(all(ans_fit$deaths %% 3 == 0))
+})
+
+test_that("'replicate_data' works with mod_binom, undercount data model ", {
+    set.seed(0)
+    data <- expand.grid(age = 0:29, time = 2000:2002, sex = c("F", "M"))
+    data$popn <- rpois(n = nrow(data), lambda = 100)
+    data$deaths <- rbinom(n = nrow(data), size = data$popn, prob = 0.3)
+    formula <- deaths ~ age + sex + time
+    mod <- mod_binom(formula = formula,
+                    data = data,
+                    size = popn) |>
+      set_datamod_undercount(prob = data.frame(mean = 0.9, disp = 0.001)) |>
+      fit()
+    ans <- replicate_data(mod)
+    expect_identical(names(ans), c(".replicate", names(data)))
+    expect_identical(nrow(ans), nrow(data) * 20L)
+    tab <- tapply(ans$deaths, ans$.replicate, mean)
+    expect_true(var(tab) > 0)
+    ans_fit <- replicate_data(mod, condition_on = "fitted")
+    expect_equal(mean(ans_fit$deaths), mean(ans$deaths), tolerance = 0.03)
+})
+
+test_that("'replicate_data' works with mod_binom, rr3, disp 0", {
+    set.seed(0)
+    data <- expand.grid(age = 0:29, time = 2000:2002, sex = c("F", "M"))
+    data$popn <- rpois(n = nrow(data), lambda = 100)
+    data$deaths <- 3 * rbinom(n = nrow(data), size = data$popn, prob = 0.1)
+    formula <- deaths ~ age + sex + time
+    mod <- mod_binom(formula = formula,
+                    data = data,
+                    size = popn)
+    mod <- set_disp(mod, mean = 0)
+    mod <- set_confidential_rr3(mod)
     mod <- fit(mod)
     ans <- replicate_data(mod)
     expect_identical(names(ans), c(".replicate", names(data)))
@@ -2513,8 +3452,8 @@ test_that("'replicate_data' works with mod_binom, rr3 data model", {
 test_that("'replicate_data' works with mod_norm", {
     set.seed(0)
     data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
-    data$income <- rnorm(n = nrow(data), mean = 10, sd = 0.5)
-    data$w <- runif(n = nrow(data), min = 1, max = 1000)
+    data$income <- rnorm(n = nrow(data), mean = 100, sd = 2)
+    data$w <- runif(n = nrow(data), min = 500, max = 1000)
     formula <- income ~ age + sex + time
     mod <- mod_norm(formula = formula,
                     data = data,
@@ -2537,6 +3476,38 @@ test_that("'replicate_data' works with mod_norm", {
     expect_warning(replicate_data(mod, condition_on = "expected"),
                    "Ignoring value for `condition_on`.")
 })
+
+test_that("'replicate_data' works with mod_norm, noise data model", {
+    set.seed(0)
+    data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+    data$income <- rnorm(n = nrow(data), mean = 100, sd = 2)
+    data$w <- runif(n = nrow(data), min = 500, max = 1000)
+    formula <- income ~ age + sex + time
+    mod <- mod_norm(formula = formula,
+                    data = data,
+                    weights = w)
+    mod <- set_prior(mod, age ~ N())
+    mod <- set_prior(mod, time ~ N())
+    mod <- set_datamod_noise(mod, sd = 2)
+    mod <- fit(mod)
+    ans <- replicate_data(mod)
+    expect_identical(names(ans), c(".replicate", names(data)))
+    expect_identical(nrow(ans), nrow(data) * 20L)
+    expect_equal(ans$income[ans$.replicate == "Original"], data$income)
+    expect_equal(mean(ans$income[ans$.replicate == "Original"]),
+                 mean(ans$income[ans$.replicate == "Replicate 1"]),
+                 tolerance = 0.1)
+    expect_equal(mad(ans$income[ans$.replicate == "Original"]),
+                 mad(ans$income[ans$.replicate == "Replicate 1"]),
+                 tolerance = 0.2)
+    tab <- tapply(ans$income, ans$.replicate, mean)
+    expect_false(any(duplicated(tab)))
+    expect_warning(replicate_data(mod, condition_on = "expected"),
+                   "Ignoring value for `condition_on`.")
+})
+
+
+
 
 
 ## 'tidy' ---------------------------------------------------------------------

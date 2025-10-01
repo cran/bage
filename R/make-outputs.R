@@ -119,12 +119,6 @@ con_by_fitted <- function(prior,
 #'
 #' @noRd
 draw_vals_components_fitted <- function(mod) {
-  data <- mod$data
-  priors <- mod$priors
-  dimnames_terms <- mod$dimnames_terms
-  var_time <- mod$var_time
-  var_age <- mod$var_age
-  var_sexgender <- mod$var_sexgender
   term <- make_term_components(mod)
   comp <- make_comp_components(mod)
   level <- make_level_components(mod)
@@ -413,6 +407,81 @@ generate_ssvd_helper <- function(ssvd,
 
 
 ## HAS_TESTS
+#' Get Values for 'disp' for a Data Model
+#'
+#' @param datamod Object of class "bage_datamod"
+#'
+#' @returns A numeric vector, the same length as 'outcome'
+#'
+#' @noRd
+get_datamod_disp <- function(datamod) {
+  disp <- datamod$disp
+  disp_matrix_outcome <- datamod$disp_matrix_outcome
+  disp <- disp_matrix_outcome %*% disp
+  disp <- as.numeric(disp)
+  disp
+}
+
+
+## HAS_TESTS
+#' Get Values for 'prob' for a Data Model
+#'
+#' @param datamod Object of class "bage_datamod"
+#' @param components Data frame with estimate of 'prob'
+#'
+#' @returns An rvec, the same length as 'outcome'
+#'
+#' @noRd
+get_datamod_prob <- function(datamod, components) {
+  prob_matrix_outcome <- datamod$prob_matrix_outcome
+  prob_matrix_outcome <- as.matrix(prob_matrix_outcome) ## remove after updating rvec
+  is_prob <- (components$term == "datamod"
+    & components$component == "prob")
+  prob <- components$.fitted[is_prob]
+  prob <- prob_matrix_outcome %*% prob
+  prob
+}
+
+
+## HAS_TESTS
+#' Get Values for 'rate' for a Data Model
+#'
+#' @param datamod Object of class "bage_datamod"
+#' @param components Data frame with estimate of 'rate'
+#'
+#' @returns An rvec, the same length as 'outcome'
+#'
+#' @noRd
+get_datamod_rate <- function(datamod, components) {
+  rate_matrix_outcome <- datamod$rate_matrix_outcome
+  rate_matrix_outcome <- as.matrix(rate_matrix_outcome) ## remove after updating rvec
+  is_rate <- (components$term == "datamod"
+    & components$component == "rate")
+  rate <- components$.fitted[is_rate]
+  rate <- rate_matrix_outcome %*% rate
+  rate
+}
+
+
+## HAS_TESTS
+#' Get Values for 'sd' for a Data Model
+#'
+#' @param datamod Object of class "bage_datamod"
+#' that has a 'sd' parameter
+#'
+#' @returns A numeric vector, the same length as 'outcome'
+#'
+#' @noRd
+get_datamod_sd <- function(datamod) {
+  sd_sd <- datamod$sd_sd
+  sd_matrix_outcome <- datamod$sd_matrix_outcome
+  sd <- sd_matrix_outcome %*% sd_sd
+  sd <- as.numeric(sd)
+  sd
+}
+
+
+## HAS_TESTS
 #' Extract Values for Dispersion
 #'
 #' Works with fitted or unfitted models
@@ -423,15 +492,19 @@ generate_ssvd_helper <- function(ssvd,
 #'
 #' @noRd
 get_disp <- function(mod) {
-  if (is_fitted(mod)) {
-    ans <- mod$draws_disp
-    ans <- matrix(ans, nrow = 1L)
-    ans <- rvec::rvec_dbl(ans)
+  if (has_disp(mod)) {
+    if (is_fitted(mod)) {
+      ans <- mod$draws_disp
+      ans <- matrix(ans, nrow = 1L)
+      ans <- rvec::rvec_dbl(ans)
+    }
+    else {
+      n_draw <- mod$n_draw
+      ans <- draw_vals_disp(mod, n_sim = n_draw)
+    }
   }
-  else {
-    n_draw <- mod$n_draw
-    ans <- draw_vals_disp(mod, n_sim = n_draw)
-  }
+  else
+    ans <- NULL
   ans
 }
 
@@ -452,6 +525,100 @@ get_term_from_est <- function(est, index_term) {
   nm_term <- unlist(nm_term, use.names = FALSE)
   ans <- nm_term[index_term]
   ans <- unique(ans)
+  ans
+}
+
+
+
+#' Impute Missing Values for True Outcome
+#'
+#' Should only be called when 'outcome'
+#' has missing values (since it converts
+#' 'outcome' to an rvec.)
+#'
+#' In "norm" case, assume that 'offset',
+#' 'expected', and 'disp' are all on the original
+#' scale.
+#'
+#' Imputation not done for cells where
+#' 'offset' is NA.
+#' 
+#' @param nm_distn Name of distribution:
+#' "pois", "binom", or "norm"
+#' @param outcome Values for true outcome,
+#' which must contain NAs. Numeric or rvec.
+#' @param offset Exposure/trials/weights.
+#' Numeric or rvec.
+#' @param expected Expected values
+#' for rate/prob/mean. An rvec.
+#' @param disp Dispersion. An rvec or NULL.
+#'
+#' @returns An rvec
+#'
+#' @noRd
+impute_outcome_true <- function(nm_distn,
+                                outcome,
+                                offset,
+                                expected,
+                                disp) {
+  n_draw <- rvec::n_draw(expected)
+  n_val <- length(expected)
+  has_disp <- !is.null(disp)
+  if (rvec::is_rvec(outcome))
+    outcome <- as.numeric(outcome)
+  else
+    outcome <- rep(outcome, times = n_draw)
+  if (rvec::is_rvec(offset))
+    offset <- as.numeric(offset)
+  else
+    offset <- rep(offset, times = n_draw)
+  expected <- as.numeric(expected)
+  if (has_disp) {
+    disp <- as.numeric(disp)
+    disp <- rep(disp, each = n_val)
+  }
+  if (!anyNA(outcome))
+    cli::cli_abort("Internal error: {.fun impute_outcome_true} called, but no missing values.")
+  is_impute <- is.na(outcome) & !is.na(offset)
+  n_impute <- sum(is_impute)
+  ans <- outcome
+  if (n_impute > 0L) {
+    if (nm_distn == "pois") {
+      if (has_disp) {
+        shape <- 1 / disp[is_impute]
+        scale <- expected[is_impute] * offset[is_impute] * disp[is_impute]
+        lambda <- stats::rgamma(n = n_impute,
+                                shape = shape,
+                                scale = scale)
+      }
+      else 
+        lambda <- expected[is_impute] * offset[is_impute]
+      ans_impute <- rpois_guarded(lambda)
+    }
+    else if (nm_distn == "binom") {
+      if (has_disp) {
+        shape1 <- expected[is_impute] / disp[is_impute]
+        shape2 <- (1 - expected[is_impute]) / disp[is_impute]
+        prob <- stats::rbeta(n = n_impute,
+                             shape1 = shape1,
+                             shape2 = shape2)
+      }
+      else
+        prob <- expected[is_impute]
+      size <- offset[is_impute]
+      ans_impute <- rbinom_guarded(size = size, prob = prob)
+    }
+    else if (nm_distn == "norm") {
+      mean <- expected[is_impute]
+      sd <- disp[is_impute] / sqrt(offset[is_impute])
+      ans_impute <- stats::rnorm(n = n_impute, mean = mean, sd = sd)
+    }
+    else
+      cli::cli_abort("Internal error: Invalid value for {.var nm_distn}.")
+    ans[is_impute] <- ans_impute
+  }
+  ans <- matrix(ans, nrow = n_val, ncol = n_draw)
+  ans <- rvec::rvec_dbl(ans)
   ans
 }
 
@@ -674,7 +841,15 @@ make_comp_components <- function(mod) {
   svd <- rep("svd", times = length(term_svd))
   covariates <- make_comp_covariates(mod)
   disp <- rep("disp", times = has_disp)
-  ans <- c(effect, hyper, hyperrand, spline, svd, covariates, disp)
+  datamod <- make_comp_datamod(mod)
+  ans <- c(effect,
+           hyper,
+           hyperrand,
+           spline,
+           svd,
+           covariates,
+           disp,
+           datamod)
   ans
 }
 
@@ -694,6 +869,24 @@ make_comp_covariates <- function(mod) {
   covariates_nms <- mod$covariates_nms
   n_covariates <- length(covariates_nms)
   rep("coef", times = n_covariates)
+}
+
+
+## HAS_TESTS
+#' Make Character Vector with Component for Data Model
+#'
+#' @param mod Object of class 'bage_mod'
+#'
+#' @returns A character vector
+#'
+#' @noRd
+make_comp_datamod <- function(mod) {
+  if (has_datamod_param(mod)) {
+    datamod <- mod$datamod
+    make_datamod_comp(datamod)
+  }
+  else
+    character()
 }
 
 
@@ -803,10 +996,47 @@ make_draws_components <- function(mod) {
     ans_disp <- get_disp(mod)
     ans <- c(ans, ans_disp)
   }
+  if (has_datamod_param(mod)) {
+    datamod <- mod$datamod
+    transform_param <- get_datamod_transform_param(datamod)
+    ans_datamod <- mod$draws_datamod_param
+    ans_datamod <- rvec::rvec_dbl(ans_datamod)
+    ans_datamod <- transform_param(ans_datamod)
+    ans <- c(ans, ans_datamod)
+  }
   ## return
   ans <- unname(ans)
   ans
 }
+
+
+## HAS_TESTS
+#' Make Draws from Datamod Parameters
+#'
+#' @param est Named list. Output from TMB.
+#' @param draws_post Posterior draws for all parameters
+#' estimated in TMB. Output from 'make_draws_post'.
+#'
+#' @returns A matrix
+#' 
+#' @noRd
+make_draws_datamod_param <- function(est, draws_post) {
+  n_effectfree <- length(est$effectfree)
+  n_hyper <- length(est$hyper)
+  n_hyperrandfree <- length(est$hyperrandfree)
+  n_disp <- length(est$log_disp)
+  n_coef_covariates <- length(est$coef_covariates)
+  n_datamod_param <- length(est$datamod_param)
+  n_from <- (n_effectfree
+    + n_hyper
+    + n_hyperrandfree
+    + n_disp
+    + n_coef_covariates
+    + 1L)
+  i_datamod_param <- seq.int(from = n_from, length.out = n_datamod_param)
+  draws_post[i_datamod_param, , drop = FALSE]
+}
+
 
 
 ## HAS_TESTS
@@ -903,24 +1133,6 @@ make_draws_hyperrandfree <- function(est, draws_post) {
 
 
 ## HAS_TESTS
-#' Construct Estimates of Effects from Estimates of Free Parameters
-#'
-#' @param mod A fitted object of class "bage_mod"
-#' @param effectfree Posterior draws for free parameters
-#'
-#' @returns A matrix
-#' 
-#' @noRd
-make_effects <- function(mod, effectfree) {
-  matrix_effectfree_effect <- make_combined_matrix_effectfree_effect(mod)
-  offset_effectfree_effect <- make_combined_offset_effectfree_effect(mod)
-  ans <- matrix_effectfree_effect %*% effectfree + offset_effectfree_effect
-  ans <- Matrix::as.matrix(ans)
-  ans
-}
-
-
-## HAS_TESTS
 #' Make Initial Draws from Posterior Distribution
 #'
 #' Make draws of variables included in 'prec'
@@ -962,6 +1174,24 @@ make_draws_post <- function(est, prec, map, n_draw) {
   ans <- matrix(NA_real_, nrow = length(is_fixed), ncol = n_draw)
   ans[!is_fixed, ] <- draws_nonfixed
   ans[is_fixed, ] <- est_unlist[is_fixed]
+  ans
+}
+
+
+## HAS_TESTS
+#' Construct Estimates of Effects from Estimates of Free Parameters
+#'
+#' @param mod A fitted object of class "bage_mod"
+#' @param effectfree Posterior draws for free parameters
+#'
+#' @returns A matrix
+#' 
+#' @noRd
+make_effects <- function(mod, effectfree) {
+  matrix_effectfree_effect <- make_combined_matrix_effectfree_effect(mod)
+  offset_effectfree_effect <- make_combined_offset_effectfree_effect(mod)
+  ans <- matrix_effectfree_effect %*% effectfree + offset_effectfree_effect
+  ans <- Matrix::as.matrix(ans)
   ans
 }
 
@@ -1411,6 +1641,11 @@ make_level_components <- function(mod) {
   }
   if (has_disp(mod))
     ans <- c(ans, "disp")
+  if (has_datamod_param(mod)) {
+    dm <- mod$datamod
+    datamod <- make_level_datamod(dm)
+    ans <- c(ans, datamod)
+  }
   ans
 }
 
@@ -1663,6 +1898,10 @@ make_lin_trend <- function(slope,
 ## HAS_TESTS
 #' Make Linear Predictor from Components
 #'
+#' Working with matrices rather than rvecs
+#' seems to reduce chance of hitting
+#' memory limits.
+#' 
 #' @param mod Object of class 'bage_mod'
 #' @param components Data frame with estimates for hyper-parameters
 #' @param data Data frame with raw data
@@ -1679,7 +1918,6 @@ make_linpred_from_components <- function(mod, components, data, dimnames_terms) 
     data[["(Intercept)"]] <- "(Intercept)"
   n_draw <- rvec::n_draw(fitted)
   ans <- matrix(0, nrow = nrow(data), ncol = n_draw)
-  ans <- rvec::rvec_dbl(ans)
   for (i_term in seq_along(dimnames_terms)) {
     dimnames_term <- dimnames_terms[[i_term]]
     nm_split <- dimnames_to_nm_split(dimnames_term)
@@ -1691,6 +1929,7 @@ make_linpred_from_components <- function(mod, components, data, dimnames_terms) 
     levels_data <- Reduce(paste_dot, data[nm_split])
     indices_term <- match(levels_data, levels_term)
     val_term_linpred <- val_term[indices_term]
+    vals_term_linpred <- as.matrix(val_term_linpred)
     ans <- ans + val_term_linpred
   }
   if (has_covariates(mod)) {
@@ -1701,9 +1940,11 @@ make_linpred_from_components <- function(mod, components, data, dimnames_terms) 
     coef_covariates <- fitted[indices_covariates]
     matrix_covariates <- make_matrix_covariates(formula = formula_covariates,
                                                 data = data)
+    coef_covariates <- as.matrix(coef_covariates)
     val_covariates_linpred <- matrix_covariates %*% coef_covariates
     ans <- ans + val_covariates_linpred
   }
+  ans <- rvec::rvec_dbl(ans)
   ans
 }
 
@@ -2024,7 +2265,8 @@ rescale_components <- function(components, mod) {
 #' - 'draws_effectfree',
 #' - 'draws_hyper',
 #' - 'draws_hyperrandfree', and, optionally,
-#' - 'draws_disp'.
+#' - 'draws_disp',
+#' - 'draws_datamod_param'
 #'
 #' Reproducibility is achieved via 'seed_components'.
 #'
@@ -2057,6 +2299,9 @@ make_stored_draws <- function(mod, est, prec, map) {
   if (has_disp(mod))
     mod$draws_disp <- make_draws_disp(est = est,
                                       draws_post = draws_post)
+  if (has_datamod_param(mod))
+    mod$draws_datamod_param <- make_draws_datamod_param(est = est,
+                                                        draws_post = draws_post)
   mod
 }
 
@@ -2068,7 +2313,8 @@ make_stored_draws <- function(mod, est, prec, map) {
 #' - 'point_effectfree',
 #' - 'point_hyper',
 #' - 'point_hyperrandfree', and, optionally,
-#' - 'point_disp'.
+#' - 'point_disp'
+#' - 'point_datamod_param'
 #'
 #' @param mod A fitted 'bage_mod' object
 #'
@@ -2087,6 +2333,8 @@ make_stored_point <- function(mod, est) {
     mod$point_coef_covariates <- est$coef_covariates
   if (has_disp(mod))
     mod$point_disp <- exp(est$log_disp)
+  if (has_datamod_param(mod))
+    mod$point_datamod_param <- est$datamod_param
   mod
 }
 
@@ -2121,6 +2369,10 @@ make_term_components <- function(mod) {
   }
   if (has_disp(mod))
     ans <- c(ans, "disp")
+  if (has_datamod_param(mod)) {
+    datamod <- make_term_datamod(mod)
+    ans <- c(ans, datamod)
+  }
   ans
 }
 
@@ -2139,6 +2391,24 @@ make_term_covariates <- function(mod) {
   covariates_nms <- mod$covariates_nms
   n_covariates <- length(covariates_nms)
   rep.int("covariates", times = n_covariates)
+}
+
+
+## HAS_TESTS
+#' Make Character Vector with Term for Data Models
+#'
+#' @param mod Object of class 'bage_mod'
+#'
+#' @returns A character vector
+#'
+#' @noRd
+make_term_datamod <- function(mod) {
+  if (!has_datamod_param(mod))
+    return(character())
+  datamod <- mod$datamod
+  comp_datamod <- make_datamod_comp(datamod)
+  n_datamod <- length(comp_datamod)
+  rep.int("datamod", times = n_datamod)
 }
 
 
@@ -2177,7 +2447,8 @@ sort_components <- function(components, mod) {
                         "trend", "season", "error",
                         "spline", "svd",
                         "disp",
-                        "hyper")
+                        "hyper",
+                        "prob", "rate")
   formula <- mod$formula
   term <- components$term
   component <- components$component
@@ -2187,7 +2458,16 @@ sort_components <- function(components, mod) {
     levels_term <- c("(Intercept)", levels_term)
   if (has_covariates(mod))
     levels_term <- c(levels_term, "covariates")
-  i_term <- match(term, levels_term)
+  if (has_disp(mod))
+    levels_term <- c(levels_term, "disp")    
+  if (has_datamod_param(mod))
+    levels_term <- c(levels_term, "datamod")
+  i_term <- match(term, levels_term, nomatch = 0L)
+  i_invalid_term <- match(0L, i_term, nomatch = 0L)
+  if (i_invalid_term > 0L) {
+    val <- components$term[[i_invalid_term]]
+    cli::cli_abort("Internal error: {.val {val}} not a valid value for {.var term}.")  ## nocov
+  }
   i_comp <- match(components$component, levels_component, nomatch = 0L)
   i_invalid_comp <- match(0L, i_comp, nomatch = 0L)
   if (i_invalid_comp > 0L) {

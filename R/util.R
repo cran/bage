@@ -1,12 +1,70 @@
 
+#' Convert Integer-ish Character Vectors
+#' in a Data Frame to Integer
+#'
+#' @param df A data frame
+#'
+#' @returns A data frame
+#'
+#' @noRd
+chr_to_int <- function(df) {
+  for (i in seq_along(df)) {
+    var <- df[[i]]
+    if (is.character(var) || is.factor(var)) {
+      if (is.factor(var))
+        var <- as.character(var)
+      var_int <- suppressWarnings(as.integer(var))
+      no_new_na <- identical(is.na(var_int), is.na(var))
+      if (no_new_na)
+        df[[i]] <- var_int
+    }
+  }
+  df
+}
+ 
+
 ## HAS_TESTS
-#' Insert a Into a Data Frame
+#' Density for Beta-Binomial Distribution
 #'
-#' Insert a variable into a dataframe, immediately
-#' after another variable.
+#' @param x Vector of quantiles
+#' @param size Vector of numbers of trials
+#' @param shape1,shape2 Beta parameters. Vectors
+#' @param log Whether to return log of density
 #'
-#' Currently assumes that not inserting
-#' at start of 'df'.
+#' @returns A numeric vector
+#'
+#' @noRd
+dbetabinom <- function(x, size, shape1, shape2, log = FALSE) {
+  args <- list(x, size, shape1, shape2)
+  n <- max(lengths(args))
+  x <- rep_len(x, n)
+  size <- rep_len(size, n)
+  shape1 <- rep_len(shape1, n)
+  shape2 <- rep_len(shape2, n)
+  is_ok <- ((x >= 0) &
+              (x <= size) &
+              (x == floor(x)) & 
+              is.finite(x) &
+              is.finite(size) &
+              is.finite(shape1) &
+              is.finite(shape2) &
+              (shape1 > 0) &
+              (shape2 > 0) &
+              (size == floor(size)) &
+              (size >= 0))
+  log_dens <- rep.int(NA_real_, times = n)
+  log_dens[is_ok] <- (lchoose(n = size[is_ok], k = x[is_ok])
+    + lbeta(a = x[is_ok] + shape1[is_ok],
+            b = size[is_ok] - x[is_ok] + shape2[is_ok])
+    - lbeta(a = shape1[is_ok],
+            b = shape2[is_ok]))
+  if (log) log_dens else exp(log_dens)
+}
+
+
+## HAS_TESTS
+#' Insert a Variable Into a Data Frame,
+#' After Another Variable
 #'
 #' @param df A data frame (including a tibble)
 #' @param nm_after Name of the variable that the
@@ -40,6 +98,41 @@ insert_after <- function(df, nm_after, x, nm_x) {
 
 
 ## HAS_TESTS
+#' Insert a Variable Into a Data Frame,
+#' Before Another Variable
+#'
+#' @param df A data frame (including a tibble)
+#' @param nm_before Name of the variable that the
+#' 'x' should come before
+#' @param x New variable
+#' @param nm_x Name of new variable
+#'
+#' @returns A modified version of 'df'
+#'
+#' @noRd
+insert_before <- function(df, nm_before, x, nm_x) {
+  nms_df <- names(df)
+  n_df <- length(nms_df)
+  i_before <- match(nm_before, names(df))
+  if (i_before > 1L) {
+    s_before <- seq_len(i_before - 1L)
+    s_after <- seq.int(from = i_before, to = n_df)
+    ans <- vctrs::vec_cbind(df[s_before],
+                            x,
+                            df[s_after],
+                            .name_repair = "universal_quiet")
+  }
+  else {
+    ans <- vctrs::vec_cbind(x,
+                            df,
+                            .name_repair = "universal_quiet")
+  }
+  names(ans)[[i_before]] <- nm_x
+  ans
+}
+
+
+## HAS_TESTS
 #' Check Whether Currently in Test or Snapshot
 #'
 #' Based on testthat::is_testing() and testthat::is_snapshot()
@@ -64,7 +157,6 @@ is_not_testing_or_snapshot <- function() {
 #' @noRd
 is_same_class <- function(x, y)
   identical(class(x)[[1L]], class(y)[[1L]])
-
 
 ## HAS_TESTS
 #' Use a precision matrix to construct scaled eigen vectors
@@ -101,6 +193,75 @@ make_scaled_eigen <- function(prec) {
 #'
 #' @noRd
 paste_dot <- function(x, y) paste(x, y, sep = ".")
+
+
+## HAS_TESTS
+#' Version of 'rpois' With Upper Limit on size * prob
+#'
+#' Binomial can have numerical problems
+#' and valgrind errors with very large size * prob, so switch
+#' to just setting random variate to size * prob, above a
+#' given threshold. Warn the user that this is happening.
+#'
+#' Assume that length(size) == length(prob)
+#' (Which may mean length(as.numeric(size))
+#'   != length(as.numeric(prob)))
+#'
+#' @param size Trials. A numeric vector
+#' or an rvec.
+#' @param prob Probability of success. A
+#' numeric vector or an rvec.
+#'
+#' @returns A numeric vector or an rvec
+#'
+#' @noRd
+rbinom_guarded <- function(size, prob) {
+  threshold <- 1e8
+  if (!identical(length(size), length(prob)))
+    cli::cli_abort("Internal error: size and prob have different lengths.")
+  is_rvec_size <- rvec::is_rvec(size)
+  is_rvec_prob <- rvec::is_rvec(prob)
+  has_rvec <- is_rvec_size || is_rvec_prob
+  if (has_rvec) {
+    if (is_rvec_size) {
+      n_val <- length(size) 
+      n_draw <- rvec::n_draw(size)
+    }
+    else {
+      n_val <- length(prob)
+      n_draw <- rvec::n_draw(prob)
+    }
+    if (is_rvec_size)
+      size <- as.numeric(size)
+    else
+      size <- rep(size, times = n_draw)
+    if (is_rvec_prob)
+      prob <- as.numeric(prob)
+    else
+      prob <- rep(prob, times = n_draw)
+  }
+  mean <- size * prob
+  is_gt <- !is.na(mean) & (mean > threshold)
+  n_gt <- sum(is_gt)
+  if (n_gt > 0L) {
+    pc <- 100 * mean(is_gt)
+    pc <- signif(pc, digits = 2)
+    cli::cli_warn(c("Large values for {.arg size} * {.arg prob} used to generate binomial variates.",
+                    i = "{.val {pc}} percent of values exceed {.val {threshold}}.",
+                    i = "Using deterministic approximation to generate variates for these values."))
+  }
+  ans <- mean
+  is_lt <- !is_gt
+  ans[is_lt] <- stats::rbinom(n = sum(is_lt),
+                              size = size[is_lt],
+                              prob = prob[is_lt])
+  
+  if (has_rvec) {
+    ans <- matrix(ans, nrow = n_val, ncol = n_draw)
+    ans <- rvec::rvec_dbl(ans)
+  }
+  ans
+}
 
 
 ## HAS_TESTS
@@ -144,22 +305,27 @@ rmvnorm_eigen <- function(n, mean, scaled_eigen) {
 
 
 ## HAS_TESTS
-#' Version of 'rpois_rvec' With Upper Limit on Lambda
+#' Version of 'nbinom' With Upper Limit on Mean
 #'
-#' Coercion from integer to real within 'rpois' can create
-#' numerical problems and valgrind errors, so switch
+#' Negative binomial can have numerical problems
+#' and valgrind errors with very large lambda, so switch
 #' to just setting random variate to lambda, above a
 #' given threshold. Warn the user that this is happening.
 #'
-#' @param n Number of variates (where each variate contains 'n_draw' values)
-#' @param lambda Expected values. An rvec.
+#' @param lambda Expected values. A numeric vector
+#' or an rvec.
 #'
-#' @returns An rvec
+#' @returns A numeric vector or an rvec
 #'
 #' @noRd
-rpois_rvec_guarded <- function(n, lambda) {
+rpois_guarded <- function(lambda) {
   threshold <- 1e8
-  lambda <- as.matrix(lambda)
+  is_rvec <- rvec::is_rvec(lambda)
+  if (is_rvec) {
+    n_val <- length(lambda)
+    n_draw <- rvec::n_draw(lambda)
+    lambda <- as.numeric(lambda)
+  }
   is_gt <- !is.na(lambda) & (lambda > threshold)
   n_gt <- sum(is_gt)
   if (n_gt > 0L) {
@@ -172,7 +338,312 @@ rpois_rvec_guarded <- function(n, lambda) {
   ans <- lambda
   is_lt <- !is_gt
   ans[is_lt] <- stats::rpois(n = sum(is_lt), lambda = lambda[is_lt])
-  ans <- rvec::rvec_dbl(ans)
+  if (is_rvec) {
+    ans <- matrix(ans, nrow = n_val, ncol = n_draw)
+    ans <- rvec::rvec_dbl(ans)
+  }
+  ans
+}
+
+
+## HAS_TESTS
+#' Version of 'rpois' With Upper Limit on Lambda
+#'
+#' Poisson can have numerical problems
+#' and valgrind errors with very large lambda, so switch
+#' to just setting random variate to lambda, above a
+#' given threshold. Warn the user that this is happening.
+#'
+#' @param lambda Expected values. A numeric vector
+#' or an rvec.
+#'
+#' @returns A numeric vector or an rvec
+#'
+#' @noRd
+rpois_guarded <- function(lambda) {
+  threshold <- 1e8
+  is_rvec <- rvec::is_rvec(lambda)
+  if (is_rvec) {
+    n_val <- length(lambda)
+    n_draw <- rvec::n_draw(lambda)
+    lambda <- as.numeric(lambda)
+  }
+  is_gt <- !is.na(lambda) & (lambda > threshold)
+  n_gt <- sum(is_gt)
+  if (n_gt > 0L) {
+    pc <- 100 * mean(is_gt)
+    pc <- signif(pc, digits = 2)
+    cli::cli_warn(c("Large values for {.arg lambda} used to generate Poisson variates.",
+                    i = "{.val {pc}} percent of values for {.arg lambda} are above {.val {threshold}}.",
+                    i = "Using deterministic approximation to generate variates for these values."))
+  }
+  ans <- lambda
+  is_lt <- !is_gt
+  ans[is_lt] <- stats::rpois(n = sum(is_lt), lambda = lambda[is_lt])
+  if (is_rvec) {
+    ans <- matrix(ans, nrow = n_val, ncol = n_draw)
+    ans <- rvec::rvec_dbl(ans)
+  }
+  ans
+}
+
+
+## HAS_TESTS
+#' Draw from Posterior Distribution of True Values
+#' Given Observed Values, for Poisson plus Symmetric Skellam
+#'
+#' @param y_obs Observed value
+#' @param lambda Expected value
+#' @param m Mu for symmetric Skellam
+#'
+#' @returns A single draw
+#'
+#' @noRd
+draw_true_given_obs_pois_skellam <- function(y_obs, lambda, m) {
+  threshold <- 50
+  window_sd <- 8L
+  p0_thresh <- 0.01
+  if ((lambda < threshold) && (m < threshold))
+    draw_true_given_obs_pois_skellam_exact(y_obs = y_obs,
+                                           lambda = lambda,
+                                           m = m,
+                                           window_sd = window_sd)
+  else
+    draw_true_given_obs_pois_skellam_approx(y_obs = y_obs,
+                                            lambda = lambda,
+                                            m = m,
+                                            window_sd = window_sd,
+                                            p0_thresh = p0_thresh)
+}
+
+
+## HAS_TESTS
+#' Draw from Posterior Distribution of True Values
+#' Given Observed Values, for Poisson plus Symmetric Skellam -
+#' approx version
+#
+# Gaussian posterior from linear-Gaussian approximation:
+#' X ~ N(lambda, lambda), U ~ N(0, 2m), Y = X + U
+#' 
+#' @param y_obs Observed value
+#' @param lambda Expected value
+#' @param m Mu for symmetric Skellam
+#' @param window_sd Width of window, in SDs
+#' @param p0_thresh If approx Pr(y_true=0) > p0_threshold, use windowing
+#'
+#' @returns A single draw
+#'
+#' @noRd
+draw_true_given_obs_pois_skellam_approx <- function(y_obs,
+                                                    lambda,
+                                                    m,
+                                                    window_sd,
+                                                    p0_thresh) {
+  mu_post  <- lambda + (lambda / (lambda + 2 * m)) * (y_obs - lambda)
+  var_post <- (lambda * 2 * m) / (lambda + 2 * m)
+  var_post <- max(var_post, .Machine$double.eps)
+  sd_post  <- sqrt(var_post)
+  ## heuristics for choosing discrete window vs truncnorm + rounding
+  near_boundary <- (mu_post < 3 * sd_post)
+  p0_approx <- stats::pnorm(0.5, mean = mu_post, sd = sd_post) -
+    stats::pnorm(-0.5, mean = mu_post, sd = sd_post)
+  p0_above_threshold <- p0_approx > p0_thresh
+  need_window <- near_boundary || p0_above_threshold
+  if (!need_window) {
+    # truncnorm + rounding
+    u <- stats::runif(n = 1L)
+    alpha <- (0 - mu_post) / sd_post
+    p0_trunc <- stats::pnorm(alpha)
+    eps <- 1e-15
+    p0_trunc <- min(max(p0_trunc, eps), 1 - eps)
+    z <- stats::qnorm(p0_trunc + (1 - p0_trunc) * u)
+    ans <- floor(mu_post + sd_post * z + 0.5)
+    ans <- max(ans, 0L)
+  }
+  else {
+    ## window around mean
+    L <- floor(mu_post - window_sd * sd_post)
+    L <- max(0L, L)
+    R <- ceiling(mu_post + window_sd * sd_post)
+    R <- max(L + 1L, R)
+    y_trues <- seq.int(from = L, to = R)
+    ## draw from within window
+    log_wt <- stats::dnorm(y_trues, mean = mu_post, sd = sd_post, log = TRUE)
+    M <- max(log_wt)
+    prob <- exp(log_wt - M)
+    is_degenerate <- !any(is.finite(prob)) || (sum(prob) == 0) 
+    if (is_degenerate)                                         
+      ans <- as.integer(round(max(0, mu_post)))                # nocov
+    else
+      ans <- sample(y_trues, size = 1L, prob = prob)
+  }
+  ans
+}
+
+
+## HAS_TESTS
+#' Draw from Posterior Distribution of True Values
+#' Given Observed Values, for Poisson plus Symmetric Skellam
+#' - Exact, Small Sample
+#'
+#' @param y_obs Observed value
+#' @param lambda Expected value
+#' @param m Mu for symmetric Skellam
+#' @param window_sd Width of window, in SDs
+#'
+#' @returns A single draw
+#'
+#' @noRd
+draw_true_given_obs_pois_skellam_exact <- function(y_obs,
+                                                   lambda,
+                                                   m,
+                                                   window_sd) {
+  ## window boundaries
+  sd_y_obs <- sqrt(lambda + 2 * m)
+  L <- floor(y_obs - window_sd * sd_y_obs)
+  L <- max(0L, L)
+  R <- max(y_obs + window_sd * sd_y_obs,
+           lambda + window_sd * sqrt(lambda + 1))
+  R <- ceiling(R)
+  R <- max(L + 1L, R)
+  y_trues <- L:R
+  ## log skellam (symmetric)
+  nu <- abs(y_obs - y_trues)
+  log_skellam <- log_skellam_safe(x = nu,
+                                  m = m,
+                                  threshold = 200L)
+  is_inf <- is.infinite(log_skellam)
+  if (any(is_inf))
+    log_skellam[is_inf] <- log_skellam_safe(x = nu[is_inf],  # nocov
+                                            m = m,           # nocov
+                                            threshold = 50L) # nocov
+  ## log pois
+  log_pois <- stats::dpois(y_trues, lambda = lambda, log = TRUE)
+  ## unnormalized log posterior weights
+  log_wt <- log_skellam + log_pois
+  ## subtract max before exponentiating
+  M <- max(log_wt)
+  prob <- exp(log_wt - M)
+  # draw single value of y_true
+  sample(y_trues, size = 1L, prob = prob)
+}
+
+
+## HAS_TESTS
+#' Skellam Density
+#'
+#' Uses approximation when numbers large.
+#'
+#' @param x Counts. Interish vector.
+#' @param mu1, mu2 Skellam parameters.
+#' Positive numeric vectors the same length as x.
+#'
+#' @returns A numeric vector
+#'
+#' @noRd
+dskellam <- function(x, mu1, mu2) {
+  thresh_small_mu <- 5.0
+  thresh_small_x  <- 30.0
+  n <- length(x)
+  ans <- rep(NA_real_, times = n)
+  is_na <- is.na(x)
+  is_mu1_zero <- mu1 == 0
+  is_mu2_zero <- mu2 == 0
+  both <- !is_na & is_mu1_zero & is_mu2_zero
+  first <- !is_na & is_mu1_zero & !is_mu2_zero
+  second <- !is_na & !is_mu1_zero & is_mu2_zero
+  neither <- !is_na & !is_mu1_zero & !is_mu2_zero
+  ans[both] <- 1
+  ans[first] <- stats::dpois(-x[first], mu2[first])
+  ans[second] <- stats::dpois(x[second], mu1[second])
+  mu_small <- (mu1 + mu2) < thresh_small_mu
+  x_small  <- abs(x) < thresh_small_x
+  use_exact <- neither & mu_small & x_small
+  use_approx <- neither & !use_exact
+  ans[use_exact] <- dskellam_exact(x = x[use_exact],
+                                   mu1 = mu1[use_exact],
+                                   mu2 = mu2[use_exact])
+  ans[use_approx] <- dskellam_approx(x = x[use_approx],
+                                     mu1 = mu1[use_approx],
+                                     mu2 = mu2[use_approx])
+  ans
+}
+
+
+## HAS_TESTS
+#' Skellam Density Calculated Via Saddle Point Approximation
+#'
+#' @param x Counts. Interish vector.
+#' @param mu1, mu2 Skellam parameters.
+#' Positive numeric vectors the same length as x.
+#'
+#' @returns A numeric vector
+#'
+#' @noRd
+dskellam_approx <- function(x, mu1, mu2) {
+  s <- (x + sqrt(x * x + 4 * mu1 * mu2)) / (2 * mu1)
+  t <- log(s)
+  s_inv <- 1 / s
+  K <- mu1 * (s - 1) + mu2 * (s_inv - 1)
+  K2 <- mu1 * s + mu2 * s_inv
+  logp <- -0.5 * log(2 * pi) - 0.5 * log(K2) + K - t * x
+  exp(logp)
+}
+
+
+## HAS_TESTS
+#' Skellam Density Calculated Via Bessel I
+#'
+#' This gives the exact density,
+#' but is slow, and has numerical
+#' problems with large numbers.
+#'
+#' @param x Counts. Interish vector.
+#' @param mu1, mu2 Skellam parameters.
+#' Positive numeric vectors the same length as x.
+#'
+#' @returns A numeric vector
+#'
+#' @noRd
+dskellam_exact <- function(x, mu1, mu2) {
+  v  <- 2 * sqrt(mu1 * mu2)
+  nu <- abs(x)
+  logp <- -(mu1 + mu2) +
+          0.5 * x * (log(mu1) - log(mu2)) +
+          log(besselI(v, nu, expon.scaled = TRUE)) + v
+  exp(logp)
+}
+
+
+#' Safe Calculation of Log Density of Symmetric Skellam
+#'
+#' @param x Values where density required
+#' @param m 'mu' parameter for symmetric skellam
+#' @param threshold Threshold for switching to
+#' approximation of besselI
+#'
+#' @returns A numeric vector
+#'
+#' @noRd
+log_skellam_safe <- function(x, m, threshold) {
+  use_bessel <- x <= threshold
+  n <- length(x)
+  if (m > 0) {
+    ans <- rep(-Inf, times = n)
+    if (any(use_bessel)) {
+      x_bessel <- x[use_bessel]
+      ans[use_bessel] <- suppressWarnings(
+        log(besselI(2 * m, nu = x_bessel, expon.scaled = TRUE))
+      )
+    }
+    if (any(!use_bessel)) {
+      x_approx <- x[!use_bessel]
+      ans[!use_bessel] <- -2 * m + x_approx * log(m) - lgamma(x_approx + 1)
+    }
+    ans[!is.finite(ans)] <- -Inf
+  }
+  else
+    ans <- ifelse(x == 0, 0, -Inf)
   ans
 }
 
@@ -190,3 +661,113 @@ rvec_to_mean <- function(data) {
   data[is_rvec] <- lapply(data[is_rvec], rvec::draws_mean)
   data
 }
+
+
+## HAS_TESTS
+#' Obtain a Draws from the Posterior
+#' of a Beta-Binomial Model with Binomial
+#' Measurement Error
+#'
+#' Obtain draws of \eqn{x | n, \mu, \xi, \pi}
+#' from the model
+#'
+#' \deqn{x \sim \text{BetaBinom}(n, \mu/\xi (1-\mu)/\xi)}
+#' \deqn{y \sim \text{Binomial}(x, \pi)}.
+#'
+#' That is, draw \eqn{x}, where
+#' deqn{p(x | n, y, mu, xi, pi) \propto \frac{(1-pi)^x B(x+mu/xi, n-x+(1-mu)/xi)}{(x-y)!(n-x)!}}
+#' for \eqn{x = y, \cdots, n}.
+#'
+#' @param n The total number of trials. Numeric vector.
+#' @param y The observed number of successes. 
+#' Vector with same length as 'n'
+#' @param mu The probability of a success.
+#' Vector with same length as 'n'
+#' @param xi Dispersion.
+#' Vector of positive reals with same length as 'n'
+#' @param pi The probability of detection.
+#' Vector of reals between 0 and 1 with same length as 'n'
+#'
+#' @returns An integer
+#'
+#' @noRd
+sample_post_binom_betabinom <- function(n, y, mu, xi, pi) {
+  stopifnot(is.numeric(n),
+            all(n >= 0, na.rm = TRUE),
+            !any(is.infinite(n), na.rm = TRUE),
+            all(round(n) == n, na.rm = TRUE))
+  stopifnot(identical(length(y), length(n)),
+            is.numeric(y),
+            all(y >= 0, na.rm = TRUE),
+            all(round(y) == y, na.rm = TRUE),
+            all(y <= n, na.rm = TRUE))
+  stopifnot(identical(length(mu), length(n)),
+            is.numeric(mu),
+            all(mu >= 0, na.rm = TRUE),
+            all(mu <= 1, na.rm = TRUE))
+  stopifnot(identical(length(xi), length(n)),
+            is.numeric(xi),
+            all(xi > 0, na.rm = TRUE))
+  stopifnot(identical(length(pi), length(n)),
+            is.numeric(pi),
+            all(pi >= 0, na.rm = TRUE),
+            all(pi <= 1, na.rm = TRUE))
+  ans <- numeric(length = length(n))
+  for (i in seq_along(ans)) {
+    ans[[i]] <- sample_post_binom_betabinom_inner(n = n[[i]],
+                                                  y = y[[i]],
+                                                  mu = mu[[i]],
+                                                  xi = xi[[i]],
+                                                  pi = pi[[i]])
+  }
+  ans
+}
+
+
+
+## HAS_TESTS
+#' Obtain a Single Draw from the Posterior
+#' of a Beta-Binomial Model with Binomial
+#' Measurement Error
+#'
+#' Obtain a single draw of \eqn{x | n, \mu, \xi, \pi}
+#' from the model
+#'
+#' \deqn{x \sim \text{BetaBinom}(n, \mu/\xi (1-\mu)/\xi)}
+#' \deqn{y \sim \text{Binomial}(x, \pi)}.
+#'
+#' That is, draw \eqn{x}, where
+#' deqn{p(x | n, y, mu, xi, pi) \propto \frac{(1-pi)^x B(x+mu/xi, n-x+(1-mu)/xi)}{(x-y)!(n-x)!}}
+#' for \eqn{x = y, \cdots, n}.
+#'
+#' @param n The total number of trials. An integer.
+#' @param y The observed number of successes. An integer.
+#' @param mu The probability of a success. A real between 0 and 1.
+#' @param xi Dispersion. A positive real.
+#' @param pi The probability of detection. A real between 0 and 1.
+#'
+#' @returns An integer
+#'
+#' @noRd
+sample_post_binom_betabinom_inner <- function(n, y, mu, xi, pi) {
+  if (is.na(n) || is.na(y) || is.na(mu) || is.na(xi) || is.na(pi))
+    return(NA_real_)
+  if (y == n)
+    return(y)
+  x <- seq.int(from = y, to = n)
+  num1 <- x * log(1 - pi)
+  num2 <- lbeta(x + mu / xi, n - x + (1 - mu) / xi)
+  den1 <- lfactorial(x - y)
+  den2 <- lfactorial(n - x)
+  log_wt <- num1 + num2 - den1 - den2
+  log_wt <- log_wt - max(log_wt)
+  wt <- exp(log_wt)
+  sample(x, size = 1L, prob = wt)
+}
+
+  
+                                              
+  
+
+
+

@@ -19,8 +19,11 @@
 #'   quote marks, eg `"population"` or `population`;
 #' - the number `1`, in which case a pure "counts" model
 #'   with no exposure, is produced; or
-#' - a formula, which is evaluated with `data` as its
-#'   environment (see below for example).
+#' - `r lifecycle::badge("deprecated")`
+#'   a formula, which is evaluated with `data` as its
+#'   environment (see below for example). This option
+#'   has been deprecated, because it makes forecasting
+#'   and measurement error models more complicated.
 #' 
 #' @section Mathematical details:
 #'
@@ -94,7 +97,7 @@
 #' - [forecast()] Forecast parameters and outcomes
 #' - [report_sim()] Check model using a simulation study
 #' - [replicate_data()] Check model using replicate data
-#' - [Mathematical Details](https://bayesiandemography.github.io/bage/articles/vig2_math.html)
+#' - [Mathematical Details](https://bayesiandemography.github.io/bage/articles/vig02_math.html)
 #'   Detailed description of models
 #'
 #' @examples
@@ -112,6 +115,13 @@
 #' mod <- mod_pois(injuries ~ age:sex + ethnicity + year,
 #'                 data = nzl_injuries,
 #'                 exposure = ~ pmax(popn, 1))
+#' ## but formulas are now deprecrated, and the
+#' ## recommended approach is to transform
+#' ## the input data outside the model:
+#' nzl_injuries$popn1 <- pmax(nzl_injuries$popn, 1)
+#' mod <- mod_pois(injuries ~ age:sex + ethnicity + year,
+#'                 data = nzl_injuries,
+#'                 exposure = popn1)
 #' @export
 mod_pois <- function(formula,
                      data,
@@ -125,11 +135,14 @@ mod_pois <- function(formula,
                         data = data,
                         nm_distn = "Poisson")
   ## process 'exposure'
+  if (!methods::hasArg(exposure))
+    cli::cli_abort("Argument {.arg exposure} is missing, with no default.")
   exposure <- deparse1(substitute(exposure))
   exposure <- gsub("^\\\"|\\\"$", "", exposure)
   is_offset_specified <- !identical(exposure, "1")
   nm_offset_data <- if (is_offset_specified) exposure else NULL
   if (is_offset_specified) {
+    check_offset_formula_not_used(nm_offset_data)
     check_offset_in_data(nm_offset_data = nm_offset_data,
                          nm_offset_mod = "exposure",
                          data = data)
@@ -182,8 +195,11 @@ mod_pois <- function(formula,
 #'
 #' - the name of a variable in `data`, with or without
 #'   quote marks, eg `"population"` or `population`; or
-#' - a formula, which is evaluated with `data` as its
-#'   environment (see below for example).
+#' - `r lifecycle::badge("deprecated")`
+#'   a formula, which is evaluated with `data` as its
+#'   environment (see below for example). This option
+#'   has been deprecated, because it makes forecasting
+#'   and measurement error models more complicated.
 #' 
 #' @section Mathematical details:
 #'
@@ -253,7 +269,7 @@ mod_pois <- function(formula,
 #' - [forecast()] Forecast parameters and outcomes
 #' - [report_sim()] Check model using simulation study
 #' - [replicate_data()] Check model using replicate data
-#' - [Mathematical Details](https://bayesiandemography.github.io/bage/articles/vig2_math.html)
+#' - [Mathematical Details](https://bayesiandemography.github.io/bage/articles/vig02_math.html)
 #'   Detailed descriptions of models
 #'
 #' @examples
@@ -265,6 +281,13 @@ mod_pois <- function(formula,
 #' mod <- mod_binom(ncases ~ agegp + tobgp + alcgp,
 #'                  data = esoph,
 #'                  size = ~ ncases + ncontrols)
+#' ## but formulas are now deprecrated, and the
+#' ## recommended approach is to transform
+#' ## the input data outside the model:
+#' esoph$total <- esoph$ncases + esoph$ncontrols
+#' mod <- mod_binom(ncases ~ agegp + tobgp + alcgp,
+#'                  data = esoph,
+#'                  size = total)
 #' @export
 mod_binom <- function(formula, data, size) {
   ## processing common to all models
@@ -276,9 +299,12 @@ mod_binom <- function(formula, data, size) {
                         data = data,
                         nm_distn = "Binomial")
   ## process 'size'
+  if (!methods::hasArg(size))
+    cli::cli_abort("Argument {.arg size} is missing, with no default.")
   size <- deparse1(substitute(size))
   size <- gsub("^\\\"|\\\"$", "", size)
   nm_offset_data <- size
+  check_offset_formula_not_used(nm_offset_data)
   check_offset_in_data(nm_offset_data = nm_offset_data,
                        nm_offset_mod = "size",
                        data = data)
@@ -343,9 +369,11 @@ mod_binom <- function(formula, data, size) {
 #' - the name of a variable in `data`, with or without
 #'   quote marks, eg `"wt"` or `wt`;
 #' - the number `1`, in which no weights are used; or
-#' - a formula, which is evaluated with `data` as its
-#'   environment (see below for example).
-#'
+#' - `r lifecycle::badge("deprecated")`
+#'   a formula, which is evaluated with `data` as its
+#'   environment (see below for example). This option
+#'   has been deprecated, because it makes forecasting
+#'   and measurement error models more complicated.
 #'
 #' @section Mathematical details:
 #'
@@ -416,7 +444,7 @@ mod_binom <- function(formula, data, size) {
 #' - [report_sim()] Check model using a simulation study
 #' - [replicate_data()] Check model using replicate data
 #'   data for a model
-#' - [Mathematical Details](https://bayesiandemography.github.io/bage/articles/vig2_math.html)
+#' - [Mathematical Details](https://bayesiandemography.github.io/bage/articles/vig02_math.html)
 #'   Detailed description of models
 #'
 #' @examples
@@ -428,6 +456,13 @@ mod_binom <- function(formula, data, size) {
 #' mod <- mod_norm(value ~ diag:age + year,
 #'                 data = nld_expenditure,
 #'                 weights = ~sqrt(value))
+#' ## but formulas are now deprecrated, and the
+#' ## recommended approach is to transform
+#' ## the input data outside the model:
+#' nld_expenditure$wt <- sqrt(nld_expenditure$value)
+#' mod <- mod_norm(value ~ diag:age + year,
+#'                 data = nld_expenditure,
+#'                 weights = wt)
 #' @export
 mod_norm <- function(formula, data, weights) {
   ## processing common to all models
@@ -435,11 +470,14 @@ mod_norm <- function(formula, data, weights) {
                      data = data,
                      n_draw = 1000L)
   ## process 'weights'
+  if (!methods::hasArg(weights))
+    cli::cli_abort("Argument {.arg weights} is missing, with no default.")
   weights <- deparse1(substitute(weights))
   weights <- gsub("^\\\"|\\\"$", "", weights)
   is_offset_specified <- !identical(weights, "1")
   nm_offset_data <- if (is_offset_specified) weights else NULL
   if (is_offset_specified) {
+    check_offset_formula_not_used(nm_offset_data)
     check_offset_in_data(nm_offset_data = nm_offset_data,
                          nm_offset_mod = "weights",
                          data = data)
@@ -498,6 +536,7 @@ mod_helper <- function(formula, data, n_draw) {
   ## check individual inputs
   check_is_formula(formula)
   check_formula_has_response(formula)
+  check_response_not_call(formula)
   check_formula_has_intercept(formula)
   check_is_dataframe(x = data, nm_x = "data")
   ## check consistency between inputs
@@ -525,7 +564,8 @@ mod_helper <- function(formula, data, n_draw) {
   list(formula = formula,
        data = data,
        outcome = outcome,
-       datamod_outcome = NULL,
+       datamod = NULL,
+       confidential = NULL,
        priors = priors,
        dimnames_terms = dimnames_terms,
        var_age = var_age,
@@ -539,13 +579,15 @@ mod_helper <- function(formula, data, n_draw) {
        draws_effectfree = NULL,
        draws_hyper = NULL,
        draws_hyperrandfree = NULL,
-       draws_coef_covariates = NULL,
        draws_disp = NULL,
+       draws_coef_covariates = NULL,
+       draws_datamod_param = NULL,
        point_effectfree = NULL,
        point_hyper = NULL,
        point_hyperrandfree = NULL,
-       point_coef_covariates = NULL,
        point_disp = NULL,
+       point_coef_covariates = NULL,
+       point_datamod_param = NULL,
        seed_components = seed_components,
        seed_augment = seed_augment,
        seed_forecast_components = seed_forecast_components,

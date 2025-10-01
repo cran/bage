@@ -1,5 +1,24 @@
 
 ## HAS_TESTS
+#' Alert User that Replacing Data Model
+#'
+#' @param datamod_new The new data model. Object of class bage_datamod.
+#' @param datamod_old The old data model. Object of class bage_datamod.
+#'
+#' @returns NULL, invisibly
+#'
+#' @noRd
+alert_replacing_existing_datamod <- function(datamod_new,
+                                             datamod_old) {
+  descr_new <- datamod_descr(datamod_new)
+  descr_old <- datamod_descr(datamod_old)
+  cli::cli_alert(paste("Replacing existing {.val {descr_old}} data model",
+                       "with new {.val {descr_new}} data model"))
+  invisible(NULL)
+}
+
+
+## HAS_TESTS
 #' Derive default prior from name and length of term
 #'
 #' @param nm_term Name of model term
@@ -86,7 +105,40 @@ dimnames_to_nm_split <- function(dimnames) {
   else
     "(Intercept)"
 }
-  
+
+
+## HAS_TESTS
+#' Raise an Error if Offset Specified Via Formula
+#'
+#' @param nm_offset_data Name of offset used in 'data', or formula
+#' @param nm_offset_mod Name of offset used in documentation
+#' @param nm_fun Name of function being called
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd
+error_offset_formula_used <- function(nm_offset_data, nm_offset_mod, nm_fun) {
+  is_formula <- !is.null(nm_offset_data) && startsWith(nm_offset_data, "~")
+  if (is_formula) {
+    if (nm_offset_mod == "exposure")
+      msg2 <- paste("In {.fun mod_pois}, please specify {nm_offset_mod} using",
+                    "the name of a variable in {.arg data}, or {.val {1}}.")
+    else if (nm_offset_mod == "size")
+      msg2 <- paste("In {.fun mod_binom}, please specify {nm_offset_mod} using",
+                    "the name of a variable in {.arg data}.")
+    else if (nm_offset_mod == "weights")
+      msg2 <- paste("In {.fun mod_norm}, please specify {nm_offset_mod} using",
+                    "the name of a variable in {.arg data}, or {.val {1}}.")
+    else
+      cli::cli_abort("Internal error: Invalid value for nm_offset_mod.")
+    cli::cli_abort(c(paste("{.fun {nm_fun}} cannot be used with models where",
+                           "{nm_offset_mod} specified using formula."),
+                     i = msg2,
+                     i = "Current specification of {nm_offset_mod}: {.code {nm_offset_data}}."))
+  }
+  invisible(TRUE)
+}
+
 
 ## HAS_TESTS
 #' Evaluate Formula to Create Offset
@@ -252,6 +304,14 @@ infer_var_time <- function(formula) {
 }
 
 
+#' Initial Value for Standard Deviation Hyperparameter
+#'
+#' @returns A double
+#'
+#' @noRd
+init_val_sd <- function() log(0.05)
+
+
 ## HAS_TESTS
 #' Test Whether Row of 'data' is Included in Likelihood
 #'
@@ -267,7 +327,6 @@ get_is_in_lik <- function(mod) {
     & get_is_in_lik_offset(mod)
     & get_is_in_lik_outcome(mod))
 }
-
 
 
 #' Test Whether Row of 'data' is Included in Likelihood
@@ -478,14 +537,67 @@ make_data_df <- function(mod) {
   ans <- mod$data
   nm_outcome_data <- get_nm_outcome_data(mod)
   nm_offset_data <- get_nm_offset_data(mod)
-  has_offset <- !is.null(nm_offset_data)
+  has_varying_offset <- has_varying_offset(mod)
   is_in_lik <- get_is_in_lik(mod)
   ans[[nm_outcome_data]] <- mod$outcome
-  if (has_offset)
+  if (has_varying_offset)
     ans[[nm_offset_data]] <- mod$offset
   ans <- ans[is_in_lik, , drop = FALSE]
   ans <- tibble::tibble(ans)
   ans
+}
+
+
+## HAS_TESTS
+#' Make the Levels Vector to be Used in a Data Model Object
+#'
+#'
+#' @param data Data frame with data from main model
+#' @param by_val Data frame with 'by' variables.
+#' @param nm_component Name of component. Used
+#' as when 'by_var' is empty.
+#'
+#' @returns A character vector
+#'
+#' @noRd
+make_datamod_levels <- function(data, by_val, nm_component) {
+  if (length(by_val) > 0L) {
+    nms <- names(by_val)
+    key_data <- Reduce(paste_dot, data[nms])
+    key_val <- Reduce(paste_dot, by_val)
+    intersect(key_val, key_data)
+  }
+  else {
+    nm_component
+  }
+}
+
+
+## HAS_TESTS
+#' Make the Measure Variable to be Used in a Data Model Object
+#'
+#' Remove values that do not map on to 'data'
+#'
+#' @param data Data frame with data from main model
+#' @param by_val Data frame with 'by' variables
+#' for measure variable for data model
+#' @param measure Numeric vector with values for
+#' measure variable.
+#'
+#' @returns A numeric vector
+#'
+#' @noRd
+make_datamod_measure <- function(data, by_val, measure) {
+  if (length(by_val) > 0L) {
+    nms <- names(by_val)
+    key_data <- Reduce(paste_dot, data[nms])
+    key_val <- Reduce(paste_dot, by_val)
+    is_keep <- key_val %in% key_data
+    measure[is_keep]
+  }
+  else {
+    measure
+  }
 }
 
 
@@ -517,6 +629,16 @@ make_dimnames_terms <- function(formula, data) {
       data_term <- data[nms_vars_term]
       data_term <- lapply(data_term, to_factor)
       dimnames <- lapply(data_term, levels)
+      lengths <- lengths(dimnames)
+      i_length_1 <- match(1L, lengths, nomatch = 0L)
+      if (i_length_1 > 0L) {
+        nm <- nms_vars_term[[i_length_1]]
+        val <- data[[nm]][[1L]]
+        cli::cli_abort(c("{.arg formula} includes variable with single value.",
+                         i = "Variable: {.var {nm}}.",
+                         i = "Value: {.val {val}}.",
+                         i = "Formula: {.code {deparse1(formula)}}."))
+      }
       ans_terms[[i_term]] <- dimnames
     }
     names(ans_terms) <- nms_terms
@@ -578,12 +700,10 @@ make_effectfree <- function(mod) {
 #'
 #' @noRd
 make_hyper <- function(mod) {
-    priors <- mod$priors
-    ans <- rep(0, times = length(priors))
-    names(ans) <- names(priors)
-    lengths <- make_lengths_hyper(mod)
-    ans <- rep(ans, times = lengths)
-    ans
+  priors <- mod$priors
+  ans <- lapply(priors, make_param_hyper)
+  ans <- unlist(ans)
+  ans
 }
 
 
@@ -1102,13 +1222,17 @@ make_offsets_effectfree_effect <- function(mod) {
 #'
 #' @noRd
 make_outcome <- function(formula, data) {
-    nm_response <- deparse1(formula[[2L]])
-    nms_data <- names(data)
-    ans <- data[[match(nm_response, nms_data)]]
-    ans <- as.double(ans)
-    check_inf(x = ans, nm_x = nm_response)
-    check_nan(x = ans, nm_x = nm_response)
-    ans
+  nm_response <- deparse1(formula[[2L]])
+  nms_data <- names(data)
+  i_response <- match(nm_response, nms_data, nomatch = 0L)
+  if (i_response == 0L)
+    cli::cli_abort(paste("Internal error: response {.val {nm_response}}",
+                         "not found in {.arg data}."))
+  ans <- data[[i_response]]
+  ans <- as.double(ans)
+  check_inf(x = ans, nm_x = nm_response)
+  check_nan(x = ans, nm_x = nm_response)
+  ans
 }
 
 
@@ -1127,13 +1251,15 @@ make_outcome_offset_matrices <- function(mod, aggregate) {
   dimnames_terms <- mod$dimnames_terms
   nm_outcome_data <- get_nm_outcome_data(mod)
   nm_offset_data <- get_nm_offset_data(mod)
-  has_offset <- !is.null(nm_offset_data)
+  has_varying_offset <- has_varying_offset(mod)
   data_df <- make_data_df(mod)
   has_covariates <- has_covariates(mod)
+  has_varying_offset <- has_varying_offset(mod)
   if (has_covariates)
     formula_covariates <- mod$formula_covariates
   if (aggregate) {
     fun_ag_outcome <- get_fun_ag_outcome(mod)
+    fun_ag_offset <- get_fun_ag_offset(mod)
     formula <- mod$formula
     vars <- all.vars(formula[-2L])
     if (has_covariates) {
@@ -1141,20 +1267,25 @@ make_outcome_offset_matrices <- function(mod, aggregate) {
       vars <- union(vars, vars_covariates)
     }
     outcome_df <- stats::aggregate(data_df[nm_outcome_data], data_df[vars], fun_ag_outcome)
-    if (has_offset) {
-      fun_ag_offset <- get_fun_ag_offset(mod)
+    outcome <- outcome_df[[nm_outcome_data]]
+    if (has_varying_offset) {
       offset_df <- stats::aggregate(data_df[nm_offset_data], data_df[vars], fun_ag_offset)
-      data_df <- merge(outcome_df, offset_df, by = vars)
+      offset <- offset_df[[nm_offset_data]]
     }
     else {
-      data_df <- outcome_df
+      ones <- rep.int(1, times = nrow(data_df))
+      offset_df <- stats::aggregate(ones, data_df[vars], fun_ag_offset)
+      offset <- offset_df[[length(offset_df)]]
     }
+    data_df <- offset_df
   }
-  outcome <- data_df[[nm_outcome_data]]
-  if (has_offset)
-    offset <- data_df[[nm_offset_data]]
-  else
-    offset <- rep(1, times = nrow(data_df))
+  else {
+    outcome <- data_df[[nm_outcome_data]]
+    if (has_varying_offset)
+      offset <- data_df[[nm_offset_data]]
+    else
+      offset <- rep.int(1, times = nrow(data_df))
+  }
   matrices_effect_outcome <- make_matrices_effect_outcome(data = data_df,
                                                           dimnames_terms = dimnames_terms)
   if (has_covariates)
