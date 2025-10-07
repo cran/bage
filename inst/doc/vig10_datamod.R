@@ -3,6 +3,7 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
 )
+set.seed(0)
 
 ## ----include = FALSE----------------------------------------------------------
 library(bage)

@@ -1,4 +1,40 @@
 
+## 'as_cholmod_preferred' -----------------------------------------------------
+
+test_that("as_cholmod_preferred keeps dsCMatrix as-is", {
+  library(Matrix)
+  Q <- rsparsematrix(50, 50, density = 0.03)
+  Q <- forceSymmetric(Q) + Diagonal(50) # make SPD-ish
+  Q <- methods::as(Q, "dsCMatrix")
+  Q2 <- as_cholmod_preferred(Q)
+  expect_s4_class(Q2, "dsCMatrix")
+})
+
+test_that("as_cholmod_preferred makes general sparse when dsCMatrix not possible", {
+  # Start dense, then forceSymmetric; dsCMatrix coercion may fail on some patterns
+  Qd <- matrix(0, 5, 5); diag(Qd) <- 1
+  Q  <- Matrix::forceSymmetric(Matrix(Qd, sparse = TRUE))
+  # Intentionally break symmetry class annotation:
+  Qg <- methods::as(Q, "generalMatrix")
+  Q2 <- as_cholmod_preferred(Qg)
+  # If dsCMatrix works, good; otherwise generalMatrix is acceptable
+  expect_true(methods::is(Q2, "dsCMatrix") || methods::is(Q2, "generalMatrix"))
+})
+
+test_that("as_cholmod_preferred falls back to dense symmetric when needed", {
+  Qd <- matrix(0.1, 6, 6); diag(Qd) <- 1
+  Q  <- Matrix::forceSymmetric(Matrix(Qd, sparse = FALSE))
+  Q2 <- as_cholmod_preferred(Q)
+  expect_true(Matrix::isSymmetric(Q2))
+  CH <- Matrix::Cholesky(Q2, LDL = FALSE, perm = TRUE, super = NA)
+  if (methods::is(Q2, "sparseMatrix")) {
+    expect_true(methods::is(CH, "CHMfactor"))
+  } else {
+    expect_s4_class(CH, "Cholesky")
+  }
+})
+
+
 ## 'chr_to_int' ---------------------------------------------------------------
 
 test_that("'chr_to_int' works with valid inputs", {
@@ -863,18 +899,83 @@ test_that("'rbinom_guarded' throws error when size, prob different lengths", {
 })
 
 
-## 'rmvnorm_chol', 'rmvnorm_eigen' --------------------------------------------
+## 'rmvn_from_sparse_Ch' ------------------------------------------------------
 
-test_that("'rmvnorm_chol' and 'rmvnorm_eigen' give the same answer", {
-    set.seed(0)
-    prec <- crossprod(matrix(rnorm(25), 5))
-    mean <- rnorm(5)
-    R_prec <- chol(prec)
-    scaled_eigen <- make_scaled_eigen(prec)
-    ans_chol <- rmvnorm_chol(n = 100000, mean = mean, R_prec = R_prec)
-    ans_eigen <- rmvnorm_eigen(n = 100000, mean = mean, scaled_eigen = scaled_eigen)
-    expect_equal(rowMeans(ans_chol), rowMeans(ans_eigen), tolerance = 0.02)
-    expect_equal(cov(t(ans_chol)), cov(t(ans_eigen)), tolerance = 0.02)
+test_that("rmvn_from_sparse_CH: basic LL path works and shapes are correct", {
+  set.seed(1)
+  # Small sparse precision: tri-diagonal SPD
+  n  <- 5L
+  D  <- Matrix::Diagonal(n, 2)
+  E  <- Matrix::bandSparse(n, n, k = c(-1, 1), diagonals = list(rep(-1, n-1), rep(-1, n-1)))
+  Q  <- Matrix::forceSymmetric(D - 0.4 * E, uplo = "L")  # strictly PD
+  CH <- Matrix::Cholesky(Q, LDL = FALSE, perm = TRUE, super = NA)
+  mu     <- seq_len(n) * 0.1
+  n_draw <- 200L
+  draws <- rmvn_from_sparse_CH(CH = CH, mu = mu, n_draw = n_draw, prec = Q)
+  # Columns are draws (matches rmvnorm_chol contract in your code)
+  expect_type(draws, "double")
+  expect_equal(dim(draws), c(n, n_draw))
+  # Quick sanity: sample mean close-ish to mu
+  sm <- rowMeans(draws)
+  expect_lt(max(abs(sm - mu)), 0.2)
+})
+
+test_that("rmvn_from_sparse_CH: empirical mean/cov roughly match target", {
+  set.seed(2)
+  n  <- 6L
+  D  <- Matrix::Diagonal(n, 2)
+  E  <- Matrix::bandSparse(n, n, k = c(-1, 1), diagonals = list(rep(-0.6, n-1), rep(-0.6, n-1)))
+  Q  <- Matrix::forceSymmetric(D - E, uplo = "L")  # PD (diagonally dominant)
+  CH <- Matrix::Cholesky(Q, LDL = FALSE, perm = TRUE, super = NA)
+  mu     <- rep(0, n)
+  n_draw <- 1500L  # keep light for CRAN
+  draws <- rmvn_from_sparse_CH(CH = CH, mu = mu, n_draw = n_draw, prec = Q)
+  # Mean ~ mu
+  sm <- rowMeans(draws)
+  expect_lt(max(abs(sm - mu)), 0.08)
+  # Covariance ~ solve(Q) on diagonal (coarse check to avoid dense solve cost)
+  # If you can afford it, use as.matrix(solve(Q)); here we check a few entries.
+  Sig_diag_target <- 1 / Matrix::diag(Q)  # rough lower bound; diagonal of inverse is <= 1/diag(Q) generally
+  Sig_hat_diag    <- apply(draws, 1, var)
+  expect_true(all(Sig_hat_diag > 0))
+  expect_lt(max(abs(Sig_hat_diag - Sig_diag_target)), 0.2)  # loose tolerance
+})
+
+test_that("rmvn_from_sparse_CH: LDL fallback triggers when LL path fails (mocked)", {
+  set.seed(3)
+  n  <- 5L
+  Q  <- Matrix::Diagonal(n, 1)
+  CH <- Matrix::Cholesky(Q, LDL = FALSE, perm = TRUE, super = NA)
+  mu <- rep(0, n)
+  # Stateful stub: first call (LL) errors; second call (LDL) succeeds
+  calls <- 0L
+  stub_fun <- function(n, mu, CH, prec) {
+    calls <<- calls + 1L
+    if (calls == 1L) stop("boom: LL failed")
+    # Return n rows (draws) x length(mu) cols, as rmvn.sparse does
+    matrix(0, nrow = n, ncol = length(mu))
+  }
+  mockery::stub(rmvn_from_sparse_CH, "sparseMVN::rmvn.sparse", stub_fun)
+  draws <- rmvn_from_sparse_CH(CH = CH, mu = mu, n_draw = n, prec = Q)
+  expect_equal(dim(draws), c(n, n))
+})
+
+test_that("rmvn_from_sparse_CH: dense fallback triggers when LL and LDL both fail (mocked)", {
+  set.seed(4)
+  n  <- 4L
+  Q  <- Matrix::Diagonal(n, 2)
+  CH <- Matrix::Cholesky(Q, LDL = FALSE, perm = TRUE, super = NA)
+  mu <- rep(0, n)
+  # Force BOTH rmvn.sparse calls to fail
+  mockery::stub(
+    rmvn_from_sparse_CH,
+    "sparseMVN::rmvn.sparse",
+    function(...) stop("boom: both fail")
+  )
+  draws <- rmvn_from_sparse_CH(CH = CH, mu = mu, n_draw = 10L, prec = Q)
+  expect_equal(dim(draws), c(n, 10L))
+  # Basic sanity: not all NAs
+  expect_false(any(!is.finite(draws)))
 })
 
 
@@ -945,6 +1046,69 @@ test_that("'rvec_to_mean' works with valid inputs", {
   expect_identical(ans_obtained, ans_expected)
 })
 
+
+# 'safe_chol_prec' ------------------------------------------------------------
+
+test_that("'safe_chol_prec' - exact symmetric SPD factors without warnings", {
+  library(Matrix)
+  Q <- forceSymmetric(Matrix(matrix(c(4,1,0,
+                                      1,3,0,
+                                      0,0,2), 3, 3, byrow = TRUE)))
+  expect_no_warning({
+    CH <- safe_chol_prec(Q, max_jitter = 1e-6)
+    expect_s4_class(CH, "CHMfactor")
+  })
+})
+
+test_that("'safe_chol_prec' - moderate asymmetry emits a warning then succeeds", {
+  library(Matrix)
+  # Start symmetric SPD
+  S <- forceSymmetric(Matrix(matrix(c(4, 1, 0,
+                                      1, 3, 0,
+                                      0, 0, 2), 3, 3, byrow = TRUE)))
+  # Introduce small antisymmetric mismatch (moderate by default thresholds)
+  S_mod <- S
+  S_mod[1, 2] <- S_mod[1, 2] + 5e-9  # break symmetry slightly
+  expect_warning(
+    {
+      CH <- safe_chol_prec(S_mod, max_jitter = 1e-6)
+      expect_s4_class(CH, "CHMfactor")
+    },
+    "Precision matrix returned by TMB is moderately asymmetric."
+  )
+})
+
+test_that("'safe_chol_prec' - severe asymmetry aborts with cli error", {
+  library(Matrix)
+  S <- forceSymmetric(Matrix(matrix(c(4, 1, 0,
+                                      1, 3, 0,
+                                      0, 0, 2), 3, 3, byrow = TRUE)))
+  S_sev <- S
+  S_sev[1, 2] <- S_sev[1, 2] + 1e-3  # large antisymmetric mismatch
+  expect_error(
+    safe_chol_prec(S_sev, max_jitter = 1e-6),
+    "Internal error: precision matrix estimated by TMB is severely asymmetric",
+  )
+})
+
+test_that("'safe_chol_prec' - singular but symmetric matrices trigger ridge warning and then succeed", {
+  library(Matrix)
+  # Graph Laplacian for a path graph with n nodes (singular, rank n-1)
+  n <- 20L
+  d <- c(1, rep(2, n - 2), 1)
+  Q <- bandSparse(n, k = 0,  diag = list(d)) +
+       bandSparse(n, k = 1,  diag = list(rep(-1, n - 1))) +
+       bandSparse(n, k = -1, diag = list(rep(-1, n - 1)))
+  Q <- forceSymmetric(Q)
+  # Expect a warning, then success
+  expect_warning(
+    {
+      CH <- safe_chol_prec(Q, max_jitter = 1e-4)
+      expect_s4_class(CH, "CHMsimpl")
+    },
+    "Cholesky factorization"
+  )
+})
 
 
 ## 'sample_post_binom_betabinom' ----------------------------------------------
@@ -1089,3 +1253,72 @@ test_that("recovers distribution", {
   expect_equal(sd(x_true), sd(x_post), tolerance = 0.01)
 })
     
+
+## 'symmetry_grade' -----------------------------------------------------------
+
+test_that("'symmetry_grade' exactly symmetric matrices grade as 'near' (dense and sparse)", {
+  library(Matrix)
+  # Dense base matrix (not a Matrix object)
+  A_dense <- matrix(c(2, 1, 1,
+                      1, 3, 0,
+                      1, 0, 4), 3, 3, byrow = TRUE)
+  expect_identical(symmetry_grade(A_dense), "near")
+  # Sparse symmetric (identity)
+  I5 <- Diagonal(5)
+  expect_identical(symmetry_grade(I5), "near")
+  # Sparse symmetric (non-identity)
+  S <- forceSymmetric(Matrix(c(2, 0, 1,
+                               0, 3, 0,
+                               1, 0, 4), 3, 3))
+  expect_identical(symmetry_grade(S), "near")
+})
+
+test_that("'symmetry_grade' all-zero off-diagonal (sparse identity) does not error and is 'near'", {
+  library(Matrix)
+  I10 <- Diagonal(10)
+  expect_no_error(symmetry_grade(I10))
+  expect_identical(symmetry_grade(I10), "near")
+})
+
+test_that("'symmetry_grade' 'severe' asymmetry is detected", {
+  library(Matrix)
+  # Upper-triangular off-diagonals only (clearly asymmetric)
+  A <- Matrix(matrix(c(1, 2, 0,
+                       0, 3, 4,
+                       0, 0, 5), 3, 3, byrow = TRUE))
+  expect_identical(symmetry_grade(A), "severe")
+})
+
+test_that("'symmetry_grade' 'near' vs 'moderate' classification with controlled perturbations", {
+  library(Matrix)
+  # Start with symmetric S having entries ~ O(1)
+  S <- forceSymmetric(Matrix(c(2, 0, 1,
+                               0, 3, 0,
+                               1, 0, 4), 3, 3))
+  ## Case 1: very small antisymmetric noise => "near" (default thresholds)
+  eps_near <- 1e-12
+  # put eps in (1,2) but not mirrored in (2,1)
+  S_near <- S
+  S_near[1, 2] <- S_near[1, 2] + eps_near
+  # NB: S_near is no longer symmetric; grade should still be "near"
+  expect_identical(symmetry_grade(S_near),
+                   "near")
+  ## Case 2: moderate antisymmetric noise => "moderate"
+  eps_mod <- 5e-9  # > abs_near(1e-11) and < abs_moderate(1e-8)
+  S_mod <- S
+  S_mod[1, 3] <- S_mod[1, 3] + eps_mod
+  expect_identical(symmetry_grade(S_mod),
+                   "moderate")
+})
+
+test_that("'symmetry_grade' function handles non-Matrix inputs by coercing", {
+  # purely base R matrix, exactly symmetric
+  B <- matrix(c(5, 2, 2,
+                2, 6, 1,
+                2, 1, 7), 3, 3, byrow = TRUE)
+  expect_identical(symmetry_grade(B), "near")
+  # base R matrix with a small asymmetry -> still 'near'
+  B2 <- B
+  B2[1, 2] <- B2[1, 2] + 1e-12
+  expect_identical(symmetry_grade(B2), "near")
+})

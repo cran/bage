@@ -6,6 +6,7 @@ knitr::opts_chunk$set(
   fig.height = 4,
   message = FALSE
 )
+set.seed(0)
 
 ## ----setup--------------------------------------------------------------------
 library(bage)

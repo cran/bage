@@ -457,17 +457,17 @@ where</p>
 <span id="cb3-31"><a href="#cb3-31" tabindex="-1"></a><span class="co">#&gt;    1000     time     age    nlminb</span></span>
 <span id="cb3-32"><a href="#cb3-32" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb3-33"><a href="#cb3-33" tabindex="-1"></a><span class="co">#&gt;  time_total time_max time_draw iter converged                    message</span></span>
-<span id="cb3-34"><a href="#cb3-34" tabindex="-1"></a><span class="co">#&gt;        1.88     1.32      0.51   36      TRUE   relative convergence (4)</span></span></code></pre></div>
+<span id="cb3-34"><a href="#cb3-34" tabindex="-1"></a><span class="co">#&gt;        2.00     1.40      0.55   36      TRUE   relative convergence (4)</span></span></code></pre></div>
 <p>To obtain estimates of the coefficients (ie estimates of the <span class="math inline">\(\zeta_p\)</span>) we call function <code>components()</code> and filter out rows for the <code>&quot;covariates&quot;</code> term.</p>
 <div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a>mod_gdp_dens <span class="sc">|&gt;</span></span>
 <span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>  <span class="fu">components</span>() <span class="sc">|&gt;</span></span>
 <span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>  <span class="fu">filter</span>(term <span class="sc">==</span> <span class="st">&quot;covariates&quot;</span>)</span>
 <span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a><span class="co">#&gt; # A tibble: 3 × 4</span></span>
-<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a><span class="co">#&gt;   term       component level                       .fitted</span></span>
-<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;      &lt;chr&gt;     &lt;chr&gt;                  &lt;rdbl&lt;1000&gt;&gt;</span></span>
-<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a><span class="co">#&gt; 1 covariates coef      gdp_pc_2023     0.005 (-0.68, 0.66)</span></span>
-<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a><span class="co">#&gt; 2 covariates coef      dens_2020Low       -0.5 (-1.8, 0.8)</span></span>
-<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a><span class="co">#&gt; 3 covariates coef      dens_2020Medium  -0.75 (-2.1, 0.65)</span></span></code></pre></div>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a><span class="co">#&gt;   term       component level                        .fitted</span></span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;      &lt;chr&gt;     &lt;chr&gt;                   &lt;rdbl&lt;1000&gt;&gt;</span></span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a><span class="co">#&gt; 1 covariates coef      gdp_pc_2023     -0.016 (-0.68, 0.72)</span></span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a><span class="co">#&gt; 2 covariates coef      dens_2020Low       -0.5 (-1.8, 0.78)</span></span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a><span class="co">#&gt; 3 covariates coef      dens_2020Medium     -0.72 (-2, 0.67)</span></span></code></pre></div>
 </div>
 <div id="covariates-that-allow-for-unusual-subsets" class="section level2" number="3.3">
 <h2><span class="header-section-number">3.3</span> Covariates that allow for unusual subsets</h2>
@@ -489,7 +489,7 @@ where</p>
 <span id="cb5-15"><a href="#cb5-15" tabindex="-1"></a><span class="co">#&gt; # A tibble: 1 × 4</span></span>
 <span id="cb5-16"><a href="#cb5-16" tabindex="-1"></a><span class="co">#&gt;   term       component level                           .fitted</span></span>
 <span id="cb5-17"><a href="#cb5-17" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;      &lt;chr&gt;     &lt;chr&gt;                      &lt;rdbl&lt;1000&gt;&gt;</span></span>
-<span id="cb5-18"><a href="#cb5-18" tabindex="-1"></a><span class="co">#&gt; 1 covariates coef      is_dragon_yearTRUE 0.059 (-0.047, 0.18)</span></span></code></pre></div>
+<span id="cb5-18"><a href="#cb5-18" tabindex="-1"></a><span class="co">#&gt; 1 covariates coef      is_dragon_yearTRUE 0.064 (-0.046, 0.18)</span></span></code></pre></div>
 <p>There is some evidence for extra births, though there is substantial uncertainty about the size of the effect.</p>
 <p>Next we expand the model to allow the dragon-year effect to differ across age groups. We create a variable that takes the values <code>&quot;baseline&quot;</code> in all years, except in dragon years, when it takes the name of the age group. We turn this variable into a factor with <code>&quot;baseline&quot;</code> as its first level.</p>
 <div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>births <span class="ot">&lt;-</span> births <span class="sc">|&gt;</span></span>
@@ -547,7 +547,7 @@ where</p>
 <span id="cb7-31"><a href="#cb7-31" tabindex="-1"></a><span class="co">#&gt;    1000     time     age    nlminb</span></span>
 <span id="cb7-32"><a href="#cb7-32" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb7-33"><a href="#cb7-33" tabindex="-1"></a><span class="co">#&gt;  time_total time_max time_draw iter converged                    message</span></span>
-<span id="cb7-34"><a href="#cb7-34" tabindex="-1"></a><span class="co">#&gt;        1.81     1.27      0.49   41      TRUE   relative convergence (4)</span></span></code></pre></div>
+<span id="cb7-34"><a href="#cb7-34" tabindex="-1"></a><span class="co">#&gt;        1.87     1.31      0.51   41      TRUE   relative convergence (4)</span></span></code></pre></div>
 <p>Rather than a single dragon-year coefficient, we have a coefficient for each age group. We extract them and tidy up the labels.</p>
 <div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a>mod_dragon_age <span class="sc">|&gt;</span></span>
 <span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a>  <span class="fu">components</span>() <span class="sc">|&gt;</span></span>
@@ -555,17 +555,17 @@ where</p>
 <span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">age =</span> <span class="fu">sub</span>(<span class="st">&quot;is_dragon_year_age&quot;</span>, <span class="st">&quot;&quot;</span>, level)) <span class="sc">|&gt;</span></span>
 <span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>  <span class="fu">select</span>(age, .fitted)</span>
 <span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a><span class="co">#&gt; # A tibble: 9 × 2</span></span>
-<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a><span class="co">#&gt;   age               .fitted</span></span>
-<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;        &lt;rdbl&lt;1000&gt;&gt;</span></span>
-<span id="cb8-9"><a href="#cb8-9" tabindex="-1"></a><span class="co">#&gt; 1 10-14   0.31 (-0.11, 0.8)</span></span>
-<span id="cb8-10"><a href="#cb8-10" tabindex="-1"></a><span class="co">#&gt; 2 15-19 0.003 (-0.19, 0.19)</span></span>
-<span id="cb8-11"><a href="#cb8-11" tabindex="-1"></a><span class="co">#&gt; 3 20-24 0.042 (-0.13, 0.23)</span></span>
-<span id="cb8-12"><a href="#cb8-12" tabindex="-1"></a><span class="co">#&gt; 4 25-29 0.076 (-0.11, 0.26)</span></span>
-<span id="cb8-13"><a href="#cb8-13" tabindex="-1"></a><span class="co">#&gt; 5 30-34 0.075 (-0.11, 0.25)</span></span>
-<span id="cb8-14"><a href="#cb8-14" tabindex="-1"></a><span class="co">#&gt; 6 35-39 0.033 (-0.15, 0.22)</span></span>
-<span id="cb8-15"><a href="#cb8-15" tabindex="-1"></a><span class="co">#&gt; 7 40-44 0.057 (-0.12, 0.24)</span></span>
-<span id="cb8-16"><a href="#cb8-16" tabindex="-1"></a><span class="co">#&gt; 8 45-49   0.1 (-0.13, 0.32)</span></span>
-<span id="cb8-17"><a href="#cb8-17" tabindex="-1"></a><span class="co">#&gt; 9 50-54    0.2 (-0.2, 0.59)</span></span></code></pre></div>
+<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a><span class="co">#&gt;   age                  .fitted</span></span>
+<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;           &lt;rdbl&lt;1000&gt;&gt;</span></span>
+<span id="cb8-9"><a href="#cb8-9" tabindex="-1"></a><span class="co">#&gt; 1 10-14     0.31 (-0.12, 0.75)</span></span>
+<span id="cb8-10"><a href="#cb8-10" tabindex="-1"></a><span class="co">#&gt; 2 15-19 -0.00064 (-0.19, 0.19)</span></span>
+<span id="cb8-11"><a href="#cb8-11" tabindex="-1"></a><span class="co">#&gt; 3 20-24    0.049 (-0.15, 0.23)</span></span>
+<span id="cb8-12"><a href="#cb8-12" tabindex="-1"></a><span class="co">#&gt; 4 25-29     0.08 (-0.09, 0.27)</span></span>
+<span id="cb8-13"><a href="#cb8-13" tabindex="-1"></a><span class="co">#&gt; 5 30-34   0.075 (-0.098, 0.26)</span></span>
+<span id="cb8-14"><a href="#cb8-14" tabindex="-1"></a><span class="co">#&gt; 6 35-39    0.028 (-0.15, 0.21)</span></span>
+<span id="cb8-15"><a href="#cb8-15" tabindex="-1"></a><span class="co">#&gt; 7 40-44    0.062 (-0.12, 0.25)</span></span>
+<span id="cb8-16"><a href="#cb8-16" tabindex="-1"></a><span class="co">#&gt; 8 45-49      0.11 (-0.1, 0.32)</span></span>
+<span id="cb8-17"><a href="#cb8-17" tabindex="-1"></a><span class="co">#&gt; 9 50-54     0.18 (-0.23, 0.56)</span></span></code></pre></div>
 </div>
 <div id="forecasting" class="section level2" number="3.4">
 <h2><span class="header-section-number">3.4</span> Forecasting</h2>
