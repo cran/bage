@@ -394,19 +394,19 @@ Figure 1.1: Simulation study of a model
 <span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a><span class="co">#&gt;   term        component   .error .cover_50 .cover_95 .length_50 .length_95</span></span>
 <span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;       &lt;chr&gt;        &lt;dbl&gt;     &lt;dbl&gt;     &lt;dbl&gt;      &lt;dbl&gt;      &lt;dbl&gt;</span></span>
 <span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a><span class="co">#&gt; 1 (Intercept) effect     0           1         1         0           0    </span></span>
-<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a><span class="co">#&gt; 2 age         effect    -0.0108      0.508     0.955     0.103       0.297</span></span>
-<span id="cb3-10"><a href="#cb3-10" tabindex="-1"></a><span class="co">#&gt; 3 age         hyper      0.00953     0.43      0.8       0.0482      0.181</span></span>
-<span id="cb3-11"><a href="#cb3-11" tabindex="-1"></a><span class="co">#&gt; 4 sex         effect    -0.00381     0.46      0.905     0.302       0.875</span></span>
-<span id="cb3-12"><a href="#cb3-12" tabindex="-1"></a><span class="co">#&gt; 5 time        effect     0.00108     0.678     0.965     0.0666      0.194</span></span>
-<span id="cb3-13"><a href="#cb3-13" tabindex="-1"></a><span class="co">#&gt; 6 time        hyper      0.00416     0.45      0.895     0.0431      0.141</span></span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a><span class="co">#&gt; 2 age         effect    -0.0107      0.522     0.958     0.103       0.298</span></span>
+<span id="cb3-10"><a href="#cb3-10" tabindex="-1"></a><span class="co">#&gt; 3 age         hyper      0.00943     0.44      0.8       0.0481      0.179</span></span>
+<span id="cb3-11"><a href="#cb3-11" tabindex="-1"></a><span class="co">#&gt; 4 sex         effect    -0.00491     0.455     0.91      0.303       0.877</span></span>
+<span id="cb3-12"><a href="#cb3-12" tabindex="-1"></a><span class="co">#&gt; 5 time        effect     0.00116     0.685     0.965     0.0669      0.194</span></span>
+<span id="cb3-13"><a href="#cb3-13" tabindex="-1"></a><span class="co">#&gt; 6 time        hyper      0.00416     0.45      0.9       0.0431      0.141</span></span>
 <span id="cb3-14"><a href="#cb3-14" tabindex="-1"></a><span class="co">#&gt; 7 disp        disp      -0.0705      0.52      0.97      0.265       0.779</span></span>
 <span id="cb3-15"><a href="#cb3-15" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb3-16"><a href="#cb3-16" tabindex="-1"></a><span class="co">#&gt; $augment</span></span>
 <span id="cb3-17"><a href="#cb3-17" tabindex="-1"></a><span class="co">#&gt; # A tibble: 2 × 7</span></span>
 <span id="cb3-18"><a href="#cb3-18" tabindex="-1"></a><span class="co">#&gt;   .var      .observed      .error .cover_50 .cover_95 .length_50 .length_95</span></span>
 <span id="cb3-19"><a href="#cb3-19" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;         &lt;dbl&gt;       &lt;dbl&gt;     &lt;dbl&gt;     &lt;dbl&gt;      &lt;dbl&gt;      &lt;dbl&gt;</span></span>
-<span id="cb3-20"><a href="#cb3-20" tabindex="-1"></a><span class="co">#&gt; 1 .fitted       0.604 -0.00000670     0.476     0.949    0.00199    0.00576</span></span>
-<span id="cb3-21"><a href="#cb3-21" tabindex="-1"></a><span class="co">#&gt; 2 .expected     0.604 -0.0220         0.443     0.928    0.152      0.457</span></span></code></pre></div>
+<span id="cb3-20"><a href="#cb3-20" tabindex="-1"></a><span class="co">#&gt; 1 .fitted       0.604 -0.00000680     0.476     0.949    0.00199    0.00576</span></span>
+<span id="cb3-21"><a href="#cb3-21" tabindex="-1"></a><span class="co">#&gt; 2 .expected     0.604 -0.0223         0.444     0.928    0.153      0.458</span></span></code></pre></div>
 <p>The output from <code>report_sim()</code> is a list of two data frames. The first data frame contains results for parameters associated with the <code>components()</code> function: main effects and interactions, associated hyper-parameters, and dispersion. The second data frame contains results for parameters associated with the <code>augment()</code> function: the lowest-level rates parameters.</p>
 <p>As can be seen in the results, the errors do not average out at exactly zero, 50% credible intervals do not contain the true value exactly 50% of the time, and 95% credible intervals do not contain the true value exactly 95% of the time. However, increasing the number of simulations from the default value of 100 to, say, 1000 will reduce the average size of the errors closer to zero, and bring the actual coverage rates closer to their advertised values. When larger values of <code>n_sim</code> are used, it can be helpful to use parallel processing to speed up calculations, which is done through the <code>n_core</code> argument.</p>
 </div>
@@ -435,28 +435,9 @@ Figure 1.1: Simulation study of a model
 <span id="cb4-18"><a href="#cb4-18" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb4-19"><a href="#cb4-19" tabindex="-1"></a><span class="co">#&gt;  n_draw var_time var_age var_sexgender</span></span>
 <span id="cb4-20"><a href="#cb4-20" tabindex="-1"></a><span class="co">#&gt;    1000     time     age           sex</span></span></code></pre></div>
-<p>We set the <code>mod_sim</code> argument to <code>mod_ar1</code> and generate the report.</p>
+<p>A simulation where the estimation model differs from the data generation mode can be generated as follows:</p>
 <div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">0</span>)</span>
-<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>res_rw <span class="ot">&lt;-</span> <span class="fu">report_sim</span>(<span class="at">mod_est =</span> mod, <span class="at">mod_sim =</span> mod_rw)</span>
-<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a>res_rw</span>
-<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a><span class="co">#&gt; $components</span></span>
-<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a><span class="co">#&gt; # A tibble: 6 × 7</span></span>
-<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a><span class="co">#&gt;   term        component   .error .cover_50 .cover_95 .length_50 .length_95</span></span>
-<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;       &lt;chr&gt;        &lt;dbl&gt;     &lt;dbl&gt;     &lt;dbl&gt;      &lt;dbl&gt;      &lt;dbl&gt;</span></span>
-<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a><span class="co">#&gt; 1 (Intercept) effect     0          1         1          0           0    </span></span>
-<span id="cb5-9"><a href="#cb5-9" tabindex="-1"></a><span class="co">#&gt; 2 age         effect     0.00226    0.528     0.948      0.105       0.303</span></span>
-<span id="cb5-10"><a href="#cb5-10" tabindex="-1"></a><span class="co">#&gt; 3 age         hyper      0.00945    0.45      0.77       0.0486      0.184</span></span>
-<span id="cb5-11"><a href="#cb5-11" tabindex="-1"></a><span class="co">#&gt; 4 sex         effect    -0.116      0.1       0.29       0.322       0.935</span></span>
-<span id="cb5-12"><a href="#cb5-12" tabindex="-1"></a><span class="co">#&gt; 5 time        effect     0.109      0.0175    0.0425     0.0684      0.198</span></span>
-<span id="cb5-13"><a href="#cb5-13" tabindex="-1"></a><span class="co">#&gt; 6 disp        disp      -0.0245     0.45      0.98       0.292       0.864</span></span>
-<span id="cb5-14"><a href="#cb5-14" tabindex="-1"></a><span class="co">#&gt; </span></span>
-<span id="cb5-15"><a href="#cb5-15" tabindex="-1"></a><span class="co">#&gt; $augment</span></span>
-<span id="cb5-16"><a href="#cb5-16" tabindex="-1"></a><span class="co">#&gt; # A tibble: 2 × 7</span></span>
-<span id="cb5-17"><a href="#cb5-17" tabindex="-1"></a><span class="co">#&gt;   .var      .observed      .error .cover_50 .cover_95 .length_50 .length_95</span></span>
-<span id="cb5-18"><a href="#cb5-18" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;         &lt;dbl&gt;       &lt;dbl&gt;     &lt;dbl&gt;     &lt;dbl&gt;      &lt;dbl&gt;      &lt;dbl&gt;</span></span>
-<span id="cb5-19"><a href="#cb5-19" tabindex="-1"></a><span class="co">#&gt; 1 .fitted        1.28 -0.00000727     0.480     0.947    0.00238    0.00688</span></span>
-<span id="cb5-20"><a href="#cb5-20" tabindex="-1"></a><span class="co">#&gt; 2 .expected      1.28 -0.122          0.484     0.950    0.276      0.827</span></span></code></pre></div>
-<p>In this case, although actual coverage for the hyper-parameters (in the <code>components</code> part of the results) now diverges from the advertised coverage, coverage for the low-level rates (in the <code>augment</code> part of the results) is still close to advertised coverage.</p>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a><span class="fu">report_sim</span>(<span class="at">mod_est =</span> mod, <span class="at">mod_sim =</span> mod_rw) <span class="do">## not run</span></span></code></pre></div>
 </div>
 <div id="the-relationship-between-report_sim-and-replicate_data" class="section level1" number="4">
 <h1><span class="header-section-number">4</span> The relationship between <code>report_sim()</code> and <code>replicate_data()</code></h1>

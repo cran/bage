@@ -14,11 +14,15 @@ suppressPackageStartupMessages({
 
 
 ## -----------------------------------------------------------------------------
-kor_births
+births <- kor_births |>
+  filter(region %in% levels(region)[1:5])
+
+## -----------------------------------------------------------------------------
+births
 
 ## -----------------------------------------------------------------------------
 mod_gdp_dens <- mod_pois(births ~ (age + region + time)^2,
-                         data = kor_births,
+                         data = births,
                          exposure = popn) |>
   set_covariates(~ gdp_pc_2023 + dens_2020) |>
   fit()
@@ -30,7 +34,7 @@ mod_gdp_dens |>
   filter(term == "covariates")
 
 ## -----------------------------------------------------------------------------
-births <- kor_births |>
+births <- births |>
   mutate(is_dragon_year = time == 2012)
 mod_dragon <- mod_pois(births ~ (age + region + time)^2,
                       data = births,

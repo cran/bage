@@ -37,8 +37,7 @@ mod_rw <- mod |>
   set_prior(time ~ RW(s = 0.05))
 mod_rw	
 
-## ----message = FALSE----------------------------------------------------------
-set.seed(0)
-res_rw <- report_sim(mod_est = mod, mod_sim = mod_rw)
-res_rw
+## ----message = FALSE, eval = FALSE--------------------------------------------
+# set.seed(0)
+# report_sim(mod_est = mod, mod_sim = mod_rw) ## not run
 

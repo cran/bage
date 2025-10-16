@@ -231,7 +231,9 @@ mod_rw2 <- mod_pois(population ~ year,
   set_prior(year ~ RW2())
 
 ## Run the simulation
-report_sim(mod_est = mod_rw2, mod_sim = mod_rw)
+report_sim(mod_est = mod_rw2,
+           mod_sim = mod_rw,
+	   n_sim = 10) ## ideally should be 1000 or more
 
 ## -----------------------------------------------------------------------------
 mod |>

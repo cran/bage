@@ -165,20 +165,6 @@ ggplot(data, aes(x = age_mid(age), y = diff)) +
   facet_wrap(vars(.replicate)) +
   geom_point(size = 0.2)
 
-## ----fig.width = 7, fig.height = 7--------------------------------------------
-rep_data_hmd <- replicate_data(mod_hmd, condition_on = "expected")
-
-data <- rep_data_hmd |>
-  filter(time == 2022) |>
-  select(-popn) |>
-  pivot_wider(names_from = sex, values_from = deaths) |>
-  mutate(diff = Female - Male)
-
-## ----fig.width = 7, fig.height = 7--------------------------------------------
-ggplot(data, aes(x = age_mid(age), y = diff)) +
-  facet_wrap(vars(.replicate)) +
-  geom_point(size = 0.2)
-
 ## -----------------------------------------------------------------------------
 lifeexp_hmd <- mod_hmd |>
   augment() |>
