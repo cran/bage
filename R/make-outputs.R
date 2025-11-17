@@ -1,9 +1,16 @@
 
 ## HAS_TESTS
-#' Combined Stored Draws and Point EStimates from Two Models
+#' Combined Stored Draws and Point Estimates
+#' from Inner and Outer Models
 #'
-#' Term used from first model if 'use_term' is TRUE; otherwise
-#' from second model. Dispersion ignored.
+#' Term used from inner model if 'use_term' is TRUE; otherwise
+#' from outer model.
+#'
+#' Dispersion ignored.
+#'
+#' Covariates always taken from outer model.
+#'
+#' Data model parameters ignored.
 #'
 #' @param mod Model receiving the draws
 #' @param mod_inner Model for which use_term is TRUE
@@ -67,15 +74,19 @@ combine_stored_draws_point_inner_outer <- function(mod, mod_inner, mod_outer, us
       point_hyperrandfree <- c(point_hyperrandfree, point_hyperrandfree_outer[is_term_hyperrandfree])
     }
   }
+  draws_coef_covariates <- mod_outer$draws_coef_covariates
+  point_coef_covariates <- mod_outer$point_coef_covariates
   draws_effectfree <- do.call(rbind, draws_effectfree)
   draws_hyper <- do.call(rbind, draws_hyper)
   draws_hyperrandfree <- do.call(rbind, draws_hyperrandfree)
   mod$draws_effectfree <- draws_effectfree
   mod$draws_hyper <- draws_hyper
   mod$draws_hyperrandfree <- draws_hyperrandfree
+  mod$draws_coef_covariates <- draws_coef_covariates
   mod$point_effectfree <- point_effectfree
   mod$point_hyper <- point_hyper
   mod$point_hyperrandfree <- point_hyperrandfree
+  mod$point_coef_covariates <- point_coef_covariates
   mod
 }
 
@@ -212,12 +223,16 @@ generate_prior_helper <- function(x, n_element, n_along, n_by, n_draw) {
 generate_prior_svd_helper <- function(x, n_element, n_along, n_by, n_draw) {
   uses_along_by <- missing(n_element)
   ssvd <- x$specific$ssvd
+  v <- x$specific$v
+  nm_ssvd <- x$specific$nm_ssvd
   n_comp <- x$specific$n_comp
   indep <- x$specific$indep
   if (isTRUE(indep) && !has_sexgender(ssvd))
     indep <- NULL
   if (uses_along_by)
     generate_ssvd_helper(ssvd = ssvd,
+                         v = v,
+                         nm_ssvd = nm_ssvd,
                          n_along = n_along,
                          n_by = n_by,
                          n_draw = n_draw,
@@ -226,6 +241,8 @@ generate_prior_svd_helper <- function(x, n_element, n_along, n_by, n_draw) {
                          age_labels = NULL)
   else
     generate_ssvd_helper(ssvd = ssvd,
+                         v = v,
+                         nm_ssvd = nm_ssvd,
                          n_element = n_element,
                          n_draw = n_draw,
                          n_comp = n_comp,
@@ -242,6 +259,7 @@ generate_prior_svd_helper <- function(x, n_element, n_along, n_by, n_draw) {
 #' by function 'generate_prior_svd_helper').
 #'
 #' @param svd An object of class `"bage_ssvd"`.
+#' @param v Version of data.
 #' @param n_along Number of element in 'along' dimension (always 1 for SVD() prior)
 #' @param n_by Number of combinations of categories for 'by' variables
 #' @param n_comp Number of SVD components to be used
@@ -253,6 +271,8 @@ generate_prior_svd_helper <- function(x, n_element, n_along, n_by, n_draw) {
 #'
 #' @noRd
 generate_ssvd_helper <- function(ssvd,
+                                 v,
+                                 nm_ssvd,
                                  n_element,
                                  n_along,
                                  n_by,
@@ -260,6 +280,23 @@ generate_ssvd_helper <- function(ssvd,
                                  indep,
                                  n_draw,
                                  age_labels) {
+  data <- ssvd$data
+  version <- data$version
+  versions <- unique(version)
+  if (is.null(v)) {
+    v <- versions[[1L]]
+  }
+  else {
+    if (!(v %in% versions)) {
+      n_version <- length(versions)
+      if (n_version > 1L)
+        msg_valid <- "Valid values for {.var v} with {.arg {nm_ssvd}} are: {.val {versions}}."
+      else
+        msg_valid <- "Only valid value for {.var v} with {.arg {nm_ssvd}} is {.val {versions}}."
+      cli::cli_abort(c("Invalid value for version parameter {.var v}.",
+                       i = msg_valid))
+    }
+  }
   uses_along_by <- missing(n_element)
   if (uses_along_by) {
     poputils::check_n(n = n_along,
@@ -300,16 +337,31 @@ generate_ssvd_helper <- function(ssvd,
                        i = "Number of components: {.val {n_comp_ssvd}}."))
   }
   n_comp <- as.integer(n_comp)
-  has_indep <- !is.null(indep)
-  if (has_indep) {
-    check_flag(x = indep, nm_x = "indep")
-    if (!has_sexgender(ssvd))
-      cli::cli_abort(paste("Value supplied for {.arg indep}, but {.arg x}",
-                           "does not have a sex/gender dimension."))
-    type <- if (indep) "indep" else "joint"
+  has_indep_arg <- !is.null(indep)
+  if (has_indep_arg) {
+    if (identical(length(indep), 1L) && is.na(indep)) {
+      has_total <- "total" %in% data$type
+      if (has_total)
+        type <- "total"
+      else
+        cli::cli_abort(paste("{.arg indep} is {.val {NA}} but {.arg x}",
+                             "does not have results for total population."))
+    }
+    else {
+      check_flag(x = indep, nm_x = "indep")
+      if (!has_sexgender(ssvd))
+        cli::cli_abort(paste("Value supplied for {.arg indep}, but {.arg x}",
+                             "does not have a sex/gender dimension."))
+      type <- if (indep) "indep" else "joint"
+    }
   }
-  else
-    type <- "total"
+  else {
+    has_indep <- "indep" %in% data$type
+    if (has_indep)
+      type <- "indep"
+    else
+      type <- "total"
+  }
   has_age <- !is.null(age_labels)
   if (has_age) {
     age_labels <- tryCatch(poputils::reformat_age(age_labels, factor = FALSE),
@@ -318,35 +370,42 @@ generate_ssvd_helper <- function(ssvd,
       cli::cli_abort(c("Problem with {.arg age_labels}.",
                        i = age_labels$message))
   }
-  data <- ssvd$data
-  data <- data[data$type == type, , drop = FALSE]
+  is_type <- data$type == type
+  is_version <- data$version == v
+  data_type_version <- data[is_type & is_version, , drop = FALSE]
   if (has_age) {
-    is_matched <- vapply(data$labels_age, setequal, TRUE, y = age_labels)
+    is_matched <- vapply(data_type_version$labels_age, setequal, TRUE, y = age_labels)
     if (!any(is_matched))
       cli::cli_abort("Can't find labels from {.arg age_labels} in {.arg x}.")
     i_matched <- which(is_matched)
   }
   else {
-    lengths_labels <- lengths(data$labels_age)
+    lengths_labels <- lengths(data_type_version$labels_age)
     i_matched <- which.max(lengths_labels)
   }
-  levels_age <- data$labels_age[[i_matched]]
-  levels_sexgender <- data$labels_sexgender[[i_matched]]
+  levels_age <- data_type_version$labels_age[[i_matched]]
+  levels_sexgender <- data_type_version$labels_sexgender[[i_matched]]
   levels_age <- unique(levels_age)
   levels_sexgender <- unique(levels_sexgender)
   n_sexgender <- length(levels_sexgender)
-  agesex <- if (has_indep) "age:sex" else "age"
+  is_total <- type == "total"
+  agesex <- if (is_total) "age" else "age:sex"
+  joint <- type == "joint"
   matrix <- get_matrix_or_offset_svd(ssvd = ssvd,
+                                     v = v,
+                                     nm_ssvd = nm_ssvd,
                                      levels_age = levels_age,
                                      levels_sexgender = levels_sexgender,
-                                     joint = !indep,
+                                     joint = joint,
                                      agesex = agesex,
                                      get_matrix = TRUE,
                                      n_comp = n_comp)
   offset <- get_matrix_or_offset_svd(ssvd = ssvd,
+                                     v = v,
+                                     nm_ssvd = nm_ssvd,
                                      levels_age = levels_age,
                                      levels_sexgender = levels_sexgender,
-                                     joint = !indep,
+                                     joint = joint,
                                      agesex = agesex,
                                      get_matrix = FALSE,
                                      n_comp = n_comp)
@@ -367,23 +426,23 @@ generate_ssvd_helper <- function(ssvd,
     matrix_along_by <- make_matrix_along_by_inner(i_along = 1L, dim = dim)
   }    
   if (uses_along_by) {
-    if (has_indep)
+    if (is_total)
       levels <- list(by = seq_len(n_by),
                      along = seq_len(n_along),
-                     sexgender = levels_sexgender,
                      age = levels_age)
     else
       levels <- list(by = seq_len(n_by),
                      along = seq_len(n_along),
+                     sex = levels_sexgender,
                      age = levels_age)
   }
   else {
-    if (has_indep)
+    if (is_total)
       levels <- list(element = seq_len(n_element),
-                     sexgender = levels_sexgender,
                      age = levels_age)
     else 
       levels <- list(element = seq_len(n_element),
+                     sex = levels_sexgender,
                      age = levels_age)
   }
   levels_draw <- list(draw = seq_len(n_draw))
@@ -395,8 +454,8 @@ generate_ssvd_helper <- function(ssvd,
     ans$by <- paste("By", ans$by)
     ans$by <- factor(ans$by, levels = unique(ans$by))
   }
-  if (has_indep)
-    ans$sexgender <- poputils::reformat_sex(ans$sexgender)
+  if (!is_total)
+    ans$sex <- poputils::reformat_sex(ans$sex)
   ans$age <- poputils::reformat_age(ans$age)
   ans <- tibble::tibble(ans)
   list(ans = ans,
@@ -409,7 +468,7 @@ generate_ssvd_helper <- function(ssvd,
 ## HAS_TESTS
 #' Get Values for 'disp' for a Data Model
 #'
-#' @param datamod Object of class "bage_datamod"
+#' @param datamod Objoect of class "bage_datamod"
 #'
 #' @returns A numeric vector, the same length as 'outcome'
 #'
@@ -760,64 +819,6 @@ make_along_mod <- function(mod) {
 
 
 ## HAS_TESTS
-#' Create combined matrix from effect to outcome
-#'
-#' Combine matrices for individual terms to
-#' create a matrix that maps all elements of
-#' 'effect' to 'outcome'.
-#'
-#' @param An object of class 'bage_mod'
-#'
-#' @returns A sparse matrix.
-#'
-#' @noRd
-make_combined_matrix_effect_outcome <- function(mod) {
-  data <- mod$data
-  dimnames_terms <- mod$dimnames_terms
-  nms_terms <- names(dimnames_terms)
-  matrices_effect_outcome <- make_matrices_effect_outcome(data = data,
-                                                          dimnames_terms = dimnames_terms)
-  Reduce(Matrix::cbind2, matrices_effect_outcome)
-}
-
-
-## HAS_TESTS
-#' Create combined matrix from effectfree to effect
-#'
-#' Combine matrices for individual terms to
-#' create a matrix that maps all elements of
-#' 'effectfree' to 'effect'.
-#'
-#' @param An object of class 'bage_mod'
-#'
-#' @returns A sparse matrix.
-#'
-#' @noRd
-make_combined_matrix_effectfree_effect <- function(mod) {
-    matrices <- make_matrices_effectfree_effect(mod)
-    Matrix::.bdiag(matrices)
-}
-
-
-## HAS_TESTS
-#' Create combined offset from effectfree to effect
-#'
-#' Combine offsets for individual terms to
-#' create a offset that maps all elements of
-#' 'effectfree' to 'effect'.
-#'
-#' @param An object of class 'bage_mod'
-#'
-#' @returns A numeric vector
-#'
-#' @noRd
-make_combined_offset_effectfree_effect <- function(mod) {
-    offsets <- make_offsets_effectfree_effect(mod)
-    do.call(c, offsets)
-}
-
-
-## HAS_TESTS
 #' Make variable identifying component in 'components'
 #'
 #' Helper function for function 'components'
@@ -971,6 +972,7 @@ make_draws_components <- function(mod) {
   ## effects
   effectfree <- mod$draws_effectfree
   ans_effects <- make_effects(mod = mod, effectfree = effectfree)
+  ans_effects <- do.call(rbind, ans_effects)
   ans_effects <- rvec::rvec_dbl(ans_effects)
   ## hyper
   hyper <- mod$draws_hyper
@@ -1189,10 +1191,23 @@ make_draws_post <- function(est, prec, map, n_draw, max_jitter) {
 #' 
 #' @noRd
 make_effects <- function(mod, effectfree) {
-  matrix_effectfree_effect <- make_combined_matrix_effectfree_effect(mod)
-  offset_effectfree_effect <- make_combined_offset_effectfree_effect(mod)
-  ans <- matrix_effectfree_effect %*% effectfree + offset_effectfree_effect
-  ans <- Matrix::as.matrix(ans)
+  matrices <- make_matrices_effectfree_effect(mod)
+  offsets <- make_offsets_effectfree_effect(mod)
+  lengths_effectfree <- vapply(matrices, ncol, 1L)
+  is_draws <- is.matrix(effectfree)
+  if (is_draws) {
+    effectfree_split <- split_matrix_rows(m = effectfree,
+                                          nrows = lengths_effectfree)
+  }
+  else
+    effectfree_split <- split_vector_lengths(v = effectfree,
+                                             lengths = lengths_effectfree)
+  ans <- .mapply(function(m, x, o) Matrix::as.matrix(m %*% x + o),
+                 dots = list(m = matrices,
+                             x = effectfree_split,
+                             o = offsets),
+                 MoreArgs = list())
+  names(ans) <- names(matrices)
   ans
 }
 
@@ -1941,8 +1956,9 @@ make_linpred_from_components <- function(mod, components, data, dimnames_terms) 
     coef_covariates <- fitted[indices_covariates]
     matrix_covariates <- make_matrix_covariates(formula = formula_covariates,
                                                 data = data)
-    coef_covariates <- as.matrix(coef_covariates)
+    coef_covariates <- as.matrix(coef_covariates) ## coerce from rvec
     val_covariates_linpred <- matrix_covariates %*% coef_covariates
+    val_covariates_linpred <- Matrix::as.matrix(val_covariates_linpred)
     ans <- ans + val_covariates_linpred
   }
   ans <- rvec::rvec_dbl(ans)
@@ -1958,16 +1974,19 @@ make_linpred_from_components <- function(mod, components, data, dimnames_terms) 
 #' @param mod Object of class "bage_mod"
 #' @param point Whether to return point estimates
 #' or draws from the posterior.
+#' @param rows Rows of 'data' to use for calculations
 #'
 #' @returns An rvec if 'point' is FALSE, otherwise a vector of doubles
 #'
 #' @noRd
-make_linpred_from_stored_draws <- function(mod, point) {
+make_linpred_from_stored_draws <- function(mod, point, rows) {
   ans <- make_linpred_from_stored_draws_effects(mod = mod,
-                                                point = point)
+                                                point = point,
+                                                rows = rows)
   if (has_covariates(mod)) {
     linpred_covariates <- make_linpred_from_stored_draws_covariates(mod = mod,
-                                                                    point = point)
+                                                                    point = point,
+                                                                    rows = rows)
     ans <- ans + linpred_covariates
   }
   if (point)
@@ -1981,45 +2000,68 @@ make_linpred_from_stored_draws <- function(mod, point) {
 
 
 ## HAS_TESTS
-#' Calculate the Contribution of Covariates to the Linear Predictor
+#' Calculate the Covariates Component of the Linear Predictor
 #'
 #' @param mod Object of class "bage_mod"
 #' @param point Whether to return point estimates
 #' or draws from the posterior.
+#' @param rows Rows of 'data' to use for calculations
 #'
 #' @returns An rvec if 'point' is FALSE, otherwise a vector of doubles
 #'
 #' @noRd
-make_linpred_from_stored_draws_covariates <- function(mod, point) {
+make_linpred_from_stored_draws_covariates <- function(mod, point, rows) {
   formula_covariates <- mod$formula_covariates
   data <- mod$data
   if (point)
     coef_covariates <- mod$point_coef_covariates
   else
     coef_covariates <- mod$draws_coef_covariates
+  ## can't subset 'data', because might miss some
+  ## combinations of values expected by 'formula_covariates'
   matrix_covariates <- make_matrix_covariates(formula = formula_covariates,
                                               data = data)
-  matrix_covariates %*% coef_covariates
+  if (!is.null(rows))
+    matrix_covariates <- matrix_covariates[rows, , drop = FALSE]
+  ans <- matrix_covariates %*% coef_covariates
+  ans <- Matrix::as.matrix(ans)
+  ans
 }
 
 
-#' Calculate the Contribution of Effects to the Linear Predictor
+## HAS_TESTS
+#' Calculate the Effects Component of the Linear Predictor
 #'
 #' @param mod Object of class "bage_mod"
 #' @param point Whether to return point estimates
 #' or draws from the posterior.
+#' @param rows Rows of 'data' to use for calculations
 #'
 #' @returns An rvec if 'point' is FALSE, otherwise a vector of doubles
 #'
 #' @noRd
-make_linpred_from_stored_draws_effects <- function(mod, point) {
-  matrix_effect_outcome <- make_combined_matrix_effect_outcome(mod)
+make_linpred_from_stored_draws_effects <- function(mod, point, rows) {
+  data <- mod$data
+  if (!is.null(rows))
+    data <- data[rows, , drop = FALSE]
+  dimnames_terms <- mod$dimnames_terms
   if (point)
     effectfree <- mod$point_effectfree
   else
     effectfree <- mod$draws_effectfree
-  effect <- make_effects(mod = mod, effectfree = effectfree)
-  matrix_effect_outcome %*% effect
+  effects <- make_effects(mod = mod,
+                          effectfree = effectfree)
+  matrices <- make_matrices_effect_outcome(data = data,
+                                           dimnames_terms = dimnames_terms)
+  n_effect <- length(effects)
+  ans <- matrices[[1L]] %*% effects[[1L]]
+  if (n_effect > 1L) {
+    for (i_effect in seq.int(from = 2L, to = n_effect)) {
+      ans <- ans + matrices[[i_effect]] %*% effects[[i_effect]]
+    }
+  }
+  ans <- Matrix::as.matrix(ans)
+  ans
 }
 
 
@@ -2037,10 +2079,8 @@ make_point_est_effects <- function(mod) {
   point_effectfree <- mod$point_effectfree
   dimnames_terms <- mod$dimnames_terms
   terms_effects <- make_terms_effects(dimnames_terms)
-  point_effects <- make_effects(mod = mod, effectfree = point_effectfree)
-  point_effects <- as.double(point_effects)
-  ans <- split(x = point_effects, f = terms_effects)
-  ans <- ans[unique(terms_effects)] ## 'split' orders result
+  ans <- make_effects(mod = mod, effectfree = point_effectfree)
+  ans <- lapply(ans, as.double)
   ans
 }
 

@@ -4,20 +4,33 @@
 \alias{components.bage_ssvd}
 \title{Extract Components used by SVD Summary}
 \usage{
-\method{components}{bage_ssvd}(object, n_comp = NULL, indep = NULL, age_labels = NULL, ...)
+\method{components}{bage_ssvd}(
+  object,
+  v = NULL,
+  n_comp = NULL,
+  indep = NULL,
+  age_labels = NULL,
+  ...
+)
 }
 \arguments{
 \item{object}{An object of class \code{"bage_ssvd"}.}
+
+\item{v}{Version of scaled SVD components
+to use. If no value is suppled, the most
+recent version is used.}
 
 \item{n_comp}{The number of components.
 The default is half the total number of
 components of \code{object}.}
 
 \item{indep}{Whether to use independent or
-joint SVDs for each sex/gender. If
-no value is supplied, an SVD with no
-sex/gender dimension is used. Note that the
-default is different from \code{\link[=SVD]{SVD()}}.}
+joint SVDs for each sex/gender, if the
+data contains a sex/gender variable.
+The default is to use independent SVDs.
+To obtain results for the total population
+when the data contains a sex/gender variable,
+set \code{indep} to \code{NA}.}
 
 \item{age_labels}{Age labels for the
 desired age or age-sex profile.
@@ -46,14 +59,14 @@ rates from the \href{https://data-explorer.oecd.org}{OECD}.
 }
 
 \examples{
-## females and males combined
+## females and males modeled independently
 components(LFP, n_comp = 3)
-
-## females and males modelled independently
-components(LFP, indep = TRUE, n_comp = 3)
 
 ## joint model for females and males
 components(LFP, indep = FALSE, n_comp = 3)
+
+## females and males combined
+components(LFP, indep = NA, n_comp = 3)
 
 ## specify age groups
 labels <- poputils::age_labels(type = "five", min = 15, max = 60)

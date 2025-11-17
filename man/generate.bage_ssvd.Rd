@@ -4,10 +4,20 @@
 \alias{generate.bage_ssvd}
 \title{Generate Random Age or Age-Sex Profiles}
 \usage{
-\method{generate}{bage_ssvd}(x, n_draw = 20, n_comp = NULL, indep = NULL, age_labels = NULL, ...)
+\method{generate}{bage_ssvd}(
+  x,
+  v = NULL,
+  n_draw = 20,
+  n_comp = NULL,
+  indep = NULL,
+  age_labels = NULL,
+  ...
+)
 }
 \arguments{
 \item{x}{An object of class \code{"bage_ssvd"}.}
+
+\item{v}{Version of data to use.}
 
 \item{n_draw}{Number of random draws to generate.}
 
@@ -16,10 +26,12 @@ The default is half the total number of
 components of \code{object}.}
 
 \item{indep}{Whether to use independent or
-joint SVDs for each sex/gender. If
-no value is supplied, an SVD with no
-sex/gender dimension is used. Note that the
-default is different from \code{\link[=SVD]{SVD()}}.}
+joint SVDs for each sex/gender, if the
+data contains a sex/gender variable.
+The default is to use independent SVDs.
+To obtain results for the total population
+when the data contains a sex/gender variable,
+set \code{indep} to \code{NA}.}
 
 \item{age_labels}{Age labels for the
 desired age or age-sex profile.
@@ -51,11 +63,14 @@ rates from the \href{https://data-explorer.oecd.org}{OECD}.
 }
 
 \examples{
-## SVD for females and males combined
-generate(HMD)
+## females and males modeled independently
+generate(HMD) 
 
-## separate SVDs for females and males
-generate(HMD, indep = TRUE) 
+## joint model for females and males
+generate(HMD, indep = FALSE) 
+
+## SVD for females and males combined
+generate(HMD, indep = NA)
 
 ## specify age groups
 labels <- poputils::age_labels(type = "lt", max = 60)

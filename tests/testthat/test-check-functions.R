@@ -924,6 +924,25 @@ test_that("'check_nan' throws correct error with invalid inputs", {
 })
 
 
+## 'check_na' -----------------------------------------------------------------
+
+test_that("'check_na' returns TRUE with valid inputs", {
+  x <- 1:5
+  expect_true(check_na(x, nm_x = "x"))
+  x <- c(-1, 0.2)
+  expect_true(check_na(x))
+})
+
+test_that("'check_na' throws correct error with invalid inputs", {
+  x <- c(1:5, NA)
+  expect_error(check_na(x, nm_x = "x"),
+               "`x` has NA.")
+  x <- c(-1, NA, 0.2, NA)
+  expect_error(check_na(x, nm_x = "x"),
+               "`x` has NA.")
+})
+
+
 ## 'check_new_seeds' ----------------------------------------------------------
 
 test_that("'check_new_seeds works with valid inputs", {
@@ -1641,3 +1660,24 @@ test_that("'check_widths' throws expected error too high", {
     expect_error(check_widths(c(1.2, 1.3)),
                  "`widths` has values not in interval \\(0, 1\\].")
 })
+
+
+## 'check_v_ssvd' -------------------------------------------------------------
+
+test_that("'check_v_ssvd' returns TRUE with valid inputs", {
+  expect_true(check_v_ssvd(v = NULL, ssvd = HMD, nm_ssvd = "HMD"))
+  expect_true(check_v_ssvd(v = "v2024", ssvd = HMD, nm_ssvd = "HMD"))
+})
+
+test_that("'check_v_ssvd' throws correct error with invalid inputs, multiple versions", {
+  expect_error(check_v_ssvd(v = "wrong", ssvd = HMD, nm_ssvd = "HMD"),
+               "Invalid value for version parameter `v`.")
+})
+
+test_that("'check_v_ssvd' throws correct error with invalid inputs, single version", {
+  ssvd <- sim_ssvd()
+  expect_error(check_v_ssvd(v = "wrong", ssvd = ssvd, nm_ssvd = "SSVD"),
+               "Invalid value for version parameter `v`.")
+})
+
+

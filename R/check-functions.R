@@ -776,6 +776,21 @@ check_n_along_ge <- function(n_along, min, nm, prior) {
 
 
 ## HAS_TESTS
+#' Check if Vector Has NA
+#'
+#' @param x Vector
+#' @param nm_x Name for 'x' to use in error messages.
+#'
+#' @returns TRUE, invisibly
+#' 
+#' @noRd
+check_na <- function(x, nm_x) {
+  if (anyNA(x))
+    cli::cli_abort("{.arg {nm_x}} has {.val {NA}}.")
+  invisible(TRUE)
+}
+
+## HAS_TESTS
 #' Check if Vector Has NaNs
 #'
 #' @param x Vector
@@ -789,7 +804,6 @@ check_nan <- function(x, nm_x) {
     cli::cli_abort("{.arg {nm_x}} has {.val {NaN}}.")
   invisible(TRUE)
 }
-
 
 ## HAS_TESTS
 #' Check that 'new_seeds' is List of Numeric Scalars with Correct Names
@@ -1428,3 +1442,28 @@ check_widths <- function(widths) {
 }
 
 
+#' Check 'v' Argument for Scaled SVDs
+#'
+#' @param v Version. A string.
+#' @param ssvd Object of class 'bage_ssvd'
+#' @param nm_ssvd Name of 'bage_ssvd' object
+#'
+#' @returns TRUE invisibly
+#'
+#' @noRd
+check_v_ssvd <- function(v, ssvd, nm_ssvd) {
+  if (!is.null(v)) {
+    data <- ssvd$data
+    version <- unique(data$version)
+    if (!(v %in% version)) {
+      n_version <- length(version)
+      if (n_version > 1L)
+        msg_valid <- "Valid values for {.var v} with {.arg {nm_ssvd}} are: {.val {version}}."
+      else
+        msg_valid <- "Only valid value for {.var v} with {.arg {nm_ssvd}} is {.val {version}}."
+      cli::cli_abort(c("Invalid value for version parameter {.var v}.",
+                       i = msg_valid))
+    }
+  }
+  invisible(TRUE)
+}

@@ -8,6 +8,7 @@
 #'
 #' `data` has the following columns:
 #'
+#' - `version` Vintage of data
 #' - `type` Type of decomposition. Choices are "total",
 #'   "joint", and "indep".
 #' - `labels_age` Age labels for individual rows of
@@ -28,7 +29,7 @@
 #'   are identical to the rownames of the corresponding
 #'   element of `matrix`.
 #'
-#' `data` would normally be constructed using a function
+#' `data` would normally be constructed using functions
 #' in package [bssvd](https://bayesiandemography.github.io/bssvd/).
 #'   
 #' @param data A data frame. See Details for description.
@@ -36,27 +37,23 @@
 #' @returns An object of class `"bage_ssvd"`.
 #'
 #' @seealso
-#' - `bssvd::data_ssvd_hfd()` Prepare data from Human Fertility Database
-#' - `bssvd::data_ssvd_hmd()` Prepare data from Human Mortality Database
-#' - `bssvd::data_ssvd_lfp()` Prepare OECD data on labor force participation
+#' - [Scaled SVDs][svds] Overview of scaled SVDs
+#'   implemented in \pkg{bage}
+#' - [SVD()] Prior based on scaled SVD
 #'
 #' @examples
-#' \dontrun{
-#' data <- data_ssvd_hmd("hmd_statistics_20240226.zip")
-#' HMD <- ssvd(data)
-#' }
-#' @noRd
+#' ssvd(data_wmd)
+#' @export
 ssvd <- function(data) {
-  nms_valid <- c("type",
+  nms_valid <- c("version",
+                 "type",
                  "labels_age",
                  "labels_sexgender",
                  "matrix",
                  "offset")
   type_valid <- c("total", "joint", "indep")
   ## 'data' is a data frame
-  if (!is.data.frame(data))
-    cli::cli_abort(c("{.arg data} is not a data frame.",
-                     i = "{.arg data} has class {.cls {class(data)}}."))
+  check_is_dataframe(x = data, nm_x = "data")
   ## names in 'data' unique
   nms_data <- names(data)
   i_dup <- match(TRUE, duplicated(nms_data), nomatch = 0L)
@@ -66,10 +63,10 @@ ssvd <- function(data) {
   if (!setequal(nms_data, nms_valid))
     cli::cli_abort(c("{.arg data} does not have expected variables.",
                      i = "{.arg data} has variables {.val {nms_data}}."))
-  ## 'type' has no NAs
-  i_na_type <- match(TRUE, is.na(data$type), nomatch = 0L)
-  if (i_na_type > 0L)
-    cli::cli_abort("Element {i_na_type} of {.var type} is {.val {NA}}.")
+  ## 'version'
+  check_na(x = data$version, nm_x = "version")
+  ## 'type'
+  check_na(x = data$type, nm_x = "type")
   is_valid_type <- data$type %in% type_valid
   i_invalid_type <- match(FALSE, is_valid_type, nomatch = 0L)
   if (i_invalid_type > 0L) 
@@ -147,13 +144,17 @@ ssvd <- function(data) {
   ## elements of 'matrix' have 'n_comp' columns if type is "total" or "joint"
   ## and 2 * 'n_comp' columns if type is "indep"
   ncol_matrix <- vapply(data$matrix, ncol, 1L)
-  ncol_total_1 <- ncol_matrix[is_total][[1L]]
-  ncol_expected <- ifelse(data$type == "indep", 2L * ncol_total_1, ncol_total_1)
+  is_joint <- data$type == "joint"
+  is_indep <- data$type == "indep"
+  is_total_joint <- is_total | is_joint
+  ncol_total_joint_1 <- ncol_matrix[is_total_joint][[1L]]
+  ncol_expected <- ifelse(is_indep, 2L * ncol_total_joint_1, ncol_total_joint_1)
   is_ncol_expect <- ncol_matrix == ncol_expected
   i_ncol_unex <- match(FALSE, is_ncol_expect, nomatch = 0L)
   if (i_ncol_unex > 0L)
     cli::cli_abort(c("Elements of {.var matrix} have incompatible numbers of columns.",
-                     i = "Columns for first matrix of type {.val total}: {.val {ncol_total_1}}.",
+                     i = paste("Columns for first matrix of type {.val total}",
+                               "or {.val joint}: {.val {ncol_total_joint_1}}."),
                      i = paste("Columns for element {.val {i_ncol_unex}} of {.var matrix}:",
                                "{.val {ncol_matrix[[i_ncol_unex]]}}."),
                      i = paste("Element {.val {i_ncol_unex}} of {.var matrix} has type",
@@ -177,9 +178,16 @@ ssvd <- function(data) {
     cli::cli_abort(c("{.var matrix} and {.var offset} not consistent.",
                      i = "Element {i_diff_nm} of {.var matrix} has rownames {.val {rn_matrix[[i_diff_nm]]}}.",
                      i = "Element {i_diff_nm} of {.var offset} has names {.val {nm_offset_mod[[i_diff_nm]]}}."))
+  ## no duplicates
+  is_dup <- duplicated(data[c("version", "type", "labels_age", "labels_sexgender")])
+  i_dup <- match(TRUE, is_dup, nomatch = 0L)
+  if (i_dup > 0L)
+    cli::cli_abort(paste("Row {.val {i_dup}} of {.arg data} duplicates values for {.arg version},",
+                         "{.arg type}, {.arg labels_age}, and {.arg labels_sexgender}",
+                         "from earlier row."))
   ## create object
   data <- tibble::as_tibble(data)
-  data <- data[c("type", "labels_age", "labels_sexgender", "matrix", "offset")]
+  data <- data[c("version", "type", "labels_age", "labels_sexgender", "matrix", "offset")]
   ans <- list(data = data)
   class(ans) <- "bage_ssvd"
   ans

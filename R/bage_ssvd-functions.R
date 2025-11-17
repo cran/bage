@@ -6,6 +6,8 @@
 #' Extract a matrix or offset from a 'bage_ssvd' object
 #'
 #' @param ssvd Object of class 'bage_ssvd'
+#' @param v Version of data
+#' @param nm_ssvd Name of 'bage_ssvd' object
 #' @param joint Whether SVDs for sexes/genders were
 #' carried out jointly or separately
 #' @param agesex String describing age main effect
@@ -21,6 +23,8 @@
 #'
 #' @noRd
 get_matrix_or_offset_svd <- function(ssvd,
+                                     v,
+                                     nm_ssvd,
                                      levels_age,
                                      levels_sexgender,
                                      joint,
@@ -28,9 +32,29 @@ get_matrix_or_offset_svd <- function(ssvd,
                                      get_matrix,
                                      n_comp) {
   data <- ssvd$data
-  type <- data$type
-  labels_age <- data$labels_age
-  labels_sexgender <- data$labels_sexgender
+  version <- data$version
+  versions <- unique(version)
+  ## subset to data for version
+  if (is.null(v)) {
+    v <- versions[[1L]]
+  }
+  else {
+    if (!(v %in% versions)) {
+      n_version <- length(versions)
+      if (n_version > 1L)
+        msg_valid <- "Valid values for {.var v} with {.arg {nm_ssvd}} are: {.val {versions}}."
+      else
+        msg_valid <- "Only valid value for {.var v} with {.arg {nm_ssvd}} is {.val {versions}}."
+      cli::cli_abort(c("Invalid value for version parameter {.var v}.",
+                       i = msg_valid))
+    }
+  }
+  is_version <- data$version == v
+  data_version <- data[is_version, , drop = FALSE]
+  ## extract values for subset
+  type <- data_version$type
+  labels_age <- data_version$labels_age
+  labels_sexgender <- data_version$labels_sexgender
   n_comp_max <- get_n_comp(ssvd)
   ## check for duplicates
   for (nm in c("levels_age", "levels_sexgender")) {
@@ -86,7 +110,7 @@ get_matrix_or_offset_svd <- function(ssvd,
   }
   ## extract matrix or offset
   if (get_matrix) {
-    ans <- data$matrix[is_type_req][[i_matched]]
+    ans <- data_version$matrix[is_type_req][[i_matched]]
     ans <- Matrix::as.matrix(ans)
     cols <- seq_len(n_comp)
     if (type_req == "indep") {
@@ -100,7 +124,7 @@ get_matrix_or_offset_svd <- function(ssvd,
     nms_ans <- rownames(ans)
   }
   else {
-    ans <- data$offset[is_type_req][[i_matched]]
+    ans <- data_version$offset[is_type_req][[i_matched]]
     nms_ans <- names(ans)
   }
   ## align matrix/offset to term
@@ -142,8 +166,12 @@ get_n_comp <- function(ssvd) {
   data <- ssvd$data
   type <- data$type
   matrix <- data$matrix
-  i_total <- match("total", type)
-  matrix_total <- matrix[[i_total]]
+  i <- match("total", type, nomatch = 0L)
+  if (i == 0L)
+    i <- match("joint", type, nomatch = 0L)
+  if (i == 0L)
+    cli::cli_abort("Internal error: Object does not have 'total' or 'joint'.")
+  matrix_total <- matrix[[i]]
   n_col(matrix_total)
 }
 

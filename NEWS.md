@@ -1,4 +1,80 @@
 
+# bage 0.10.1
+
+## vignettes
+
+* All but the first vignette have been changed to 'articles', so that
+  they appear on the pkgdown-derived website on GitHub, but are not
+  part of the package itself. Rebuilding the vignettes was taking too
+  long, and checking times were exceeding CRAN limits.
+
+## datasets
+
+* Fixed bug in `prt_deaths` where deaths and population datasets had
+  not merged properly.
+* Fixed bug in `usa_deaths`, where the deaths column had class `"ts"`
+  rather than `"numeric"`.
+* Added a `datasets' overview page.
+
+
+# bage 0.10.0
+
+## Extending facilities for scaled SVD priors
+
+* Added new scaled SVDs `CSA`, `HIMD_R`, `HIMD_P1`, `HIMD_P5`,
+  `WMD_C`, `WMD_E`, for use in modeling school attendance, internal
+  migration, and marriage. Also added help page for all scaled SVDs.
+* Function `ssvd()`, for creating scaled SVDs is now
+  exported. (Previously it was an internal function.)
+* Version information has been added to scaled SVDs. Functions for
+  creating SVD-based priors, such as [SVD()] and [SVD_AR()] now
+  include an argument `v` that can be used to specify a version.
+  
+## Changes to interface
+
+* `generate()` method for scaled SVDs now use the term `sex` rather
+  than`sexgender` in results, for consistency with `components()`.
+* `generate()` and `components()` methods for scaled SVDs now default
+  to showing results disaggregated by sex/gender. Previously the
+  default was to show results for the total population.
+
+
+# bage 0.9.10
+
+## Changes to internal calculations
+
+* Covariates (as created by `set_covariates()` now use sparse rather
+  than dense matrices, which has significantly speeded up
+  computations, and reduced memory usage, for models with categorical
+  covariates.
+* Internal calculations for post-processing results from TMB have been
+  refactored to speed them up, and reduce memory usage. (More outputs
+  are built piece-by-piece rather than in one go.) Some large models
+  now run significantly faster, and models that previously could not
+  be fitted because of memory limitations now can.
+
+# bage 0.9.9
+
+## Changes to model behavior
+
+* Up to version 0.9.8, `fit()` silently aggregated rows with
+  duplicated values for the predictors (ie the variables to the right
+  side of the `~` in the model formula. From 0.9.9 this aggregation
+  only occurs with Poisson models where dispersion has been set to 0,
+  or with Normal models. Even in these cases, aggregation no longer
+  happens if the model includes a data model. In cases where
+  aggregation would previously have occurred, `fit()` warns users
+  about the behavior change. Thank you to Salah Merad for pointing out
+  that the aggregation was leading to unexpected results.
+
+## Changes to interface
+
+* The `"inner-outer"` fitting method can now be used with models that
+  include covariates.
+* A function called `dispersion()` has been added, which returns prior
+  or posterior values of the `disp` parameters. (Previously the only
+  ways to obtain values of `disp` was to use function `components()`.)
+  
 # bage 0.9.8
 
 ## Changes to internal calculations

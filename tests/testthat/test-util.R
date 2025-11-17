@@ -978,6 +978,20 @@ test_that("rmvn_from_sparse_CH: dense fallback triggers when LL and LDL both fai
   expect_false(any(!is.finite(draws)))
 })
 
+test_that("rmvn_from_sparse_CH throws error with invalid CH", {
+  set.seed(1)
+  # Small sparse precision: tri-diagonal SPD
+  n  <- 5L
+  D  <- Matrix::Diagonal(n, 2)
+  E  <- Matrix::bandSparse(n, n, k = c(-1, 1), diagonals = list(rep(-1, n-1), rep(-1, n-1)))
+  Q  <- Matrix::forceSymmetric(D - 0.4 * E, uplo = "L")  # strictly PD
+  CH <- Matrix::Cholesky(Q, LDL = FALSE, perm = TRUE, super = NA)
+  mu     <- seq_len(n) * 0.1
+  n_draw <- 200L
+  expect_error(rmvn_from_sparse_CH(CH = "wrong", mu = mu, n_draw = n_draw, prec = Q),
+               "Internal error")
+})
+
 
 ## 'rpois_guarded' ------------------------------------------------------------
 
@@ -1110,6 +1124,20 @@ test_that("'safe_chol_prec' - singular but symmetric matrices trigger ridge warn
   )
 })
 
+test_that("safe_chol_prec aborts when jitter exceeds max_jitter", {
+  # Symmetric, singular matrix -> Cholesky fails at jitter == 0
+  Q0 <- Matrix(matrix(c(1, 1,
+                        1, 1), 2, 2), sparse = FALSE)
+  Q0 <- forceSymmetric(Q0, uplo = "L")
+  # Pick max_jitter below the first increment (1e-12)
+  max_jitter <- 1e-13
+  expect_error(
+    safe_chol_prec(Q0, max_jitter = max_jitter),
+    regexp = "Cholesky factorization failed\\.",
+    class = "rlang_error"
+  )
+})
+
 
 ## 'sample_post_binom_betabinom' ----------------------------------------------
 
@@ -1229,6 +1257,7 @@ test_that("extreme pi values behave sensibly", {
 })
 
 test_that("recovers distribution", {
+  skip_on_cran()
   set.seed(0)
   n <- 1000
   mu <- 0.4
@@ -1252,7 +1281,65 @@ test_that("recovers distribution", {
   expect_equal(mean(x_true), mean(x_post), tolerance = 0.01)
   expect_equal(sd(x_true), sd(x_post), tolerance = 0.01)
 })
-    
+
+
+## 'split_matrix_rows' --------------------------------------------------------
+
+test_that("'split_matrix_rows' works with valid inputs", {
+  m <- matrix(1:12, nrow = 4)
+  nrows <- c(1L, 2L, 1L)
+  ans_obtained <- split_matrix_rows(m = m, nrows = nrows)
+  ans_expected <- list(matrix(c(1L, 5L, 9L), nr = 1L),
+                       matrix(c(2L, 6L, 10L, 3L, 7L, 11L),
+                              nr = 2L,
+                              byrow = TRUE),
+                       matrix(c(4L, 8L, 12L), nr = 1L))
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'split_matrix_rows' works with single column", {
+  m <- matrix(1:12, nrow = 12)
+  nrows <- c(2, 4, 6)
+  ans_obtained <- split_matrix_rows(m = m, nrows = nrows)
+  ans_expected <- list(matrix(1:2, nr = 2),
+                       matrix(3:6, nr = 4),
+                       matrix(7:12, nr = 6))
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'split_matrix_rows' works with single row", {
+  m <- matrix(1:12, nrow = 1)
+  nrows <- 1L
+  ans_obtained <- split_matrix_rows(m = m, nrows = nrows)
+  ans_expected <- list(matrix(1:12, nr = 1))
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'split_matrix_rows' throws expected error", {
+  m <- matrix(1:12, nrow = 1)
+  nrows <- 2L
+  expect_error(split_matrix_rows(m = m, nrows = nrows),
+               "Internal error")
+})
+
+
+## 'split_vector_lengths' -----------------------------------------------------
+
+test_that("'split_vector_lengths' works with valid inputs", {
+  v <- 2:13
+  lengths <- c(3, 1, 8)
+  ans_obtained <- split_vector_lengths(v = v, lengths = lengths)
+  ans_expected <- list(2:4, 5L, 6:13)
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'split_vector_lengths' throws expected error", {
+  v <- 2:13
+  lengths <- c(3, 1, 9)
+  expect_error(split_vector_lengths(v = v, lengths = lengths),
+               "Internal error")
+})
+
 
 ## 'symmetry_grade' -----------------------------------------------------------
 
@@ -1322,3 +1409,64 @@ test_that("'symmetry_grade' function handles non-Matrix inputs by coercing", {
   B2[1, 2] <- B2[1, 2] + 1e-12
   expect_identical(symmetry_grade(B2), "near")
 })
+
+
+## 'warn_not_aggregating' -----------------------------------------------------
+
+test_that("warn_not_aggregating returns TRUE with no duplicates", {
+  formula <- deaths ~ age + sex
+  data <- expand.grid(age = 0:2, sex = c("f", "m"))
+  data$deaths <- 1
+  expect_true(warn_not_aggregating(formula = formula,
+                                   data = data,
+                                   formula_covariates = NULL,
+                                   always = TRUE))
+})
+
+test_that("warn_not_aggregating returns TRUE with duplicates, but always is FALSE", {
+  formula <- deaths ~ age
+  data <- expand.grid(age = 0:2, sex = c("f", "m"))
+  data$deaths <- 1
+  expect_true(warn_not_aggregating(formula = formula,
+                                   data = data,
+                                   formula_covariates = NULL,
+                                   always = FALSE))
+})
+
+test_that("warn_not_aggregating raises warning with duplicates, but only first time", {
+  dir_cache <- tools::R_user_dir(package = "bage", which = "cache")
+  dir.create(dir_cache, showWarnings = FALSE, recursive = TRUE)
+  path <- file.path(dir_cache, "aggregation.txt")
+  unlink(path)
+  formula <- deaths ~ age + sex
+  data <- expand.grid(age = 0:2, sex = c("f", "m"))
+  data <- rbind(data, data)
+  data$deaths <- 1
+  expect_warning(warn_not_aggregating(formula = formula,
+                                      data = data,
+                                      formula_covariates = NULL,
+                                      always = TRUE),
+                 "`data` has multiple rows with the same values for the predictors \\(`age` and `sex`\\).")
+  expect_true(warn_not_aggregating(formula = formula,
+                                   data = data,
+                                   formula_covariates = NULL,
+                                   always = TRUE))
+})
+
+test_that("warn_not_aggregating uses covariages", {
+  dir_cache <- tools::R_user_dir(package = "bage", which = "cache")
+  dir.create(dir_cache, showWarnings = FALSE, recursive = TRUE)
+  path <- file.path(dir_cache, "aggregation.txt")
+  unlink(path)
+  formula <- deaths ~ age
+  data <- expand.grid(age = 0:2, sex = c("f", "m"))
+  data$deaths <- 1
+  formula_covariates <- ~ sex
+  expect_true(warn_not_aggregating(formula = formula,
+                                      data = data,
+                                      formula_covariates = formula_covariates,
+                                      always = TRUE))
+})
+
+              
+  

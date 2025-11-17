@@ -6,6 +6,7 @@ knitr::opts_chunk$set(
   fig.height = 4,
   message = FALSE
 )
+is_cran <- identical(Sys.getenv("NOT_CRAN"), "false")
 set.seed(0)
 
 ## ----setup--------------------------------------------------------------------
@@ -181,7 +182,7 @@ ggplot(data_plot_mis, aes(x = year)) +
 #                          mean = c(0.05,     0.06),
 # 			 disp = c(0.02,     0.02))
 # 
-# mod_under <- mod_base |>
+# mod_under <- mod |>
 #   set_datamod_undercount(prob = prob_under)
 
 ## -----------------------------------------------------------------------------

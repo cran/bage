@@ -158,6 +158,54 @@ test_that("'augment' gives message when used unfitted and quiet is FALSE", {
 })
 
 
+## 'can_aggregate' ------------------------------------------------------------
+
+test_that("'can_aggregate' works with bage_mod_pois", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 5)
+  formula <- deaths ~ age + time + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  expect_false(can_aggregate(mod))
+  mod <- mod |>
+    set_disp(mean = 0)
+  expect_true(can_aggregate(mod))
+  mod <- mod |>
+    set_datamod_noise(sd = 1)
+  expect_false(can_aggregate(mod))
+})
+
+test_that("'can_aggregate' works with bage_mod_binom", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 1000)
+  data$deaths <- rbinom(n = nrow(data), size = data$popn, prob = 0.02)
+  formula <- deaths ~ age + time + sex
+  mod <- mod_binom(formula = formula,
+                  data = data,
+                  size = popn)
+  expect_false(can_aggregate(mod))
+})
+
+test_that("'can_aggregate' works with bage_mod_norm", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$wt <- rpois(n = nrow(data), lambda = 1000)
+  data$income <- rnorm(n = nrow(data), sd = 10)
+  formula <- income ~ age + time + sex
+  mod <- mod_norm(formula = formula,
+                  data = data,
+                  weights = wt)
+  expect_true(can_aggregate(mod))
+  mod <- mod |>
+    set_datamod_noise(sd = 1)
+  expect_false(can_aggregate(mod))
+})
+
+
 ## 'components' ---------------------------------------------------------------
 
 test_that("'components' works with no disp", {
@@ -304,6 +352,97 @@ test_that("'computations' returns tibble if applied to fitted model", {
                     exposure = popn) |>
       fit()
     expect_true(tibble::is_tibble(computations(mod)))
+})
+
+
+## 'dispersion' ---------------------------------------------------------------
+
+test_that("'dispersion' works with pois", {
+    set.seed(0)
+    data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+    data$popn <- rpois(n = nrow(data), lambda = 100)
+    data$deaths <- rpois(n = nrow(data), lambda = 10)
+    formula <- deaths ~ age + sex + time
+    mod <- mod_pois(formula = formula,
+                    data = data,
+                    exposure = popn)
+    mod <- set_n_draw(mod, n_draw = 10000)
+    disp <- dispersion(mod)
+    expect_true(rvec::is_rvec(disp))
+    expect_equal(mean(as.numeric(disp)),
+                 mean(abs(rexp(n = 10000))),
+                 tolerance = 0.05)
+    disp2 <- dispersion(mod)
+    expect_identical(disp, disp2)
+    mod <- set_disp(mod, mean = 0)
+    expect_identical(dispersion(mod), NULL)
+    mod <- set_disp(mod, mean = 0.2)
+    mod_fitted <- fit(mod)
+    disp <- dispersion(mod_fitted)
+    expect_identical(length(disp), 1L)
+})
+
+test_that("'dispersion' works with binom", {
+    set.seed(0)
+    data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+    data$popn <- rpois(n = nrow(data), lambda = 100)
+    data$deaths <- rbinom(n = nrow(data), size = data$popn, prob = 0.3)
+    formula <- deaths ~ age + sex + time
+    mod <- mod_pois(formula = formula,
+                    data = data,
+                    exposure = popn)
+    mod <- set_n_draw(mod, n_draw = 10000)
+    disp <- dispersion(mod)
+    expect_true(rvec::is_rvec(disp))
+    expect_equal(mean(as.numeric(disp)),
+                 mean(abs(rexp(n = 10000))),
+                 tolerance = 0.05)
+    disp2 <- dispersion(mod)
+    expect_identical(disp, disp2)
+    mod <- set_disp(mod, mean = 0)
+    expect_identical(dispersion(mod), NULL)
+    mod <- set_disp(mod, mean = 0.2)
+    mod_fitted <- fit(mod)
+    disp <- dispersion(mod_fitted)
+    expect_identical(length(disp), 1L)
+})
+
+test_that("'disp' estimates not affected by weights in normal model", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"),
+                      KEEP.OUT.ATTRS = FALSE)
+  data$income <- rnorm(n = nrow(data), mean = 10, sd = 3)
+  data$wt1 <- runif(n = nrow(data), max = 5)
+  data$wt2 <- 20 * data$wt1
+  formula <- income ~ age + sex + time
+  mod1 <- mod_norm(formula = formula,
+                   data = data,
+                   weights = wt1)
+  mod1_fitted <- fit(mod1)
+  disp1 <- dispersion(mod1_fitted, quiet = TRUE)
+  mod2 <- mod_norm(formula = formula,
+                   data = data,
+                   weights = wt2)
+  mod2_fitted <- fit(mod2)
+  disp2 <- dispersion(mod2_fitted, quiet = TRUE)
+  expect_equal(rvec::draws_mean(disp1), rvec::draws_mean(disp2),
+               tolerance = 0.01)
+})
+
+test_that("'dispersion' gives expected message when 'original_scale' is FALSE and model is normal", {
+    set.seed(0)
+    data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"),
+                        KEEP.OUT.ATTRS = FALSE)
+    data$income <- rnorm(n = nrow(data), mean = 10, sd = 3)
+    data$wt <- runif(n = nrow(data), max = 5)
+    formula <- income ~ age + sex + time
+    mod <- mod_norm(formula = formula,
+                    data = data,
+                    weights = wt) |>
+      fit()
+    expect_message(dispersion(mod),
+                   "Values for dispersion")
+    expect_silent(dispersion(mod, original_scale = TRUE))
 })
 
 
@@ -1335,6 +1474,19 @@ test_that("'fit' works with covariates - no shrinkage", {
   expect_s3_class(ans_obtained, "bage_mod")
 })
 
+test_that("'fit' throws error when jitter negative", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9,
+                      region = c("a", "b"),
+                      sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  mod <- mod_pois(formula = deaths ~ age * sex ,
+                  data = data,
+                  exposure = popn)
+  expect_error(fit(mod, max_jitter = -1),
+               "`max_jitter` is negative.")
+})
 
 
 ## 'forecast' -----------------------------------------------------------------
@@ -2914,7 +3066,7 @@ test_that("'make_mod_disp' works with pois", {
   mod <- fit(mod)
   mod_disp <- make_mod_disp(mod)
   expect_setequal(names(mod_disp$priors), "(Intercept)")
-  mu <- exp(make_linpred_from_stored_draws(mod, point = TRUE))
+  mu <- exp(make_linpred_from_stored_draws(mod, point = TRUE, rows = NULL))
   expect_equal(mod_disp$offset, mod$offset * mu)
   expect_true(mod_disp$mean_disp > 0)
   expect_identical(length(mod_disp$dimnames_terms), 1L)
@@ -2965,7 +3117,7 @@ test_that("'make_mod_disp' works with binom", {
   mod <- fit(mod)
   mod_disp <- make_mod_disp(mod)
   expect_setequal(names(mod_disp$priors), "(Intercept)")
-  mu <- exp(make_linpred_from_stored_draws(mod, point = TRUE))
+  mu <- exp(make_linpred_from_stored_draws(mod, point = TRUE, rows = NULL))
   expect_true(mod_disp$mean_disp > 0)
 })
 
@@ -2998,7 +3150,7 @@ test_that("'make_mod_disp' works with norm", {
   mod <- fit(mod)
   mod_disp <- make_mod_disp(mod)
   expect_setequal(names(mod_disp$priors), "(Intercept)")
-  mu <- make_linpred_from_stored_draws(mod, point = TRUE)
+  mu <- make_linpred_from_stored_draws(mod, point = TRUE, rows = NULL)
   expect_equal(mod_disp$outcome, mod$outcome - mu)
   expect_true(mod_disp$mean_disp > 0)
   expect_identical(length(mod_disp$dimnames_terms), 1L)
@@ -3029,13 +3181,17 @@ test_that("'make_mod_inner' works with pois", {
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 1000)
   data$deaths <- rpois(n = nrow(data), lambda = 0.3 * data$popn)
+  data$income <- rnorm(n = nrow(data))
   formula <- deaths ~ age * sex + sex * time
   mod <- mod_pois(formula = formula,
                   data = data,
-                  exposure = popn)
+                  exposure = popn) |>
+    set_covariates(~ income)
   use_term <- make_use_term(mod, vars_inner = c("age", "sex"))
   ans_obtained <- make_mod_inner(mod, use_term)
   ans_expected <- reduce_model_terms(mod, use_term = use_term)
+  ans_expected["formula_covariates"] <- list(NULL)
+  ans_expected["covariates_nms"] <- list(NULL)
   ans_expected$mean_disp <- 0
   expect_identical(ans_obtained, ans_expected)
 })
@@ -3074,10 +3230,32 @@ test_that("'make_mod_outer' works with pois", {
                               mod_inner = mod_inner,
                               use_term = use_term)
   expect_setequal(names(mod_outer$priors), c("time", "sex:time"))
-  mu <- exp(make_linpred_from_stored_draws(mod_inner, point = TRUE))
+  mu <- exp(make_linpred_from_stored_draws(mod_inner,
+                                           point = TRUE,
+                                           rows = NULL))
   expect_equal(mod_outer$offset, mod$offset * mu)
   expect_equal(mod_outer$mean_disp, 0)
   expect_identical(mod_outer$nm_offset_data, "offset_inner_outer")
+})
+
+test_that("'make_mod_outer' keeps covariates", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 1000)
+  data$deaths <- rpois(n = nrow(data), lambda = 0.3 * data$popn)
+  data$income <- rnorm(n = nrow(data))
+  formula <- deaths ~ age * sex + sex * time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+    set_covariates(~ income)
+  use_term <- make_use_term(mod, vars_inner = c("age", "sex"))
+  mod_inner <- reduce_model_terms(mod, use_term = use_term)
+  mod_inner <- fit(mod_inner)
+  mod_outer <- make_mod_outer(mod,
+                              mod_inner = mod_inner,
+                              use_term = use_term)
+  expect_true(has_covariates(mod_outer))
 })
 
 test_that("'make_mod_outer' works with binom", {
@@ -3118,7 +3296,9 @@ test_that("'make_mod_outer' works with norm", {
                               mod_inner = mod_inner,
                               use_term = use_term)
   expect_setequal(names(mod_outer$priors), c("time", "sex:time"))
-  mu <- make_linpred_from_stored_draws(mod_inner, point = TRUE)
+  mu <- make_linpred_from_stored_draws(mod_inner,
+                                       point = TRUE,
+                                       rows = NULL)
   expect_equal(mod_outer$outcome, mod$outcome - mu)
   expect_true(mod_outer$mean_disp > 0)
   expect_identical(mod_outer$nm_offset_data, "offset_inner_outer")
@@ -3243,6 +3423,32 @@ test_that("'print' works with mod_pois - inner-outer fitting method", {
                              method = "inner-outer",
                              vars_inner = "age")),
                    file = NULL)
+})
+
+
+## 'remove_covariates' --------------------------------------------------------
+
+test_that("'remove_covariates' works", {
+  data <- expand.grid(age = 0:2, time = 2000:2001, sex = 1:2)
+  data$popn <- seq_len(nrow(data))
+  data$deaths <- rpois(n = nrow(data), lambda = 3)
+  data$income <- rnorm(n = nrow(data))
+  formula <- deaths ~ age:sex + time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  expect_true("formula_covariates" %in% names(mod))
+  expect_true("covariates_nms" %in% names(mod))
+  expect_identical(mod$formula_covariates, NULL)
+  expect_identical(mod$covariates_nms, NULL)
+  mod <- set_covariates(mod, ~ income)
+  expect_equal(mod$formula_covariates, ~ income)
+  expect_equal(mod$covariates_nms, "income")
+  mod <- remove_covariates(mod)
+  expect_true("formula_covariates" %in% names(mod))
+  expect_true("covariates_nms" %in% names(mod))
+  expect_identical(mod$formula_covariates, NULL)
+  expect_identical(mod$covariates_nms, NULL)
 })
 
 

@@ -10,24 +10,24 @@
 generics::augment
 
 ## HAS_TESTS
-#' Extract Data and Modelled Values
+#' Extract Data and Modeled Values
 #'
 #' Extract data and rates, probabilities, or means
 #' from a model object.
 #' The return value consists of the original
-#' data and one or more columns of modelled values.
+#' data and one or more columns of modeled values.
 #'
 #' @section Fitted vs unfitted models:
 #'
 #' `augment()` is typically called on a [fitted][fit()]
-#' model. In this case, the modelled values are
+#' model. In this case, the modeled values are
 #' draws from the joint posterior distribution for rates,
 #' probabilities, or means.
 #'
 #' `augment()` can, however, be called on an
-#' unfitted model. In this case, the modelled values
+#' unfitted model. In this case, the modeled values
 #' are draws from the joint prior distribution.
-#' In other words, the modelled values are informed by
+#' In other words, the modeled values are informed by
 #' model priors, and by values for `exposure`, `size`, or `weights`,
 #' but not by observed outcomes.
 #'
@@ -75,6 +75,7 @@ generics::augment
 #'
 #' @seealso
 #' - [components()] Extract values for hyper-parameters
+#' - [dispersion()] Extract values for dispersion
 #' - [tidy()] Short summary of a model
 #' - [mod_pois()] Specify a Poisson model
 #' - [mod_binom()] Specify a binomial model
@@ -139,6 +140,41 @@ augment.bage_mod <- function(x,
     ans <- draw_vals_augment_unfitted(mod = x, quiet = quiet)
   }
   ans
+}
+
+
+## 'can_aggregate' ------------------------------------------------------------
+
+## HAS_TESTS
+#' Test Whether a Model Can Aggregate Across Duplicate
+#' Values for Predictors
+#'
+#' @param mod An object of class `"bage_mod"`.
+#'
+#' @returns `TRUE` or `FALSE`
+#'
+#' @noRd
+can_aggregate <- function(mod) {
+  UseMethod("can_aggregate")
+}
+
+## HAS_TESTS
+#' @export
+can_aggregate.bage_mod_pois <- function(mod) {
+  disp_fixed <- isTRUE(all.equal(mod$mean_disp, 0))
+  disp_fixed && !has_datamod(mod)
+}
+
+## HAS_TESTS
+#' @export
+can_aggregate.bage_mod_binom <- function(mod) {
+  FALSE
+}
+
+## HAS_TESTS
+#' @export
+can_aggregate.bage_mod_norm <- function(mod) {
+  !has_datamod(mod)
 }
 
 
@@ -215,6 +251,7 @@ generics::components
 #' - [augment()] Extract values for rates,
 #'   means, or probabilities,
 #'   together with original data
+#' - [dispersion()] Extract values for dispersion
 #' - [tidy()] Extract a one-line summary of a model
 #' - [mod_pois()] Specify a Poisson model
 #' - [mod_binom()] Specify a binomial model
@@ -343,6 +380,128 @@ computations.bage_mod <- function(object) {
   }
 }
 
+
+## HAS_TESTS
+#' Extract Values for Dispersion
+#'
+#' Extract values for the 'dispersion'
+#' parameter from a model object.
+#'
+#' @section Fitted vs unfitted models:
+#'
+#' `dispersion()` is typically called on a [fitted][fit()]
+#' model. In this case, the values for dispersion are
+#' draws from the posterior distribution.
+#' `dispersion()` can, however, be called on an
+#' unfitted model. In this case, the values
+#' are drawn from the prior distribution.
+#' 
+#' @section Scaling and Normal models:
+#'
+#' Internally, models created with [mod_norm()]
+#' are fitted using transformed versions of the
+#' outcome and weights variables. By default, when `dispersion()`
+#' is used with these models,
+#' it returns values on the transformed scale.
+#' To instead obtain values on the untransformed
+#' scale, set `original_scale` to `TRUE`.
+#'
+#' @inheritParams augment.bage_mod
+#' @param object Object of class `"bage_mod"`,
+#' typically created with [mod_pois()],
+#' [mod_binom()], or [mod_norm()].
+#' @param original_scale Whether values for
+#' disperson are on the original
+#' scale or the transformed scale.
+#' Default is `FALSE`.
+#'
+#' @returns An [rvec][rvec::rvec]
+#' (or `NULL` if the model does not
+#' include a dispersion parameter.)
+#'
+#' @seealso
+#' - [components()] Extract values for hyper-parameters,
+#'   including dispersion
+#' - [set_disp()] Specify a prior for dispersion
+#'
+#' @examples
+#' set.seed(0)
+#'
+#' ## specify model
+#' mod <- mod_pois(injuries ~ age + sex + year,
+#'                 data = nzl_injuries,
+#'                 exposure = popn)
+#'
+#' ## prior distribution
+#' mod |>
+#'   dispersion()
+#'
+#' ## fit model
+#' mod <- mod |>
+#'   fit()
+#'
+#' ## posterior distribution
+#' mod |>
+#'   dispersion()
+#'
+#' ## fit normal model
+#' mod <- mod_norm(value ~ age * diag + year,
+#'                 data = nld_expenditure,
+#'                 weights = 1) |>
+#'   fit()
+#'
+#' ## values on the transformed scale
+#' mod |>
+#'   dispersion()
+#'
+#' ## values on the original scale
+#' mod |>
+#'   dispersion(original_scale = TRUE)
+#' @export
+dispersion <- function(object,
+                       quiet = FALSE,
+                       original_scale = FALSE) {
+  UseMethod("dispersion")
+}
+
+#' @export
+dispersion.bage_mod <- function(object,
+                                quiet = FALSE,
+                                original_scale = FALSE) {
+  check_old_version(x = object, nm_x = "object")
+  check_flag(x = quiet, nm_x = "quiet")
+  check_original_scale(original_scale = original_scale, mod = object)
+  has_disp <- has_disp(object)
+  is_fitted <- is_fitted(object)
+  is_norm <- inherits(object, "bage_mod_norm")
+  if (!quiet && is_norm && !original_scale)
+    cli::cli_alert_info(paste("Values for dispersion are on a transformed scale.",
+                              "See the documentation for {.fun mod_norm} and",
+                              "{.fun dispersion} for details."))
+  if (has_disp) {
+    if (is_fitted) {
+      ans <- object$draws_disp
+      ans <- matrix(ans, nrow = 1L)
+      ans <- rvec::rvec_dbl(ans)
+    }
+    else {
+      n_draw <- object$n_draw
+      seed_components <- object$seed_components
+      seed_restore <- make_seed()
+      set.seed(seed_components)
+      ans <- draw_vals_disp(object, n_sim = n_draw)
+      set.seed(seed_restore)
+    }
+    if (is_norm && original_scale) {
+      outcome_sd <- object$outcome_sd
+      offset_mean <- object$offset_mean
+      ans <- sqrt(offset_mean) * outcome_sd * ans
+    }
+  }
+  else
+    ans <- NULL
+  ans
+}
 
 
 ## 'draw_fitted_given_outcome' ------------------------------------------------
@@ -584,7 +743,9 @@ draw_vals_augment_fitted.bage_mod_norm <- function(mod, quiet) {
   seed_restore <- make_seed() ## create randomly-generated seed
   set.seed(seed_augment) ## set pre-determined seed
   ## prepare inputs
-  linpred <- make_linpred_from_stored_draws(mod = mod, point = FALSE)
+  linpred <- make_linpred_from_stored_draws(mod = mod,
+                                            point = FALSE,
+                                            rows = NULL)
   disp <- get_disp(mod)
   has_datamod_outcome <- has_datamod(mod)
   has_missing_outcome <- anyNA(outcome)
@@ -884,16 +1045,13 @@ generics::fit
 #' When `method` is `"inner-outer"`, estimation is
 #' carried out in multiple steps, which, in large models,
 #' can sometimes reduce computation times.
-#' In Step 1, the data is aggregated across all dimensions other
-#' than those specified in `var_inner`, and a model
-#' for the `inner` variables is fitted to the data.
-#' In Step 2, the data is aggregated across the
-#' remaining variables, and a model for the
+#' In Step 1, a model only using the `inner` variables
+#' is fitted to the data.
+#' In Step 2, a model only using the
 #' `outer` variables is fitted to the data.
 #' In Step 3, values for dispersion are calculated.
 #' Parameter estimates from steps 1, 2, and 3
-#' are then combined. `"inner-outer"` methods are
-#' still experimental, and may change in future.
+#' are then combined.
 #'
 #' @section Optimizer:
 #'
@@ -913,14 +1071,35 @@ generics::fit
 #' matrix returned by TMB. This factorization sometimes
 #' fails because of numerical problems. Adding a small
 #' quantity to the diagonal of the precision matrix
-#' can alleviate numerical problems, though potentially
-#' at the cost of reduced accuracy. If the Cholesky factorization
+#' can alleviate numerical problems, while potentially
+#' reducing accuracy. If the Cholesky factorization
 #' initially fails, `bage` will try again with progressively
-#' largeer quantities added to the diagonal, up to the
+#' larger quantities added to the diagonal, up to the
 #' maximum set by `max_jitter`. Increasing the value of
-#' `max_jitter` can help suppress numerical problems
-#' further. A safer strategy, however, is to simplify
+#' `max_jitter` can help suppress numerical problems.
+#' A safer strategy, however, is to simplify
 #' the model, or to use more informative priors.
+#'
+#' @section Aggregation:
+#'
+#' Up to version 0.9.8 of `bage`, `fit()` always aggregated
+#' across cells with identical values of the
+#' predictor variables
+#' in `formula` (ie the variables to the right of `~`)
+#' before fitting. For instance,
+#' if a dataset contained deaths and population
+#' disaggregated by age and sex, but the model formula
+#' was `deaths ~ age`, then `fit()` would aggregate
+#' deaths and population within each age category
+#' before fitting the model. From
+#' version 0.9.9, `fit()`
+#' only aggregates across cells with identical
+#' values if no data model is used,
+#' and if the model is Poisson with
+#' dispersion set to 0 or is normal.
+#' Note that this change in behavior has no effect
+#' on most models, since most models include all
+#' variables used to classify outcomes. 
 #'
 #' @param object A `bage_mod` object,
 #' created with [mod_pois()],
@@ -960,6 +1139,7 @@ generics::fit
 #'   probabilities, or means, together
 #'   with original data
 #' - [components()] Extract values for hyper-parameters
+#' - [dispersion()] Extract values for dispersion
 #' - [forecast()] Forecast, based on a model
 #' - [report_sim()] Simulation study of a model
 #' - [unfit()] Reset a model
@@ -1009,11 +1189,21 @@ fit.bage_mod <- function(object,
   check_flag(x = start_oldpar, nm_x = "start_oldpar")
   check_has_no_dots(...)
   if (method == "standard") {
+    aggregate <- can_aggregate(object)
+    if (!aggregate) {
+      formula <- object$formula
+      data <- object$data
+      formula_covariates <- object$formula_covariates
+      warn_not_aggregating(formula = formula,
+                           data = data,
+                           formula_covariates = formula_covariates,
+                           always = FALSE)
+    }
     fit_default(object,
                 optimizer = optimizer,
                 quiet = quiet,
                 start_oldpar = start_oldpar,
-                aggregate = TRUE)
+                aggregate = aggregate)
   }
   else if (method == "inner-outer")
     fit_inner_outer(mod = object,
@@ -1750,7 +1940,7 @@ get_nm_offset_mod.bage_mod_binom <- function(mod) "size"
 get_nm_offset_mod.bage_mod_norm <- function(mod) "weights"
 
 
-## 'get_nm_outcome_data' -----------------------------------------------------------
+## 'get_nm_outcome_data' ------------------------------------------------------
 
 #' Get the Name of the Outcome Variable Used in the Input Data
 #'
@@ -1792,7 +1982,6 @@ has_confidential.bage_mod <- function(mod) {
   confidential <- mod$confidential
   !is.null(confidential)
 }
-
 
 
 ## 'has_covariates' -----------------------------------------------------------
@@ -2219,15 +2408,19 @@ make_mod_disp.bage_mod_pois <- function(mod) {
   n_term <- length(mod$dimnames_terms)
   use_term <- rep(c(TRUE, FALSE), times = c(1L, n_term - 1L))
   ans <- reduce_model_terms(mod = mod, use_term = use_term)
-  linpred <- make_linpred_from_stored_draws(mod = mod, point = TRUE)
   nrow_data <- nrow(mod$data)
-  if (nrow_data > nrow_max) {
-    i_keep <- sample(nrow_data, size = nrow_max)
-    ans$data <- ans$data[i_keep, , drop = FALSE]
-    ans$outcome <- ans$outcome[i_keep]
-    ans$offset <- ans$offset[i_keep]
-    linpred <- linpred[i_keep]
+  is_reduce_rows <- nrow_data > nrow_max
+  if (is_reduce_rows) {
+    rows <- sample(nrow_data, size = nrow_max)
+    ans$data <- ans$data[rows, , drop = FALSE]
+    ans$outcome <- ans$outcome[rows]
+    ans$offset <- ans$offset[rows]
   }
+  else
+    rows <- NULL
+  linpred <- make_linpred_from_stored_draws(mod = mod,
+                                            point = TRUE,
+                                            rows = rows)
   mu <- exp(linpred)
   ans$offset <- ans$offset * mu
   ans$nm_offset_data <- "offset_inner_outer"
@@ -2261,15 +2454,19 @@ make_mod_disp.bage_mod_norm <- function(mod) {
   n_term <- length(mod$dimnames_terms)
   use_term <- rep(c(TRUE, FALSE), times = c(1L, n_term - 1L))
   ans <- reduce_model_terms(mod = mod, use_term = use_term)
-  linpred <- make_linpred_from_stored_draws(mod = mod, point = TRUE)
   nrow_data <- nrow(mod$data)
-  if (nrow_data > nrow_max) {
-    i_keep <- sample(nrow_data, size = nrow_max)
-    ans$data <- ans$data[i_keep, , drop = FALSE]
-    ans$outcome <- ans$outcome[i_keep]
-    ans$offset <- ans$offset[i_keep]
-    linpred <- linpred[i_keep]
+  is_reduce_rows <- nrow_data > nrow_max
+  if (is_reduce_rows) {
+    rows <- sample(nrow_data, size = nrow_max)
+    ans$data <- ans$data[rows, , drop = FALSE]
+    ans$outcome <- ans$outcome[rows]
+    ans$offset <- ans$offset[rows]
   }
+  else
+    rows <- NULL
+  linpred <- make_linpred_from_stored_draws(mod = mod,
+                                            point = TRUE,
+                                            rows = rows)
   ans$outcome <- ans$outcome - linpred
   ans$nm_offset_data <- "offset_inner_outer"
   ans
@@ -2295,6 +2492,7 @@ make_mod_inner <- function(mod, use_term) {
 #' @export
 make_mod_inner.bage_mod <- function(mod, use_term) {
   ans <- reduce_model_terms(mod = mod, use_term = use_term)
+  ans <- remove_covariates(ans)
   ans$mean_disp <- 0
   ans
 }
@@ -2302,7 +2500,9 @@ make_mod_inner.bage_mod <- function(mod, use_term) {
 ## HAS_TESTS
 #' @export
 make_mod_inner.bage_mod_norm <- function(mod, use_term) {
-  reduce_model_terms(mod = mod, use_term = use_term)
+  ans <- reduce_model_terms(mod = mod, use_term = use_term)
+  ans <- remove_covariates(ans)
+  ans
 }
 
 
@@ -2326,7 +2526,9 @@ make_mod_outer <- function(mod, mod_inner, use_term) {
 ## HAS_TESTS
 #' @export
 make_mod_outer.bage_mod_pois <- function(mod, mod_inner, use_term) {
-  linpred_inner <- make_linpred_from_stored_draws(mod = mod_inner, point = TRUE)
+  linpred_inner <- make_linpred_from_stored_draws(mod = mod_inner,
+                                                  point = TRUE,
+                                                  rows = NULL)
   mu_inner <- exp(linpred_inner)
   use_term <- !use_term
   ans <- reduce_model_terms(mod = mod, use_term = use_term)
@@ -2349,7 +2551,9 @@ make_mod_outer.bage_mod_binom <- function(mod, mod_inner, use_term) {
 ## HAS_TESTS
 #' @export
 make_mod_outer.bage_mod_norm <- function(mod, mod_inner, use_term) {
-  linpred_inner <- make_linpred_from_stored_draws(mod = mod_inner, point = TRUE)
+  linpred_inner <- make_linpred_from_stored_draws(mod = mod_inner,
+                                                  point = TRUE,
+                                                  rows = NULL)
   use_term <- !use_term
   ans <- reduce_model_terms(mod = mod, use_term = use_term)
   ans$outcome <- ans$outcome - linpred_inner
@@ -2516,6 +2720,11 @@ nm_distn.bage_mod_norm <- function(mod) "norm"
 #' - [mod_binom()] Specify a binomial model
 #' - [mod_norm()] Specify a normal model
 #' - [fit.bage_mod()][fit()] and [is_fitted()] Model fitting
+#' - [augment()] Extract values for rates,
+#'   probabilities, or means, together
+#'   with original data
+#' - [components()] Extract values for hyper-parameters
+#' - [dispersion()] Extract values for dispersion
 #' - [priors] Overview of priors for model terms
 #' - [tidy.bage_mod()][tidy()] Number of parameters,
 #'   and standard deviations
@@ -2665,6 +2874,29 @@ print.bage_mod <- function(x, ...) {
 }
 
 
+## 'remove_covariates' --------------------------------------------------------
+
+## HAS_TESTS
+#' Remove Covariates from a Model
+#'
+#' @param mod Object of class 'bage_mod'
+#'
+#' @returns Modified version of 'mod'
+#'
+#' @noRd
+remove_covariates <- function(mod) {
+  UseMethod("remove_covariates")
+}
+
+## HAS_TESTS
+#' @export
+remove_covariates.bage_mod <- function(mod) {
+  mod["formula_covariates"] <- list(NULL)
+  mod["covariates_nms"] <- list(NULL)
+  mod
+}
+
+
 ## 'replicate_data' -----------------------------------------------------------
 
 #' Create Replicate Data
@@ -2752,6 +2984,7 @@ print.bage_mod <- function(x, ...) {
 #'   probabilities, or means, together
 #'   with original data
 #' - [components()] Extract values for hyper-parameters
+#' - [dispersion()] Extract values for dispersion
 #' - [forecast()] Forecast, based on a model
 #' - [report_sim()] Simulation study of model.
 #' - [Mathematical Details](https://bayesiandemography.github.io/bage/articles/vig02_math.html)
@@ -3039,6 +3272,7 @@ generics::tidy
 #'   probabilities, or means, together
 #'   with original data
 #' - [components()] Extract values for hyper-parameters
+#' - [dispersion()] Extract values for dispersion
 #'
 #' @references `std_dev` is modified from Gelman et al. (2014)
 #' *Bayesian Data Analysis. Third Edition*. pp396--397.
@@ -3065,12 +3299,8 @@ tidy.bage_mod <- function(x, ...) {
   if (is_fitted) {
     effectfree <- x$point_effectfree
     effects <- make_effects(mod = x, effectfree = effectfree)
-    effects <- as.double(effects)
-    terms <- make_terms_effects(dimnames_terms)
-    effects <- split(effects, terms)
     ans[["std_dev"]] <- vapply(effects, stats::sd, 0)
   }
   ans <- tibble::tibble(ans)
   ans
 }
-
