@@ -1,7 +1,7 @@
 Package: bage
 Type: Package
 Title: Bayesian Estimation and Forecasting of Age-Specific Rates
-Version: 0.10.1
+Version: 0.10.2
 Authors@R: 
     c(person(given = "John",
              family = "Bryant",
@@ -33,10 +33,10 @@ URL: https://bayesiandemography.github.io/bage/,
         https://github.com/bayesiandemography/bage
 BugReports: https://github.com/bayesiandemography/bage/issues
 NeedsCompilation: yes
-Packaged: 2025-11-17 08:13:40 UTC; johnbryant
+Packaged: 2025-11-19 02:33:48 UTC; johnbryant
 Author: John Bryant [aut, cre],
   Junni Zhang [aut],
   Bayesian Demography Limited [cph]
 Maintainer: John Bryant <john@bayesiandemography.com>
 Repository: CRAN
-Date/Publication: 2025-11-17 08:40:02 UTC
+Date/Publication: 2025-11-19 08:10:08 UTC
