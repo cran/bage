@@ -111,7 +111,7 @@ dbetabinom <- function(x, size, shape1, shape2, log = FALSE) {
 insert_after <- function(df, nm_after, x, nm_x) {
   nms_df <- names(df)
   n_df <- length(nms_df)
-  i_after <- match(nm_after, names(df))
+  i_after <- match(nm_after, names(df), nomatch = n_df)
   if (i_after < n_df) {
     s_before <- seq_len(i_after)
     s_after <- seq.int(from = i_after + 1L, to = n_df)
@@ -303,17 +303,19 @@ rbinom_guarded <- function(size, prob) {
 #'
 #' @param n Number of draws
 #' @param mean Mean of distribution
-#' @param R_prec Cholesky decomposition of precision matrix
+#' @param CH Cholesky decomposition of precision matrix
 #'
 #' @returns A matrix, with each columns being one draw
 #'
 #' @noRd
-rmvnorm_chol <- function(n, mean, R_prec) {
-    n_val <- length(mean)
-    Z <- matrix(stats::rnorm(n = n_val * n),
-                nrow = n_val,
-                ncol = n)
-    mean + backsolve(R_prec, Z)
+rmvnorm_chol <- function(n, mean, CH) {
+  n_val <- length(mean)
+  Z <- matrix(stats::rnorm(n = n_val * n),
+              nrow = n_val,
+              ncol = n)
+  L <- Matrix::expand(CH)$L           # lower triangular, sparseMatrix
+  E <- Matrix::solve(Matrix::t(L), Z) # solve L^T E = Z  => E = L^{-T} Z
+  mean + E
 }
 
 
@@ -702,8 +704,9 @@ rmvn_from_sparse_CH <- function(CH, mu, n_draw, prec) {
     }
   }
   ## final fallback: use dense calculations with original CH
-  L_prec <- Matrix::expand1(CH, which = "L")
-  ans <- rmvnorm_chol(n = n_draw, mean = mu, R_prec = L_prec)
+  ans <- rmvnorm_chol(n = n_draw,
+                      mean = mu,
+                      CH = CH)
   ans
 }
 
@@ -988,54 +991,26 @@ symmetry_grade <- function(Q,
   else
     "severe"
 }
-                                              
-  
+
+
+
 ## HAS_TESTS
-#' Warn the User that Aggregation Behavior Has Changed
+#' Function Used to Convert Variables in Data to Factors
 #'
-#' Only warn if formula implies duplicated cells.
+#' If a variable is already a factor, leave it unchanged.
+#' If a variable is numeric, order levels by value.
+#' Otherwise, order levels by first appearance.
 #'
-#' Only warns every 8 hours.
+#' @param x A vector
 #'
-#' @param formula Formula for model
-#' @param data Dataset for model
-#' @param formula_covariates Formula for covariates (or NULL)
-#' @param always Whether to always check, including in tests
-#'
-#' @returns TRUE, invisibly
+#' @returns A factor
 #'
 #' @noRd
-warn_not_aggregating <- function(formula, data, formula_covariates, always) {
-  if (!interactive())
-    return(invisible(TRUE))
-  if (!(always || is_not_testing_or_snapshot()))
-    return(invisible(TRUE))
-  nms_predictors <- all.vars(formula[[3L]])
-  has_covariates <- !is.null(formula_covariates)
-  if (has_covariates) {
-    nms_covariates <- all.vars(formula_covariates[[2L]])
-    nms_predictors <- union(nms_predictors, nms_covariates)
-  }
-  predictors <- data[nms_predictors]
-  has_dup <- any(duplicated(predictors))
-  if (!has_dup)
-    return(invisible(TRUE))
-  dir_cache <- tools::R_user_dir(package = "bage", which = "cache")
-  dir.create(dir_cache, showWarnings = FALSE, recursive = TRUE)
-  path <- file.path(dir_cache, "aggregation.txt")
-  aggregation_file_exists <- file.exists(path)
-  time_now <- as.numeric(Sys.time())
-  if (aggregation_file_exists)
-    time_last <- as.numeric(readLines(path, warn = FALSE))
+to_factor <- function(x) {
+  if (is.factor(x))
+    x
+  else if (is.numeric(x))
+    factor(x)
   else
-    time_last <- 0
-  is_eight_hours_or_more <- time_now - time_last > 8 * 3600
-  if (is_eight_hours_or_more) {
-    cli::cli_warn(c("{.arg data} has multiple rows with the same values for the predictor{?s} ({.var {nms_predictors}}). Model behavior when predictors are duplicated has changed since version 0.9.8.",
-                    i = "Up to version 0.9.8, rows with duplicated values were aggregated before fitting. From version 0.9.9 no aggregation occurs.",
-                    i = "See help for {.fun fit} for details.",
-                    i = "(This warning will only be shown once every 8 hours)."))
-    writeLines(as.character(time_now), path)
-  }
-  invisible(TRUE)
+    factor(x, levels = unique(x))
 }

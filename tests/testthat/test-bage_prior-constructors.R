@@ -43,6 +43,101 @@ test_that("'AR1' throws current error when min >= max", {
                  "`max` is less than or equal to `min`")
 })
 
+
+test_that("'DRW' works with valid inputs", {
+  expect_identical(DRW(),
+                   new_bage_prior_drwrandom(scale = 1,
+                                            sd = 1,
+                                            shape1 = 5,
+                                            shape2 = 5,
+                                            min = 0.8,
+                                            max = 0.98,
+                                            along = NULL,
+                                            con = "none"))
+  expect_identical(DRW(s = 0.3,
+                       sd = 0.2,
+                       min = 0,
+                       con = "by",
+                       along = "reg"),
+                   new_bage_prior_drwrandom(scale = 0.3,
+                                            sd = 0.2,
+                                            shape1 = 5,
+                                            shape2 = 5,
+                                            min = 0,
+                                            max = 0.98,
+                                            along = "reg",
+                                            con = "by"))
+  expect_identical(DRW(sd = 0),
+                   new_bage_prior_drwzero(scale = 1,
+                                          shape1 = 5,
+                                          shape2 = 5,
+                                          min = 0.8,
+                                          max = 0.98,
+                                          along = NULL,
+                                          con = "none"))
+  expect_identical(DRW(s = 0.3,
+                       sd = 0,
+                       min = 0,
+                       con = "by",
+                       along = "reg"),
+                   new_bage_prior_drwzero(scale = 0.3,
+                                          shape1 = 5,
+                                          shape2 = 5,
+                                          min = 0,
+                                          max = 0.98,
+                                          along = "reg",
+                                          con = "by"))
+})
+
+test_that("'DRW2' works with valid inputs", {
+  expect_identical(DRW2(),
+                   new_bage_prior_drw2random(scale = 1,
+                                             sd = 1,
+                                             sd_slope = 1,
+                                             shape1 = 5,
+                                             shape2 = 5,
+                                             min = 0.8,
+                                             max = 0.98,
+                                             along = NULL,
+                                             con = "none"))
+  expect_identical(DRW2(s = 0.3,
+                        sd = 0.2,
+                        min = 0,
+                        con = "by",
+                        along = "reg"),
+                   new_bage_prior_drw2random(scale = 0.3,
+                                             sd = 0.2,
+                                             sd_slope = 1,
+                                             shape1 = 5,
+                                             shape2 = 5,
+                                             min = 0,
+                                             max = 0.98,
+                                             along = "reg",
+                                             con = "by"))
+  expect_identical(DRW2(sd = 0),
+                   new_bage_prior_drw2zero(scale = 1,
+                                           sd_slope = 1,
+                                           shape1 = 5,
+                                           shape2 = 5,
+                                           min = 0.8,
+                                           max = 0.98,
+                                           along = NULL,
+                                           con = "none"))
+  expect_identical(DRW2(s = 0.3,
+                        sd = 0,
+                        min = 0,
+                        con = "by",
+                        along = "reg"),
+                   new_bage_prior_drw2zero(scale = 0.3,
+                                           sd_slope = 1,
+                                           shape1 = 5,
+                                           shape2 = 5,
+                                           min = 0,
+                                           max = 0.98,
+                                           along = "reg",
+                                           con = "by"))
+})
+
 test_that("'Known' works with valid inputs", {
     expect_identical(Known(values = 1:3),
                      new_bage_prior_known(values = as.double(1:3)))
@@ -173,7 +268,7 @@ test_that("'RW' works with valid inputs", {
 
 
 test_that("'RW_Seas' works with valid inputs", {
-  expect_identical(RW_Seas(n_seas = 2),
+  expect_identical(RW_Seas(n_seas = 2, s_seas = 0),
                    new_bage_prior_rwrandomseasfix(n_seas = 2L,
                                                   sd_seas = 1,
                                                   scale = 1,
@@ -189,7 +284,7 @@ test_that("'RW_Seas' works with valid inputs", {
                                                    sd = 0.4,
                                                    along = "reg",
                                                    con = "by"))
-  expect_identical(RW_Seas(n_seas = 2, sd = 0),
+  expect_identical(RW_Seas(n_seas = 2, s_seas = 0, sd = 0),
                    new_bage_prior_rwzeroseasfix(n_seas = 2L,
                                                 sd_seas = 1,
                                                 scale = 1,
@@ -242,7 +337,7 @@ test_that("'RW2_Infant' works with valid inputs", {
 })
 
 test_that("'RW2_Seas' works with valid inputs", {
-  expect_identical(RW2_Seas(n_seas = 2),
+  expect_identical(RW2_Seas(n_seas = 2, s_seas = 0),
                    new_bage_prior_rw2randomseasfix(n_seas = 2L,
                                                    sd_seas = 1,
                                                    scale = 1,
@@ -261,7 +356,7 @@ test_that("'RW2_Seas' works with valid inputs", {
                                                     sd_slope = 0.2,
                                                     along = "reg",
                                                     con = "by"))
-  expect_identical(RW2_Seas(n_seas = 2, sd = 0),
+  expect_identical(RW2_Seas(n_seas = 2, s_seas = 0, sd = 0),
                    new_bage_prior_rw2zeroseasfix(n_seas = 2L,
                                                    sd_seas = 1,
                                                    scale = 1,
@@ -391,6 +486,182 @@ test_that("'SVD_AR1' works with valid inputs", {
                                          scale = 0.01,
                                          con = "by",
                                          nm = "SVD_AR1"))
+})
+
+test_that("'SVD_DRW' works with valid inputs - random", {
+  expect_identical(SVD_DRW(HMD),
+                   new_bage_prior_svd_drwrandom(HMD,
+                                               v = NULL,
+                                               nm_ssvd = "HMD",
+                                               n_comp = 3L,
+                                               indep = TRUE,
+                                               scale = 1,
+                                               sd = 1,
+                                               shape1 = 5,
+                                               shape2 = 5,
+                                               min = 0.8,
+                                               max = 0.98,
+                                               con = "none"))
+  expect_identical(SVD_DRW(LFP, v = "v2025",
+                           n_comp = 2, sd = 0.3, s = 0.01, indep = F,
+                           con = "by", shape2 = 2, min = 0.9),
+                   new_bage_prior_svd_drwrandom(LFP,
+                                               v = "v2025",
+                                               nm_ssvd = "LFP",
+                                               n_comp = 2L,
+                                               indep = FALSE,
+                                               scale = 0.01,
+                                               sd = 0.3,
+                                               shape1 = 5,
+                                               shape2 = 2,
+                                               min = 0.9,
+                                               max = 0.98,
+                                               con = "by"))
+})
+
+test_that("'SVD_DRW' works with valid inputs - zero", {
+  expect_identical(SVD_DRW(HMD, sd = 0),
+                   new_bage_prior_svd_drwzero(HMD,
+                                              v = NULL,
+                                              nm_ssvd = "HMD",
+                                              n_comp = 3L,
+                                              indep = TRUE,
+                                              scale = 1,
+                                              shape1 = 5,
+                                              shape2 = 5,
+                                              min = 0.8,
+                                              max = 0.98,
+                                              con = "none"))
+  expect_identical(SVD_DRW(LFP, v = "v2025",
+                           n_comp = 2, sd = 0, s = 0.01, indep = F,
+                           con = "by", shape2 = 2, min = 0.9),
+                   new_bage_prior_svd_drwzero(LFP,
+                                              v = "v2025",
+                                              nm_ssvd = "LFP",
+                                              n_comp = 2L,
+                                              indep = FALSE,
+                                              scale = 0.01,
+                                              shape1 = 5,
+                                              shape2 = 2,
+                                              min = 0.9,
+                                              max = 0.98,
+                                              con = "by"))
+})
+
+test_that("'SVD_DRW2' works with valid inputs - random", {
+  expect_identical(SVD_DRW2(HMD),
+                   new_bage_prior_svd_drw2random(HMD,
+                                                 v = NULL,
+                                                 nm_ssvd = "HMD",
+                                                 n_comp = 3L,
+                                                 indep = TRUE,
+                                                 scale = 1,
+                                                 sd = 1,
+                                                 sd_slope = 1,
+                                                 shape1 = 5,
+                                                 shape2 = 5,
+                                                 min = 0.8,
+                                                 max = 0.98,
+                                                 con = "none"))
+  expect_identical(SVD_DRW2(LFP, v = "v2025",
+                            n_comp = 2, sd = 0.3, s = 0.01, indep = F,
+                            con = "by", shape2 = 2, min = 0.9,
+                            sd_slope = 0.1),
+                   new_bage_prior_svd_drw2random(LFP,
+                                                 v = "v2025",
+                                                 nm_ssvd = "LFP",
+                                                 n_comp = 2L,
+                                                 indep = FALSE,
+                                                 scale = 0.01,
+                                                 sd = 0.3,
+                                                 sd_slope = 0.1,
+                                                 shape1 = 5,
+                                                 shape2 = 2,
+                                                 min = 0.9,
+                                                 max = 0.98,
+                                                 con = "by"))
+})
+
+test_that("'SVD_DRW2' works with valid inputs - zero", {
+  expect_identical(SVD_DRW2(HMD, sd = 0),
+                   new_bage_prior_svd_drw2zero(HMD,
+                                               v = NULL,
+                                               nm_ssvd = "HMD",
+                                               n_comp = 3L,
+                                               indep = TRUE,
+                                               scale = 1,
+                                               sd_slope = 1,
+                                               shape1 = 5,
+                                               shape2 = 5,
+                                               min = 0.8,
+                                               max = 0.98,
+                                               con = "none"))
+  expect_identical(SVD_DRW2(LFP, v = "v2025",
+                            n_comp = 2, sd = 0, s = 0.01, indep = F,
+                            con = "by", shape2 = 2, sd_slope = 0.5,
+                            min = 0.9),
+                   new_bage_prior_svd_drw2zero(LFP,
+                                               v = "v2025",
+                                               nm_ssvd = "LFP",
+                                               n_comp = 2L,
+                                               indep = FALSE,
+                                               scale = 0.01,
+                                               sd_slope = 0.5,
+                                               shape1 = 5,
+                                               shape2 = 2,
+                                               min = 0.9,
+                                               max = 0.98,
+                                               con = "by"))
+})
+
+test_that("'SVD_Lin' works with valid inputs - s > 0", {
+  expect_identical(SVD_Lin(HMD),
+                   new_bage_prior_svd_lin(HMD,
+                                          v = NULL,
+                                          nm_ssvd = "HMD",
+                                          n_comp = 3L,
+                                          indep = TRUE,
+                                          scale = 1,
+                                          mean_slope = 0,
+                                          sd_slope = 1,
+                                          con = "none"))
+  expect_identical(SVD_Lin(LFP, v = "v2025",
+                           n_comp = 2, sd_slope = 0.3,
+                           s = 0.01, mean_slope = -1,
+                           indep = F, con = "by"),
+                   new_bage_prior_svd_lin(LFP,
+                                          v = "v2025",
+                                          nm_ssvd = "LFP",
+                                          n_comp = 2L,
+                                          indep = FALSE,
+                                          scale = 0.01,
+                                          mean_slope = -1,
+                                          sd_slope = 0.3,
+                                          con = "by"))
+})
+
+test_that("'SVD_Lin' works with valid inputs - s = 0", {
+  expect_identical(SVD_Lin(HMD, s = 0),
+                   new_bage_prior_svd_linex(HMD,
+                                            v = NULL,
+                                            nm_ssvd = "HMD",
+                                            n_comp = 3L,
+                                            indep = TRUE,
+                                            mean_slope = 0,
+                                            sd_slope = 1,
+                                            con = "none"))
+  expect_identical(SVD_Lin(LFP, v = "v2025",
+                           n_comp = 2, sd_slope = 0.3,
+                           s = 0, mean_slope = -1,
+                           indep = F, con = "by"),
+                   new_bage_prior_svd_linex(LFP,
+                                            v = "v2025",
+                                            nm_ssvd = "LFP",
+                                            n_comp = 2L,
+                                            indep = FALSE,
+                                            mean_slope = -1,
+                                            sd_slope = 0.3,
+                                            con = "by"))
 })
 
 test_that("'SVD_RW' works with valid inputs - random", {
@@ -540,6 +811,118 @@ test_that("'new_bage_prior_ar' works - AR1 interface", {
                         along = NULL,
                         con = "none",
                         nm = "AR1"))
+})
+
+test_that("'new_bage_prior_drwzero' works", {
+  obj <- new_bage_prior_drwzero(scale = 1,
+                                shape1 = 5,
+                                shape2 = 5,
+                                min = 0.8,
+                                max = 0.98,
+                                along = NULL,
+                                con = "none")
+  expect_s3_class(obj, "bage_prior_drwzero")
+  expect_s3_class(obj, "bage_prior")
+  expect_identical(obj$i_prior, 27L)
+  expect_identical(obj$const, c(scale = 1,
+                                shape1 = 5,
+                                shape2 = 5,
+                                min = 0.8,
+                                max = 0.98))
+  expect_identical(obj$specific, list(scale = 1,
+                                      shape1 = 5,
+                                      shape2 = 5,
+                                      min = 0.8,
+                                      max = 0.98,
+                                      along = NULL,
+                                      con = "none"))
+})
+
+test_that("'new_bage_prior_drwrandom' works", {
+  obj <- new_bage_prior_drwrandom(scale = 1,
+                                  sd = 1,
+                                  shape1 = 5,
+                                  shape2 = 5,
+                                  min = 0.8,
+                                  max = 0.98,
+                                  along = NULL,
+                                  con = "none")
+  expect_s3_class(obj, "bage_prior_drwrandom")
+  expect_s3_class(obj, "bage_prior")
+  expect_identical(obj$i_prior, 28L)
+  expect_identical(obj$const, c(scale = 1,
+                                sd = 1,
+                                shape1 = 5,
+                                shape2 = 5,
+                                min = 0.8,
+                                max = 0.98))
+  expect_identical(obj$specific, list(scale = 1,
+                                      sd = 1,
+                                      shape1 = 5,
+                                      shape2 = 5,
+                                      min = 0.8,
+                                      max = 0.98,
+                                      along = NULL,
+                                      con = "none"))
+})
+
+test_that("'new_bage_prior_drw2zero' works", {
+  obj <- new_bage_prior_drw2zero(scale = 1,
+                                 sd_slope = 1,
+                                 shape1 = 5,
+                                 shape2 = 5,
+                                 min = 0.8,
+                                 max = 0.98,
+                                 along = NULL,
+                                 con = "none")
+  expect_s3_class(obj, "bage_prior_drw2zero")
+  expect_s3_class(obj, "bage_prior")
+  expect_identical(obj$i_prior, 29L)
+  expect_identical(obj$const, c(scale = 1,
+                                sd_slope = 1,
+                                shape1 = 5,
+                                shape2 = 5,
+                                min = 0.8,
+                                max = 0.98))
+  expect_identical(obj$specific, list(scale = 1,
+                                      sd_slope = 1,
+                                      shape1 = 5,
+                                      shape2 = 5,
+                                      min = 0.8,
+                                      max = 0.98,
+                                      along = NULL,
+                                      con = "none"))
+})
+
+test_that("'new_bage_prior_drw2random' works", {
+  obj <- new_bage_prior_drw2random(scale = 1,
+                                   sd = 1,
+                                   sd_slope = 1,
+                                   shape1 = 5,
+                                   shape2 = 5,
+                                   min = 0.8,
+                                   max = 0.98,
+                                   along = NULL,
+                                   con = "none")
+  expect_s3_class(obj, "bage_prior_drw2random")
+  expect_s3_class(obj, "bage_prior")
+  expect_identical(obj$i_prior, 30L)
+  expect_identical(obj$const, c(scale = 1,
+                                sd = 1,
+                                sd_slope = 1,
+                                shape1 = 5,
+                                shape2 = 5,
+                                min = 0.8,
+                                max = 0.98))
+  expect_identical(obj$specific, list(scale = 1,
+                                      sd = 1,
+                                      sd_slope = 1,
+                                      shape1 = 5,
+                                      shape2 = 5,
+                                      min = 0.8,
+                                      max = 0.98,
+                                      along = NULL,
+                                      con = "none"))
 })
 
 test_that("'new_bage_prior_known' works", {
@@ -1035,6 +1418,219 @@ test_that("'new_bage_prior_svd_ar' works", {
                         along = NULL,
                         con = "none",
                         nm = "SVD_AR1"))
+})
+
+test_that("'new_bage_prior_svd_drwrandom' works", {
+  obj <- new_bage_prior_svd_drwrandom(HMD,
+                                      v = "v2025",
+                                      nm_ssvd = "HMD",
+                                      n_comp = 3L,
+                                      indep = TRUE,
+                                      scale = 1,
+                                      sd = 1,
+                                      shape1 = 5,
+                                      shape2 = 5,
+                                      min = 0.8,
+                                      max = 0.98,
+                                      con = "none")
+  expect_s3_class(obj, "bage_prior_svd_drwrandom")
+  expect_s3_class(obj, "bage_prior")
+  expect_identical(obj$i_prior, 33L)
+  expect_identical(obj$const,
+                   c(scale = 1,
+                     sd = 1,
+                     shape1 = 5,
+                     shape2 = 5,
+                     min = 0.8,
+                     max = 0.98))
+  expect_identical(obj$specific,
+                   list(ssvd = HMD,
+                        v = "v2025",
+                        nm_ssvd = "HMD",
+                        n_comp = 3L,
+                        indep = TRUE,
+                        scale = 1,
+                        sd = 1,
+                        shape1 = 5,
+                        shape2 = 5,
+                        min = 0.8,
+                        max = 0.98,
+                        along = NULL,
+                        con = "none"))
+})
+
+test_that("'new_bage_prior_svd_drwzero' works", {
+  obj <- new_bage_prior_svd_drwzero(HMD,
+                                      v = "v2025",
+                                      nm_ssvd = "HMD",
+                                      n_comp = 3L,
+                                      indep = TRUE,
+                                      scale = 1,
+                                      shape1 = 5,
+                                      shape2 = 5,
+                                      min = 0.8,
+                                      max = 0.98,
+                                      con = "none")
+  expect_s3_class(obj, "bage_prior_svd_drwzero")
+  expect_s3_class(obj, "bage_prior")
+  expect_identical(obj$i_prior, 31L)
+  expect_identical(obj$const,
+                   c(scale = 1,
+                     shape1 = 5,
+                     shape2 = 5,
+                     min = 0.8,
+                     max = 0.98))
+  expect_identical(obj$specific,
+                   list(ssvd = HMD,
+                        v = "v2025",
+                        nm_ssvd = "HMD",
+                        n_comp = 3L,
+                        indep = TRUE,
+                        scale = 1,
+                        shape1 = 5,
+                        shape2 = 5,
+                        min = 0.8,
+                        max = 0.98,
+                        along = NULL,
+                        con = "none"))
+})
+
+test_that("'new_bage_prior_svd_drw2random' works", {
+  obj <- new_bage_prior_svd_drw2random(HMD,
+                                       v = "v2025",
+                                       nm_ssvd = "HMD",
+                                       n_comp = 3L,
+                                       indep = TRUE,
+                                       scale = 1,
+                                       sd = 1,
+                                       sd_slope = 1,
+                                       shape1 = 5,
+                                       shape2 = 5,
+                                       min = 0.8,
+                                       max = 0.98,
+                                       con = "none")
+  expect_s3_class(obj, "bage_prior_svd_drw2random")
+  expect_s3_class(obj, "bage_prior")
+  expect_identical(obj$i_prior, 34L)
+  expect_identical(obj$const,
+                   c(scale = 1,
+                     sd = 1,
+                     sd_slope = 1,
+                     shape1 = 5,
+                     shape2 = 5,
+                     min = 0.8,
+                     max = 0.98))
+  expect_identical(obj$specific,
+                   list(ssvd = HMD,
+                        v = "v2025",
+                        nm_ssvd = "HMD",
+                        n_comp = 3L,
+                        indep = TRUE,
+                        scale = 1,
+                        sd = 1,
+                        sd_slope = 1,
+                        shape1 = 5,
+                        shape2 = 5,
+                        min = 0.8,
+                        max = 0.98,
+                        along = NULL,
+                        con = "none"))
+})
+
+test_that("'new_bage_prior_svd_drw2zero' works", {
+  obj <- new_bage_prior_svd_drw2zero(HMD,
+                                     v = "v2025",
+                                     nm_ssvd = "HMD",
+                                     n_comp = 3L,
+                                     indep = TRUE,
+                                     scale = 1,
+                                     sd_slope = 1,
+                                     shape1 = 5,
+                                     shape2 = 5,
+                                     min = 0.8,
+                                     max = 0.98,
+                                     con = "none")
+  expect_s3_class(obj, "bage_prior_svd_drw2zero")
+  expect_s3_class(obj, "bage_prior")
+  expect_identical(obj$i_prior, 32L)
+  expect_identical(obj$const,
+                   c(scale = 1,
+                     sd_slope = 1,
+                     shape1 = 5,
+                     shape2 = 5,
+                     min = 0.8,
+                     max = 0.98))
+  expect_identical(obj$specific,
+                   list(ssvd = HMD,
+                        v = "v2025",
+                        nm_ssvd = "HMD",
+                        n_comp = 3L,
+                        indep = TRUE,
+                        scale = 1,
+                        sd_slope = 1,
+                        shape1 = 5,
+                        shape2 = 5,
+                        min = 0.8,
+                        max = 0.98,
+                        along = NULL,
+                        con = "none"))
+})
+
+test_that("'new_bage_prior_svd_lin' works", {
+  obj <- new_bage_prior_svd_lin(HMD,
+                                v = "v2025",
+                                nm_ssvd = "HMD",
+                                n_comp = 3L,
+                                indep = TRUE,
+                                scale = 1,
+                                mean_slope = 0,
+                                sd_slope = 1,
+                                con = "none")
+  expect_s3_class(obj, "bage_prior_svd_lin")
+  expect_s3_class(obj, "bage_prior")
+  expect_identical(obj$i_prior, 36L)
+  expect_identical(obj$const,
+                   c(scale = 1,
+                     mean_slope = 0,
+                     sd_slope = 1))
+  expect_identical(obj$specific,
+                   list(ssvd = HMD,
+                        v = "v2025",
+                        nm_ssvd = "HMD",
+                        n_comp = 3L,
+                        indep = TRUE,
+                        scale = 1,
+                        mean_slope = 0,
+                        sd_slope = 1,
+                        along = NULL,
+                        con = "none"))
+})
+
+test_that("'new_bage_prior_svd_linex' works", {
+  obj <- new_bage_prior_svd_linex(HMD,
+                                  v = "v2025",
+                                  nm_ssvd = "HMD",
+                                  n_comp = 3L,
+                                  indep = TRUE,
+                                  mean_slope = 0,
+                                  sd_slope = 1,
+                                  con = "none")
+  expect_s3_class(obj, "bage_prior_svd_linex")
+  expect_s3_class(obj, "bage_prior")
+  expect_identical(obj$i_prior, 35L)
+  expect_identical(obj$const,
+                   c(mean_slope = 0,
+                     sd_slope = 1))
+  expect_identical(obj$specific,
+                   list(ssvd = HMD,
+                        v = "v2025",
+                        nm_ssvd = "HMD",
+                        n_comp = 3L,
+                        indep = TRUE,
+                        mean_slope = 0,
+                        sd_slope = 1,
+                        along = NULL,
+                        con = "none"))
 })
 
 test_that("'new_bage_prior_svd_rwrandom' works", {

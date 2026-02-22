@@ -273,6 +273,30 @@ draw_vals_coef <- function(prior, n_sim) {
 
 
 ## HAS_TESTS
+#' Draw Values for 'coef' for Damped Random Walk
+#'
+#' Includes DRW and DRW2
+#'
+#' @param prior Object of class 'bage_prior'
+#' @param n_sim Number of draws
+#'
+#' @returns A numeric vector of length 'n_sim'
+#'
+#' @noRd
+draw_vals_coef_drw <- function(prior, n_sim) {
+  shape1 <- prior$specific$shape1
+  shape2 <- prior$specific$shape2
+  min <- prior$specific$min
+  max <- prior$specific$max
+  ans_raw <- stats::rbeta(n = n_sim,
+                          shape1 = shape1,
+                          shape2 = shape2)
+  ans <- (max - min) * ans_raw + min
+  ans
+}
+
+
+## HAS_TESTS
 #' Draw Values that Would be Produced by a Call to 'components'
 #'
 #' @param mod Object of class 'bage_mod'
@@ -394,6 +418,73 @@ draw_vals_disp <- function(mod, n_sim) {
 
 
 ## HAS_TESTS
+#' Generate Draws from DRW
+#'
+#' Damped random walk. Each column is one draw.
+#'
+#' @param sd Vector of values
+#' @param sd_init Standard deviation of initial values.
+#' @param coef Vector of values
+#' @param matrix_along_by Matrix with map for along and by dimensions
+#' @param levels_effect Names of elements
+#'
+#' @returns A matrix, with dimnames.
+#'
+#' @noRd
+draw_vals_drw <- function(sd, sd_init, coef, matrix_along_by, levels_effect) {
+  n_sim <- length(sd)
+  n_along <- nrow(matrix_along_by)
+  n_by <- ncol(matrix_along_by)
+  ans <- matrix(NA_real_, nrow = n_along, ncol = n_by * n_sim)
+  ans[1L, ] <- stats::rnorm(n = n_by * n_sim, sd = sd_init)
+  sd <- rep(sd, each = n_by)
+  coef <- rep(coef, each = n_by)
+  for (i_along in seq.int(from = 2L, to = n_along))
+    ans[i_along, ] <- stats::rnorm(n = n_by * n_sim,
+                                   mean = coef * ans[i_along - 1L, ],
+                                   sd = sd)
+  ans <- matrix(ans, nrow = n_along * n_by, ncol = n_sim)
+  i <- match(sort(matrix_along_by), matrix_along_by)
+  ans <- ans[i, , drop = FALSE]
+  dimnames(ans) <- list(levels_effect, NULL)
+  ans
+}
+
+
+#' Damped second-order random walk. Each column is one draw.
+#'
+#' @param sd Vector of values
+#' @param sd_init Standard deviation of initial values.
+#' @param sd_slope Double
+#' @param coef Vector of values
+#' @param matrix_along_by Matrix with map for along and by dimensions
+#' @param levels_effect Names of elements
+#'
+#' @returns A matrix, with dimnames.
+#'
+#' @noRd
+draw_vals_drw2 <- function(sd, sd_init, sd_slope, coef, matrix_along_by, levels_effect) {
+  n_sim <- length(sd)
+  n_along <- nrow(matrix_along_by)
+  n_by <- ncol(matrix_along_by)
+  ans <- matrix(NA_real_, nrow = n_along, ncol = n_by * n_sim)
+  ans[1L, ] <- stats::rnorm(n = n_by * n_sim, sd = sd_init)
+  ans[2L, ] <- stats::rnorm(n = n_by * n_sim, mean = ans[1L, ], sd = sd_slope)
+  sd <- rep(sd, each = n_by)
+  coef <- rep(coef, each = n_by)
+  for (i_along in seq.int(from = 3L, to = n_along))
+    ans[i_along, ] <- stats::rnorm(n = n_by * n_sim,
+                                   mean = ans[i_along - 1L, ] +
+                                     coef * (ans[i_along - 1L, ] - ans[i_along - 2L, ]),
+                                   sd = sd)
+  ans <- matrix(ans, nrow = n_along * n_by, ncol = n_sim)
+  i <- match(sort(matrix_along_by), matrix_along_by)
+  ans <- ans[i, , drop = FALSE]
+  dimnames(ans) <- list(levels_effect, NULL)
+  ans
+}
+
+## HAS_TESTS
 #' Draw Values for all Effects
 #'
 #' Draw values for main effects and interactions.
@@ -435,6 +526,76 @@ draw_vals_effect_mod <- function(mod,
 }
 
 
+
+## HAS_TESTS
+#' @export
+draw_vals_effect.bage_prior_svd_ar <- function(prior,
+                                               vals_hyper,
+                                               vals_hyperrand,
+                                               vals_spline,
+                                               vals_svd,
+                                               dimnames_term,
+                                               var_time,
+                                               var_age,
+                                               var_sexgender,
+                                               n_sim) {
+  matrix <- make_matrix_effectfree_effect(prior = prior,
+                                          dimnames_term = dimnames_term,
+                                          var_time = var_time,
+                                          var_age = var_age,
+                                          var_sexgender = var_sexgender)
+  offset <- make_offset_effectfree_effect(prior = prior,
+                                          dimnames_term = dimnames_term,
+                                          var_time = var_time,
+                                          var_age = var_age,
+                                          var_sexgender = var_sexgender)
+  ans <- matrix %*% vals_svd + offset
+  ans <- Matrix::as.matrix(ans)
+  rownames(ans) <- dimnames_to_levels(dimnames_term)
+  ans
+}
+
+#' Draw Values for Main Effect or Interactions
+#' for Dynamic SVD Prior
+#'
+#' @param prior Object of class 'bage_prior'
+#' @param vals_svd Named list of values for free parameters
+#' for SVD-based priors
+#' @param dimnames_term Dimnames for array representation of term
+#' @param var_time Name of time variable
+#' @param var_age Name of age variable
+#' @param var_sexgender Name of sex/gender variable
+#'
+#' @returns A named list.
+#'
+#' @noRd
+draw_vals_effect_svd_dynamic <- function(prior,
+                                         vals_svd,
+                                         dimnames_term,
+                                         var_time,
+                                         var_age,
+                                         var_sexgender) {
+  con <- prior$specific$con
+  matrix <- make_matrix_effectfree_effect_inner(prior = prior,
+                                                dimnames_term = dimnames_term,
+                                                var_time = var_time,
+                                                var_age = var_age,
+                                                var_sexgender = var_sexgender,
+                                                append_zero = FALSE,
+                                                con = con)
+  offset <- make_offset_effectfree_effect_svd(prior = prior,
+                                              dimnames_term = dimnames_term,
+                                              var_time = var_time,
+                                              var_age = var_age,
+                                              var_sexgender = var_sexgender)
+  ans <- matrix %*% vals_svd + offset
+  ans <- Matrix::as.matrix(ans)
+  rownames(ans) <- dimnames_to_levels(dimnames_term)
+  ans
+}
+
+
+
 ## HAS_TESTS
 #' Draw Values for Ordinary Hyper-Parameters
 #'
@@ -466,12 +627,14 @@ draw_vals_hyperrand_mod <- function(mod, vals_hyper, n_sim) {
   dimnames_terms <- mod$dimnames_terms
   var_time <- mod$var_time
   var_age <- mod$var_age
+  var_sexgender <- mod$var_sexgender
   ans <- .mapply(draw_vals_hyperrand,
                  dots = list(prior = priors,
                              vals_hyper = vals_hyper,
                              dimnames_term = dimnames_terms),
                  MoreArgs = list(var_time = var_time,
                                  var_age = var_age,
+                                 var_sexgender = var_sexgender,
                                  n_sim = n_sim))
   names(ans) <- names(priors)
   ans
@@ -778,11 +941,13 @@ draw_vals_slope <- function(mean_slope, sd_slope, matrix_along_by, n_sim) {
   ans <- stats::rnorm(n = n_by * n_sim, mean = mean_slope, sd = sd_slope)
   ans <- matrix(ans, nrow = n_by, ncol = n_sim)
   nms_by <- colnames(matrix_along_by)
-  if (n_by > 1L)
-    rownames <- paste("slope", nms_by, sep = ".")
-  else
-    rownames <- "slope"
-  rownames(ans) <- rownames
+  if (!is.null(nms_by)) {
+    if (n_by > 1L)
+      rownames <- paste("slope", nms_by, sep = ".")
+    else
+      rownames <- "slope"
+    rownames(ans) <- rownames
+  }
   ans
 }
 
@@ -1565,6 +1730,7 @@ vals_hyperrand_to_dataframe <- function(mod, vals_hyperrand, n_sim) {
   dimnames_term <- mod$dimnames_term
   var_age <- mod$var_age
   var_time <- mod$var_time
+  var_sexgender <- mod$var_sexgender
   nms <- names(vals_hyperrand)
   ans <- .mapply(vals_hyperrand_to_dataframe_one,
                  dots = list(prior = priors,
@@ -1572,6 +1738,7 @@ vals_hyperrand_to_dataframe <- function(mod, vals_hyperrand, n_sim) {
                              dimnames_term = dimnames_term),
                  MoreArgs = list(var_age = var_age,
                                  var_time = var_time,
+                                 var_sexgender = var_sexgender,
                                  n_sim = n_sim))
   ans <- vctrs::vec_rbind(!!!ans)
   ans
@@ -1585,6 +1752,10 @@ vals_hyperrand_to_dataframe <- function(mod, vals_hyperrand, n_sim) {
 #'
 #' @param nm String
 #' @param vals_hyperrand Named list
+#' @param dimnames_term Dimnames for array representation of term
+#' @param var_time Name of time variable
+#' @param var_age Name of age variable
+#' @param var_sexgender Name of sex/gender variable
 #' @param n_sim Integer
 #'
 #' @returns A tibble.
@@ -1595,6 +1766,7 @@ vals_hyperrand_to_dataframe_one <- function(prior,
                                             dimnames_term,
                                             var_age,
                                             var_time,
+                                            var_sexgender,
                                             n_sim) {
   nm <- dimnames_to_nm(dimnames_term)
   vals <- vctrs::vec_rbind(!!!vals_hyperrand, .name_repair = "universal_quiet")
@@ -1608,7 +1780,8 @@ vals_hyperrand_to_dataframe_one <- function(prior,
   component <- comp_hyperrand(prior = prior,
                               dimnames_term = dimnames_term,
                               var_age = var_age,
-                              var_time = var_time)
+                              var_time = var_time,
+                              var_sexgender = var_sexgender)
   if (nrow(vals) > 0L) {
     level <- lapply(vals_hyperrand, rownames)
     no_rownames <- vapply(level, is.null, FALSE)

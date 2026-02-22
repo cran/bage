@@ -2,6 +2,10 @@
 % Please edit documentation in R/bage_prior-methods.R
 \name{generate.bage_prior_ar}
 \alias{generate.bage_prior_ar}
+\alias{generate.bage_prior_drwrandom}
+\alias{generate.bage_prior_drwzero}
+\alias{generate.bage_prior_drw2random}
+\alias{generate.bage_prior_drw2zero}
 \alias{generate.bage_prior_known}
 \alias{generate.bage_prior_lin}
 \alias{generate.bage_prior_linar}
@@ -23,6 +27,12 @@
 \alias{generate.bage_prior_spline}
 \alias{generate.bage_prior_svd}
 \alias{generate.bage_prior_svd_ar}
+\alias{generate.bage_prior_svd_drwrandom}
+\alias{generate.bage_prior_svd_drwzero}
+\alias{generate.bage_prior_svd_drw2random}
+\alias{generate.bage_prior_svd_drw2zero}
+\alias{generate.bage_prior_svd_lin}
+\alias{generate.bage_prior_svd_linex}
 \alias{generate.bage_prior_svd_rwrandom}
 \alias{generate.bage_prior_svd_rwzero}
 \alias{generate.bage_prior_svd_rw2random}
@@ -30,6 +40,14 @@
 \title{Generate Values from Priors}
 \usage{
 \method{generate}{bage_prior_ar}(x, n_along = 20, n_by = 1, n_draw = 25, ...)
+
+\method{generate}{bage_prior_drwrandom}(x, n_along = 20, n_by = 1, n_draw = 25, ...)
+
+\method{generate}{bage_prior_drwzero}(x, n_along = 20, n_by = 1, n_draw = 25, ...)
+
+\method{generate}{bage_prior_drw2random}(x, n_along = 20, n_by = 1, n_draw = 25, ...)
+
+\method{generate}{bage_prior_drw2zero}(x, n_along = 20, n_by = 1, n_draw = 25, ...)
 
 \method{generate}{bage_prior_known}(x, n_element = 20, n_draw = 25, ...)
 
@@ -72,6 +90,18 @@
 \method{generate}{bage_prior_svd}(x, n_element = 1, n_draw = 25, ...)
 
 \method{generate}{bage_prior_svd_ar}(x, n_along = 5, n_by = 1, n_draw = 25, ...)
+
+\method{generate}{bage_prior_svd_drwrandom}(x, n_along = 5, n_by = 1, n_draw = 25, ...)
+
+\method{generate}{bage_prior_svd_drwzero}(x, n_along = 5, n_by = 1, n_draw = 25, ...)
+
+\method{generate}{bage_prior_svd_drw2random}(x, n_along = 5, n_by = 1, n_draw = 25, ...)
+
+\method{generate}{bage_prior_svd_drw2zero}(x, n_along = 5, n_by = 1, n_draw = 25, ...)
+
+\method{generate}{bage_prior_svd_lin}(x, n_along = 5, n_by = 1, n_draw = 25, ...)
+
+\method{generate}{bage_prior_svd_linex}(x, n_along = 5, n_by = 1, n_draw = 25, ...)
 
 \method{generate}{bage_prior_svd_rwrandom}(x, n_along = 5, n_by = 1, n_draw = 25, ...)
 

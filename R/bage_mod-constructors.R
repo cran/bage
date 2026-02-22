@@ -17,13 +17,12 @@
 #'
 #' - the name of a variable in `data`, with or without
 #'   quote marks, eg `"population"` or `population`;
-#' - the number `1`, in which case a pure "counts" model
+#' - `NULL`, in which case a pure "counts" model
 #'   with no exposure, is produced; or
 #' - `r lifecycle::badge("deprecated")`
-#'   a formula, which is evaluated with `data` as its
-#'   environment (see below for example). This option
-#'   has been deprecated, because it makes forecasting
-#'   and measurement error models more complicated.
+#'   the number `1`, in which case a pure "counts" model
+#'   is also produced (though this option is deprecated,
+#'   and will eventially be removed).
 #' 
 #' @section Mathematical details:
 #'
@@ -80,8 +79,8 @@
 #' specifying the outcome and predictors.
 #' @param data A data frame containing outcome,
 #' predictor, and, optionally, exposure variables.
-#' @param exposure Name of the exposure variable,
-#' or a `1`, or a formula. See below for details.
+#' @param exposure Name of the exposure variable
+#' or `NULL`. See below for details.
 #'
 #' @returns An object of class `bage_mod_pois`.
 #'
@@ -101,27 +100,15 @@
 #'   Detailed description of models
 #'
 #' @examples
-#' ## specify a model with exposure
+#' ## model with exposure
 #' mod <- mod_pois(injuries ~ age:sex + ethnicity + year,
 #'                 data = nzl_injuries,
 #'                 exposure = popn)
 #'
-#' ## specify a model without exposure
+#' ## model without exposure
 #' mod <- mod_pois(injuries ~ age:sex + ethnicity + year,
 #'                 data = nzl_injuries,
-#'                 exposure = 1)
-#'
-#' ## use a formula to specify exposure
-#' mod <- mod_pois(injuries ~ age:sex + ethnicity + year,
-#'                 data = nzl_injuries,
-#'                 exposure = ~ pmax(popn, 1))
-#' ## but formulas are now deprecrated, and the
-#' ## recommended approach is to transform
-#' ## the input data outside the model:
-#' nzl_injuries$popn1 <- pmax(nzl_injuries$popn, 1)
-#' mod <- mod_pois(injuries ~ age:sex + ethnicity + year,
-#'                 data = nzl_injuries,
-#'                 exposure = popn1)
+#'                 exposure = NULL)
 #' @export
 mod_pois <- function(formula,
                      data,
@@ -130,18 +117,25 @@ mod_pois <- function(formula,
   args <- mod_helper(formula = formula,
                      data = data,
                      n_draw = 1000L)
+  outcome <- args$outcome
+  is_outcome_in_data <- !is.null(outcome)
   ## input checks specific to Poisson
-  check_response_nonneg(formula = formula,
-                        data = data,
-                        nm_distn = "Poisson")
+  if (is_outcome_in_data)
+    check_response_nonneg(formula = formula,
+                          data = data,
+                          nm_distn = "Poisson")
   ## process 'exposure'
   if (!methods::hasArg(exposure))
     cli::cli_abort("Argument {.arg exposure} is missing, with no default.")
-  exposure <- deparse1(substitute(exposure))
-  exposure <- gsub("^\\\"|\\\"$", "", exposure)
-  is_offset_specified <- !identical(exposure, "1")
-  nm_offset_data <- if (is_offset_specified) exposure else NULL
+  nm_exposure <- deparse1(substitute(exposure))
+  if (identical(nm_exposure, "NULL"))
+    is_offset_specified <- FALSE
+  else {
+    nm_exposure <- gsub("^\\\"|\\\"$", "", nm_exposure)
+    is_offset_specified <- !identical(nm_exposure, "1")
+  }
   if (is_offset_specified) {
+    nm_offset_data <- nm_exposure
     check_offset_formula_not_used(nm_offset_data)
     check_offset_in_data(nm_offset_data = nm_offset_data,
                          nm_offset_mod = "exposure",
@@ -149,24 +143,28 @@ mod_pois <- function(formula,
     check_offset_nonneg(nm_offset_data = nm_offset_data,
                         nm_offset_mod = "exposure",
                         data = data)
-    check_resp_zero_if_offset_zero(formula = formula,
-                                   nm_offset_data = nm_offset_data,
-                                   nm_offset_mod = "exposure",
-                                   data = data)
     check_offset_not_in_formula(nm_offset_data = nm_offset_data,
                                 nm_offset_mod = "exposure",
                                 formula = formula)
+    if (is_outcome_in_data)
+      check_resp_zero_if_offset_zero(formula = formula,
+                                     nm_offset_data = nm_offset_data,
+                                     nm_offset_mod = "exposure",
+                                     data = data)
     offset <- make_offset(nm_offset_data = nm_offset_data,
                           data = data)
   }
-  else
+  else {
+    nm_offset_data <- NULL
     offset <- make_offset_ones(data)
+  }
   ## check for suspicious rates
-  outcome <- args$outcome
-  mult_high_rate <- 1000
-  message_suspicious_rates(outcome = outcome,
-                           exposure = offset,
-                           mult_high_rate = mult_high_rate)
+  if (is_outcome_in_data) {
+    mult_high_rate <- 1000
+    message_suspicious_rates(outcome = outcome,
+                             exposure = offset,
+                             mult_high_rate = mult_high_rate)
+  }
   ## create object and return
   ans <- c(args,
            list(offset = offset,
@@ -189,18 +187,6 @@ mod_pois <- function(formula,
 #' which depend on the type of term (eg an intercept, an age main effect,
 #' or an age-time interaction.)
 #'
-#' @section Specifying size:
-#'
-#' The `size` argument can take two forms:
-#'
-#' - the name of a variable in `data`, with or without
-#'   quote marks, eg `"population"` or `population`; or
-#' - `r lifecycle::badge("deprecated")`
-#'   a formula, which is evaluated with `data` as its
-#'   environment (see below for example). This option
-#'   has been deprecated, because it makes forecasting
-#'   and measurement error models more complicated.
-#' 
 #' @section Mathematical details:
 #'
 #' The likelihood is
@@ -253,7 +239,7 @@ mod_pois <- function(formula,
 #' @param data A data frame containing the outcome
 #' and predictor variables, and the number of trials.
 #' @param size Name of the variable giving
-#' the number of trials, or a formula.
+#' the number of trials (with or without quote marks.)
 #'
 #' @returns An object of class `bage_mod`.
 #'
@@ -276,28 +262,19 @@ mod_pois <- function(formula,
 #' mod <- mod_binom(oneperson ~ age:region + age:year,
 #'                  data = nzl_households,
 #'                  size = total)
-#'
-#' ## use formula to specify size
-#' mod <- mod_binom(ncases ~ agegp + tobgp + alcgp,
-#'                  data = esoph,
-#'                  size = ~ ncases + ncontrols)
-#' ## but formulas are now deprecrated, and the
-#' ## recommended approach is to transform
-#' ## the input data outside the model:
-#' esoph$total <- esoph$ncases + esoph$ncontrols
-#' mod <- mod_binom(ncases ~ agegp + tobgp + alcgp,
-#'                  data = esoph,
-#'                  size = total)
 #' @export
 mod_binom <- function(formula, data, size) {
   ## processing common to all models
   args <- mod_helper(formula = formula,
                      data = data,
                      n_draw = 1000L)
+  outcome <- args$outcome
+  is_outcome_in_data <- !is.null(outcome)
   ## input checks specific to binomial
-  check_response_nonneg(formula = formula,
-                        data = data,
-                        nm_distn = "Binomial")
+  if (is_outcome_in_data)
+    check_response_nonneg(formula = formula,
+                          data = data,
+                          nm_distn = "Binomial")
   ## process 'size'
   if (!methods::hasArg(size))
     cli::cli_abort("Argument {.arg size} is missing, with no default.")
@@ -314,14 +291,16 @@ mod_binom <- function(formula, data, size) {
   check_offset_not_in_formula(nm_offset_data = nm_offset_data,
                               nm_offset_mod = "size",
                               formula = formula)
-  check_resp_zero_if_offset_zero(formula = formula,
-                                 nm_offset_data = nm_offset_data,
-                                 nm_offset_mod = "size",
-                                 data = data)
-  check_resp_le_offset(formula = formula,
-                       nm_offset_data = nm_offset_data,
-                       nm_offset_mod = "size",
-                       data = data)
+  if (is_outcome_in_data) {
+    check_resp_zero_if_offset_zero(formula = formula,
+                                   nm_offset_data = nm_offset_data,
+                                   nm_offset_mod = "size",
+                                   data = data)
+    check_resp_le_offset(formula = formula,
+                         nm_offset_data = nm_offset_data,
+                         nm_offset_mod = "size",
+                         data = data)
+  }
   offset <- make_offset(nm_offset_data = nm_offset_data,
                         data = data)
   ## create object and return
@@ -364,16 +343,17 @@ mod_binom <- function(formula, data, size) {
 #' 
 #' @section Specifying weights:
 #'
-#' The `weights` argument can take three forms:
+#' There are three options for creating an unweighted
+#' model:
 #'
-#' - the name of a variable in `data`, with or without
-#'   quote marks, eg `"wt"` or `wt`;
-#' - the number `1`, in which no weights are used; or
-#' - `r lifecycle::badge("deprecated")`
-#'   a formula, which is evaluated with `data` as its
-#'   environment (see below for example). This option
-#'   has been deprecated, because it makes forecasting
-#'   and measurement error models more complicated.
+#' - do not supply a value for the `weights` variable;
+#' - set `weights` equal to `NULL`; or
+#' - `r lifecycle::badge("deprecated")` set weights equal
+#'   to `1`, though this option is deprecated, and will
+#'   eventually be removed.
+#'
+#' To create a weighted model, supply the name of
+#' the weighting variable in `data`, quoted or unquoted.
 #'
 #' @section Mathematical details:
 #'
@@ -448,35 +428,33 @@ mod_binom <- function(formula, data, size) {
 #'   Detailed description of models
 #'
 #' @examples
+#' ## model without weights
 #' mod <- mod_norm(value ~ diag:age + year,
-#'                 data = nld_expenditure,
-#'                 weights = 1)
+#'                 data = nld_expenditure)
 #'
-#' ## use formula to specify weights
-#' mod <- mod_norm(value ~ diag:age + year,
-#'                 data = nld_expenditure,
-#'                 weights = ~sqrt(value))
-#' ## but formulas are now deprecrated, and the
-#' ## recommended approach is to transform
-#' ## the input data outside the model:
+#' ## model with weights
 #' nld_expenditure$wt <- sqrt(nld_expenditure$value)
 #' mod <- mod_norm(value ~ diag:age + year,
 #'                 data = nld_expenditure,
 #'                 weights = wt)
 #' @export
-mod_norm <- function(formula, data, weights) {
+mod_norm <- function(formula, data, weights = NULL) {
   ## processing common to all models
   args <- mod_helper(formula = formula,
                      data = data,
                      n_draw = 1000L)
+  outcome <- args$outcome
+  is_outcome_in_data <- !is.null(outcome)
   ## process 'weights'
-  if (!methods::hasArg(weights))
-    cli::cli_abort("Argument {.arg weights} is missing, with no default.")
-  weights <- deparse1(substitute(weights))
-  weights <- gsub("^\\\"|\\\"$", "", weights)
-  is_offset_specified <- !identical(weights, "1")
-  nm_offset_data <- if (is_offset_specified) weights else NULL
+  nm_weights <- deparse1(substitute(weights))
+  if (identical(nm_weights, "NULL"))
+    is_offset_specified <- FALSE
+  else {
+    nm_weights <- gsub("^\\\"|\\\"$", "", nm_weights)
+    is_offset_specified <- !identical(nm_weights, "1")
+  }
   if (is_offset_specified) {
+    nm_offset_data <- nm_weights
     check_offset_formula_not_used(nm_offset_data)
     check_offset_in_data(nm_offset_data = nm_offset_data,
                          nm_offset_mod = "weights",
@@ -490,23 +468,30 @@ mod_norm <- function(formula, data, weights) {
     offset <- make_offset(nm_offset_data = nm_offset_data,
                           data = data)
   }
-  else
+  else {
+    nm_offset_data <- NULL
     offset <- make_offset_ones(data)
+  }
   offset_mean <- mean(offset, na.rm = TRUE)
   offset <- offset / offset_mean
   ## process outcome
-  outcome <- args[["outcome"]]
-  n_obs <- sum(!is.na(outcome))
-  if (n_obs == 0L)
+  if (is_outcome_in_data) {
+    n_obs <- sum(!is.na(outcome))
+    if (n_obs == 0L)
+      outcome_mean <- 0
+    else
+      outcome_mean <- mean(outcome, na.rm = TRUE)
+    if (n_obs <= 1L)
+      outcome_sd <- 1
+    else
+      outcome_sd <- stats::sd(outcome, na.rm = TRUE)
+    outcome <- (outcome - outcome_mean) / outcome_sd
+    args[["outcome"]] <- outcome
+  }
+  else {
     outcome_mean <- 0
-  else
-    outcome_mean <- mean(outcome, na.rm = TRUE)
-  if (n_obs <= 1L)
     outcome_sd <- 1
-  else
-    outcome_sd <- stats::sd(outcome, na.rm = TRUE)
-  outcome <- (outcome - outcome_mean) / outcome_sd
-  args[["outcome"]] <- outcome
+  }
   ## create object and return
   ans <- c(args,
            list(offset = offset,

@@ -105,6 +105,7 @@ fit_default <- function(mod,
                       DLL = "bage",
                       random = random,
                       silent = TRUE)
+  on.exit(TMB::FreeADFun(f), add = TRUE) ## Can be helpful in loops or simulations if R's GC too slow
   t_optim <- Sys.time()
   if (is_not_testing_or_snapshot())
     cli::cli_progress_message("Finding maximum...") # nocov
@@ -115,6 +116,8 @@ fit_default <- function(mod,
                                   random = random,
                                   map = map,
                                   is_test_nonconv = FALSE)
+  if (!identical(optimizer_out$f, f))
+    on.exit(TMB::FreeADFun(optimizer_out$f), add = TRUE)
   t_report <- Sys.time()
   if (is_not_testing_or_snapshot())
     cli::cli_progress_message("Drawing values for hyper-parameters...") # nocov
@@ -186,7 +189,6 @@ fit_inner_outer <- function(mod,
   mod_outer <- make_mod_outer(mod = mod,
                               mod_inner = mod_inner,
                               use_term = use_term)
-  aggregate <- can_aggregate(mod_inner)
   mod_outer <- fit_default(mod = mod_outer,
                            optimizer = optimizer,
                            quiet = quiet,
@@ -270,10 +272,10 @@ make_fit_data <- function(mod, aggregate) {
   matrices_effect_outcome <- l$matrices_effect_outcome
   matrix_covariates <- l$matrix_covariates
   dimnames_terms <- mod$dimnames_terms
-  terms_effect <- make_terms_effects(dimnames_terms)
   has_covariates <- has_covariates(mod)
   i_lik <- make_i_lik(mod)
   terms_effectfree <- make_terms_effectfree(mod)
+  n_terms_effectfree <- make_n_terms(terms_effectfree)
   uses_matrix_effectfree_effect <- make_uses_matrix_effectfree_effect(mod)
   matrices_effectfree_effect <- make_matrices_effectfree_effect(mod)
   uses_offset_effectfree_effect <- make_uses_offset_effectfree_effect(mod)
@@ -281,10 +283,13 @@ make_fit_data <- function(mod, aggregate) {
   i_prior <- make_i_prior(mod)
   uses_hyper <- make_uses_hyper(mod)
   terms_hyper <- make_terms_hyper(mod)
+  n_terms_hyper <- make_n_terms(terms_hyper)
   uses_hyperrandfree <- make_uses_hyperrandfree(mod)
   terms_hyperrandfree <- make_terms_hyperrandfree(mod)
+  n_terms_hyperrandfree <- make_n_terms(terms_hyperrandfree)
   const <- make_const(mod)
   terms_const <- make_terms_const(mod)
+  n_terms_const <- make_n_terms(terms_const)
   matrices_along_by_effectfree <- make_matrices_along_by_effectfree(mod)
   mean_disp <- mod$mean_disp
   i_datamod <- make_fit_i_datamod(mod)
@@ -293,8 +298,8 @@ make_fit_data <- function(mod, aggregate) {
   list(i_lik = i_lik,
        outcome = outcome,
        offset = offset,
-       terms_effect = terms_effect,
        terms_effectfree = terms_effectfree,
+       n_terms_effectfree = n_terms_effectfree,
        uses_matrix_effectfree_effect = uses_matrix_effectfree_effect,
        matrices_effectfree_effect = matrices_effectfree_effect,
        uses_offset_effectfree_effect = uses_offset_effectfree_effect,
@@ -303,10 +308,13 @@ make_fit_data <- function(mod, aggregate) {
        i_prior = i_prior,
        uses_hyper = uses_hyper,
        terms_hyper = terms_hyper,
+       n_terms_hyper = n_terms_hyper,
        uses_hyperrandfree = uses_hyperrandfree,
        terms_hyperrandfree = terms_hyperrandfree,
+       n_terms_hyperrandfree = n_terms_hyperrandfree,
        consts = const, ## 'const' is reserved word in C
        terms_consts = terms_const,
+       n_terms_consts = n_terms_const,
        matrices_along_by_effectfree = matrices_along_by_effectfree,
        mean_disp = mean_disp,
        matrix_covariates = matrix_covariates,
@@ -516,6 +524,19 @@ make_fit_times <- function(t_start, t_optim, t_report, t_end) {
 
 
 ## HAS_TESTS
+#' Calculate Number of Levels in a 'terms' Argument
+#' Passed to TMB
+#'
+#' @param terms A factor
+#'
+#' @returns An integer.
+#'
+#' @noRd
+make_n_terms <- function(terms)
+  length(levels(terms))
+
+
+## HAS_TESTS
 #' Optimise function 'f', Using Specified Optimizer
 #'
 #' Note that 'f' is modified in place by TMB.
@@ -544,7 +565,7 @@ optimize_adfun <- function(f,
     out <- optimize_nlminb(f = f, quiet = quiet)
     if (!out$converged || is_test_nonconv) {
       iter_old <- out$iter
-      message_old <- out$message %||% "<no message>"
+      message_old <- if (is.null(out$message)) "<no message>" else out$message
       f_new <- make_f_new(f_old = f,
                           data = data,
                           quiet = quiet,
@@ -554,7 +575,7 @@ optimize_adfun <- function(f,
                           optimizer_new = "BFGS")
       out <- optimize_bfgs(f = f_new, quiet = quiet)
       out$iter <- paste(iter_old, out$iter, sep = " + ")
-      message_new <- out$message %||% "<no message>"
+      message_new <- if (is.null(out$message)) "<no message>" else out$message
       out$message <- paste(message_old, message_new, sep = " + ")
       out$optimizer <- "nlminb + BFGS"
     }

@@ -108,55 +108,6 @@ dimnames_to_nm_split <- function(dimnames) {
 
 
 ## HAS_TESTS
-#' Raise an Error if Offset Specified Via Formula
-#'
-#' @param nm_offset_data Name of offset used in 'data', or formula
-#' @param nm_offset_mod Name of offset used in documentation
-#' @param nm_fun Name of function being called
-#'
-#' @returns TRUE, invisibly
-#'
-#' @noRd
-error_offset_formula_used <- function(nm_offset_data, nm_offset_mod, nm_fun) {
-  is_formula <- !is.null(nm_offset_data) && startsWith(nm_offset_data, "~")
-  if (is_formula) {
-    if (nm_offset_mod == "exposure")
-      msg2 <- paste("In {.fun mod_pois}, please specify {nm_offset_mod} using",
-                    "the name of a variable in {.arg data}, or {.val {1}}.")
-    else if (nm_offset_mod == "size")
-      msg2 <- paste("In {.fun mod_binom}, please specify {nm_offset_mod} using",
-                    "the name of a variable in {.arg data}.")
-    else if (nm_offset_mod == "weights")
-      msg2 <- paste("In {.fun mod_norm}, please specify {nm_offset_mod} using",
-                    "the name of a variable in {.arg data}, or {.val {1}}.")
-    else
-      cli::cli_abort("Internal error: Invalid value for nm_offset_mod.")
-    cli::cli_abort(c(paste("{.fun {nm_fun}} cannot be used with models where",
-                           "{nm_offset_mod} specified using formula."),
-                     i = msg2,
-                     i = "Current specification of {nm_offset_mod}: {.code {nm_offset_data}}."))
-  }
-  invisible(TRUE)
-}
-
-
-## HAS_TESTS
-#' Evaluate Formula to Create Offset
-#'
-#' @param nm_offset_data Formula passed by user, turned into a string
-#' @param data Data frame
-#'
-#' @returns A numeric vector
-#'
-#' @noRd
-eval_offset_formula <- function(nm_offset_data, data) {
-  nm_offset_data <- sub("^~", "", nm_offset_data)
-  nm_offset_data <- parse(text = nm_offset_data)
-  eval(nm_offset_data, envir = data)
-}
-
-
-## HAS_TESTS
 #' Get a Matrix or Offset from an SVD Prior
 #'
 #' @param prior Object of class 'bage_prior'
@@ -314,6 +265,50 @@ infer_var_time <- function(formula) {
 #'
 #' @noRd
 init_val_sd <- function() log(0.05)
+
+
+
+
+## HAS_TESTS
+#' Helper Function for 'is_prior_ok_for_term' for
+#' Priors with 'along' Dimension
+#'
+#' @param prior Object of class 'bage_prior'
+#' @param min_length_along Minimum length of 'along' dimension
+#' @param dimnames_term Dimnames for array representation of term
+#' @param var_time Name of time variable
+#' @param var_age Name of age variable
+#' @param var_sexgender Name of sex/gender variable
+#'
+#' @returns TRUE or FALSE, invisibly
+#
+#' @noRd
+is_prior_ok_for_term_along <- function(prior,
+                                       min_length_along,
+                                       dimnames_term,
+                                       var_time,
+                                       var_age,
+                                       var_sexgender) {
+  con <- prior$specific$con
+  nm <- dimnames_to_nm(dimnames_term)
+  matrix_along_by_effect <- make_matrix_along_by_effect(prior = prior,
+                                                        dimnames_term = dimnames_term,
+                                                        var_time = var_time,
+                                                        var_age = var_age)
+  n_along <- nrow(matrix_along_by_effect)
+  n_by <- ncol(matrix_along_by_effect)
+  check_n_along_ge(n_along = n_along,
+                   min = min_length_along,
+                   nm = nm,
+                   prior = prior)
+  if (!is.null(con)) {
+    check_con_n_by(con = con,
+                   n_by = n_by,
+                   nm = nm)
+  }
+  invisible(TRUE)
+}
+
 
 
 ## HAS_TESTS
@@ -541,10 +536,10 @@ make_data_df <- function(mod) {
   ans <- mod$data
   nm_outcome_data <- get_nm_outcome_data(mod)
   nm_offset_data <- get_nm_offset_data(mod)
-  has_varying_offset <- has_varying_offset(mod)
+  user_specified_offset <- user_specified_offset(mod)
   is_in_lik <- get_is_in_lik(mod)
   ans[[nm_outcome_data]] <- mod$outcome
-  if (has_varying_offset)
+  if (user_specified_offset)
     ans[[nm_offset_data]] <- mod$offset
   ans <- ans[is_in_lik, , drop = FALSE]
   ans <- tibble::tibble(ans)
@@ -733,6 +728,28 @@ make_hyperrandfree <- function(mod) {
   ans <- rep(ans, times = lengths)
   ans
 }
+
+
+## HAS_TESTS
+#' Make 'i_along' for Priors with Value for 'along'
+#' 
+#' @param prior Object of class 'bage_prior'
+#' @param dimnames_term Dimnames for array
+#' representing term
+#' @param var_time Name of the time dimension, or NULL
+#' @param var_age Name of the age dimension, or NULL
+#'
+#' @returns A vector of zeros, of type 'double'.
+#'
+#' @noRd
+make_i_along_has_along <- function(prior, dimnames_term, var_time, var_age) {
+  along <- prior$specific$along
+  make_i_along_inner(along = along,
+                     dimnames_term = dimnames_term,
+                     var_time = var_time,
+                     var_age = var_age)
+}
+
 
 
 ## HAS_TESTS
@@ -1049,42 +1066,6 @@ make_matrices_effect_outcome <- function(data, dimnames_terms) {
   ans
 }
                       
-          
-##   n_term <- length(dimnames_terms)
-##   ans <- vector(mode = "list", length = n_term)
-##   names(ans) <- names(dimnames_terms)
-##   for (i_term in seq_len(n_term)) {
-##     dimnames_term <- dimnames_terms[[i_term]]
-##     nm <- dimnames_to_nm(dimnames_term)
-##     is_intercept <- nm == "(Intercept)"
-##     if (is_intercept) {
-##       n_data <- nrow(data)
-##       i <- seq_len(n_data)
-##       j <- rep.int(1L, times = n_data)
-##       x <- rep.int(1L, times = n_data)
-##       m_term <- Matrix::sparseMatrix(i = i, j = j, x = x)
-##     }
-##     else {
-##       nm_split <- dimnames_to_nm_split(dimnames_term)
-##       data_term <- data[nm_split]
-##       data_term[] <- .mapply(factor,
-##                              dots = list(x = data_term, levels = dimnames_term),
-##                              MoreArgs = list())
-##       contrasts_term <- lapply(data_term, stats::contrasts, contrast = FALSE)
-##       formula_term <- paste0("~", nm, "-1")
-##       formula_term <- stats::as.formula(formula_term)
-##       m_term <- Matrix::sparse.model.matrix(formula_term,
-##                                             data = data_term,
-##                                             contrasts.arg = contrasts_term,
-##                                             row.names = FALSE)
-##       colnames(m_term) <- dimnames_to_levels(dimnames_term)
-##     }
-##     ans[[i_term]] <- m_term
-##   }
-##   ans        
-## }
-
-
 
 ## HAS_TESTS
 #' Make list of matrices mapping effectfree to effect
@@ -1124,13 +1105,14 @@ make_matrices_effectfree_effect <- function(mod) {
 #'
 #' @param formula One-sided formula describing covariates
 #' @param data Data frame
+#' @param rows Indices of 'data' to include, or NULL.
 #'
 #' @returns A model matrix (excluding attributes)
 #'
 #' @noRd
-make_matrix_covariates <- function(formula, data) {
-  tt <- stats::terms(formula)
-  has_intercept <- attr(tt, "intercept")
+make_matrix_covariates <- function(formula, data, rows) {
+  term_formula <- stats::terms(formula)
+  has_intercept <- attr(term_formula, "intercept")
   var_names <- all.vars(formula)
   is_in_formula <- names(data) %in% var_names
   is_numeric <- vapply(data, is.numeric, logical(1L))
@@ -1150,6 +1132,8 @@ make_matrix_covariates <- function(formula, data) {
       cli::cli_abort("Internal error: First column is not intercept.")  # nocov
     ans <- ans[, -1L, drop = FALSE]
   }
+  if (!is.null(rows))
+    ans <- ans[rows, , drop = FALSE]
   attr(ans, "assign") <- NULL
   attr(ans, "contrasts") <- NULL
   rownames(ans) <- NULL
@@ -1167,11 +1151,7 @@ make_matrix_covariates <- function(formula, data) {
 #'
 #' @noRd
 make_offset <- function(nm_offset_data, data) {
-  is_offset_formula <- startsWith(nm_offset_data, "~")
-  if (is_offset_formula)
-    ans <- eval_offset_formula(nm_offset_data = nm_offset_data, data = data)
-  else
-    ans <- data[[nm_offset_data]]
+  ans <- data[[nm_offset_data]]
   ans <- as.double(ans)
   ans
 }
@@ -1229,7 +1209,13 @@ make_offsets_effectfree_effect <- function(mod) {
 #' Extracts the outcome variable from 'data'
 #' and checks for infinite and NaN.
 #' (Do this here because we know the name
-#' *Rof the variable.)
+#'  of the variable.)
+#'
+#' If response not found in 'data',
+#' return NULL. Not having a response is
+#' OK if samples will only be obtained
+#' from the prior for the model, and never
+#' from the posterior.
 #'
 #' @param formula Formula specifying model
 #' @param data A data frame
@@ -1241,13 +1227,15 @@ make_outcome <- function(formula, data) {
   nm_response <- deparse1(formula[[2L]])
   nms_data <- names(data)
   i_response <- match(nm_response, nms_data, nomatch = 0L)
-  if (i_response == 0L)
-    cli::cli_abort(paste("Internal error: response {.val {nm_response}}",
-                         "not found in {.arg data}."))
-  ans <- data[[i_response]]
-  ans <- as.double(ans)
-  check_inf(x = ans, nm_x = nm_response)
-  check_nan(x = ans, nm_x = nm_response)
+  has_response <- i_response > 0L
+  if (has_response) {
+    ans <- data[[i_response]]
+    ans <- as.double(ans)
+    check_inf(x = ans, nm_x = nm_response)
+    check_nan(x = ans, nm_x = nm_response)
+  }
+  else
+    ans <- NULL
   ans
 }
 
@@ -1267,10 +1255,9 @@ make_outcome_offset_matrices <- function(mod, aggregate) {
   dimnames_terms <- mod$dimnames_terms
   nm_outcome_data <- get_nm_outcome_data(mod)
   nm_offset_data <- get_nm_offset_data(mod)
-  has_varying_offset <- has_varying_offset(mod)
+  user_specified_offset <- user_specified_offset(mod)
   data_df <- make_data_df(mod)
   has_covariates <- has_covariates(mod)
-  has_varying_offset <- has_varying_offset(mod)
   if (has_covariates)
     formula_covariates <- mod$formula_covariates
   if (aggregate) {
@@ -1284,7 +1271,7 @@ make_outcome_offset_matrices <- function(mod, aggregate) {
     }
     outcome_df <- stats::aggregate(data_df[nm_outcome_data], data_df[vars], fun_ag_outcome)
     outcome <- outcome_df[[nm_outcome_data]]
-    if (has_varying_offset) {
+    if (user_specified_offset) {
       offset_df <- stats::aggregate(data_df[nm_offset_data], data_df[vars], fun_ag_offset)
       offset <- offset_df[[nm_offset_data]]
     }
@@ -1297,7 +1284,7 @@ make_outcome_offset_matrices <- function(mod, aggregate) {
   }
   else {
     outcome <- data_df[[nm_outcome_data]]
-    if (has_varying_offset)
+    if (user_specified_offset)
       offset <- data_df[[nm_offset_data]]
     else
       offset <- rep.int(1, times = nrow(data_df))
@@ -1306,7 +1293,8 @@ make_outcome_offset_matrices <- function(mod, aggregate) {
                                                           dimnames_terms = dimnames_terms)
   if (has_covariates)
     matrix_covariates <- make_matrix_covariates(formula = formula_covariates,
-                                                data = data_df)
+                                                data = data_df,
+                                                rows = NULL)
   else
     matrix_covariates <- Matrix::Matrix(0,
                                         nrow = 0L,
@@ -1367,6 +1355,74 @@ make_prior_class <- function(mod) {
   class <- vapply(priors, get_class, "bage_prior_norm", USE.NAMES = FALSE)
   tibble::tibble(term = nms,
                  class = class)
+}
+
+
+#' Process 'rows' Argument into an Index Vector or NULL
+#'
+#' Vectors only recycled if they have length 1.
+#' ('vctrs' rules)
+#'
+#' @param data A data frame
+#' @param rows NULL, an index vector,
+#' a logical vector, or an expression,
+#' in the form of a quosure
+#'
+#' @returns NULL or an index vector
+#'
+#' @noRd
+make_rows <- function(data, rows) {
+  n <- nrow(data)
+  if (rlang::quo_is_null(rows)) {
+    return(NULL)
+  }
+  x <- rlang::eval_tidy(rows, data = data)
+  if (!is.atomic(x) || !is.null(dim(x))) {
+    cli::cli_abort("{.arg rows} must evaluate to an atomic vector.")
+  }
+  ## no NAs
+  if (anyNA(x))
+    cli::cli_abort("{.arg rows} has {.val {NA}}.")
+  # logical selector
+  if (is.logical(x)) {
+    x <- vctrs::vec_recycle(x, n, x_arg = "rows")
+    return(which(x))
+  }
+  # numeric row positions
+  if (is.integer(x) || is.double(x)) {
+    # require integer-like values (e.g., 1.0 ok; 1.2 error)
+    x <- vctrs::vec_cast(x, integer(), x_arg = "rows")
+    # disallow 0
+    if (any(x == 0L)) {
+      cli::cli_abort("{.arg rows} must not contain 0.")
+    }
+    # disallow mixing positive/negative
+    has_pos <- any(x > 0L)
+    has_neg <- any(x < 0L)
+    if (has_pos && has_neg) {
+      cli::cli_abort("{.arg rows} mixes positive and negative row numbers.")
+    }
+    # out-of-bounds is an error (strict)
+    if (any(x < -n | x > n)) {
+      cli::cli_abort(c("{.arg rows} has invalid row numbers.",
+                       i = "Valid row numbers are between 1 and {n}."))
+    }
+    # disallow duplicates
+    is_dup <- duplicated(abs(x))
+    if (any(is_dup)) {
+      cli::cli_abort(c("{.arg rows} must not contain duplicated indices.",
+                       i = "Duplicates: {toString(unique(abs(x)[is_dup]))}."))
+    }
+    if (has_pos) {
+      return(x)
+    }
+    # all negative: drop these rows
+    drop <- -x
+    keep <- setdiff(seq_len(n), drop)
+    return(keep)
+  }
+  cli::cli_abort(c("{.arg rows} must evaluate to a logical vector or a numeric index vector.",
+                   i = "{.arg rows} evaluates to {.type {vctrs::vec_ptype_full(x)}}."))
 }
 
 
@@ -1745,35 +1801,6 @@ n_col <- function(x) {
 
 
 ## HAS_TESTS
-#' Prepare Number of Components Argument for SVD Prior
-#'
-#' @param n_comp Value for number provided by user
-#' @param nm_n_comp Name for 'n_comp' to be used in error messages
-#' @param ssvd Object of class "bage_ssvd"
-#'
-#' @returns Number of components - an integer scalar
-#'
-#' @noRd
-n_comp_svd <- function(n_comp, nm_n_comp, ssvd) {
-  n_comp_ssvd <- get_n_comp(ssvd)
-  if (is.null(n_comp))
-    n_comp <- ceiling(n_comp_ssvd / 2)
-  else {
-    poputils::check_n(n = n_comp,
-                      nm_n = nm_n_comp,
-                      min = 1L,
-                      max = NULL,
-                      divisible_by = NULL)
-    if (n_comp > n_comp_ssvd)
-      cli::cli_abort(c("{.arg {nm_n_comp}} larger than number of components of {.arg ssvd}.",
-                       i = "{.arg {nm_n_comp}}: {.val {n_comp}}.",
-                       i = "Number of components: {.val {n_comp_ssvd}}."))
-  }
-  as.integer(n_comp)
-}
-
-
-## HAS_TESTS
 #' Discard Terms from a Model
 #'
 #' Discard terms for which 'use_term' is FALSE.
@@ -1961,6 +1988,32 @@ str_call_args_con <- function(prior) {
 }
 
 ## HAS_TESTS
+#' Compile Args for Parameters for Coefficient in Damped Random Walk
+#'
+#' @param prior Damped random walk prior
+#'
+#' @returns A character vector
+#'
+#' @noRd
+str_call_args_coef_drw <- function(prior) {
+  specific <- prior$specific
+  shape1 <- specific$shape1
+  shape2 <- specific$shape2
+  min <- specific$min
+  max <- specific$max
+  ans <- character(4L)
+  if (shape1 != 5)
+    ans[[1L]] <- sprintf("shape1=%s", shape1)
+  if (shape2 != 5)
+    ans[[2L]] <- sprintf("shape2=%s", shape2)
+  if (min != 0.8)
+    ans[[3L]] <- sprintf("min=%s", min)
+  if (max != 0.98)
+    ans[[4L]] <- sprintf("max=%s", max)
+  ans
+}
+
+## HAS_TESTS
 #' Compile Args for Lin Part of Prior for 'str_call_prior'
 #'
 #' Does not include 'along'.
@@ -2113,9 +2166,7 @@ str_call_args_svd <- function(prior) {
   indep <- specific$indep
   ans <- character(3L)
   ans[[1L]] <- nm_ssvd
-  n_comp_ssvd <- get_n_comp(ssvd)
-  n_default <- ceiling(n_comp_ssvd / 2)
-  if (n_comp != n_default)
+  if (n_comp != 3L)
     ans[[2L]] <- sprintf("n_comp=%s", n_comp)
   if (!indep)
     ans[[3L]] <- "indep=FALSE"
@@ -2124,25 +2175,14 @@ str_call_args_svd <- function(prior) {
 
 
 ## HAS_TESTS
-#' Function Used to Convert Variables in Data to Factors
+#' Check Whether User Specified an Offset
 #'
-#' If a variable is already a factor, leave it unchanged.
-#' If a variable is numeric, order levels by value.
-#' Otherwise, order levels by first appearance.
+#' @param mod
 #'
-#' @param x A vector
-#'
-#' @returns A factor
+#' @returns TRUE or FALSE
 #'
 #' @noRd
-to_factor <- function(x) {
-  if (is.factor(x))
-    x
-  else if (is.numeric(x))
-    factor(x)
-  else
-    factor(x, levels = unique(x))
-}  
-
-
-  
+user_specified_offset <- function(mod) {
+  nm_offset_data <- get_nm_offset_data(mod)
+  !is.null(nm_offset_data)
+}

@@ -152,7 +152,8 @@ set_covariates <- function(mod, formula) {
   data <- mod$data
   formula_mod <- mod$formula
   matrix_covariates <- make_matrix_covariates(formula = formula,
-                                              data = data)
+                                              data = data,
+                                              rows = NULL)
   covariates_nms <- colnames(matrix_covariates)
   if (has_covariates(mod))
     cli::cli_alert_warning("Model already has covariates. Deleting these.")
@@ -312,11 +313,9 @@ set_covariates <- function(mod, formula) {
 #'   set_datamod_exposure(cv = cv_age)
 #' @export
 set_datamod_exposure <- function(mod, cv)  {
-  nm_offset_data <- mod$nm_offset_data
+  check_old_version(x = mod, nm_x = "mod")
+  nm_offset_data <- get_nm_offset_data(mod)
   nm_offset_mod <- get_nm_offset_mod(mod)
-  error_offset_formula_used(nm_offset_data = nm_offset_data,
-                            nm_offset_mod = nm_offset_mod,
-                            nm_fun = "set_datamod_exposure")
   ## preliminaries
   measure_vars_cv <- "cv"
   check_bage_mod(x = mod, nm_x = "mod")
@@ -331,7 +330,7 @@ set_datamod_exposure <- function(mod, cv)  {
     cli::cli_alert("Setting dispersion to zero. (Required for exposure data model.)")
     mod <- set_disp(mod, mean = 0)
   }
-  if (!has_varying_offset(mod)) {
+  if (!user_specified_offset(mod)) {
     cli::cli_abort(c("{.arg mod} does not include exposure.",
                      i = paste("An exposure data model can only be used",
                                "with a model with exposure.")))
@@ -553,6 +552,7 @@ set_datamod_exposure <- function(mod, cv)  {
 #' mod
 #' @export
 set_datamod_miscount <- function(mod, prob, rate) {
+  check_old_version(x = mod, nm_x = "mod")
   ## preliminaries
   measure_vars_prob <- c("mean", "disp")
   measure_vars_rate <- c("mean", "disp")
@@ -807,6 +807,7 @@ set_datamod_miscount <- function(mod, prob, rate) {
 #'   set_datamod_noise(sd = 200)
 #' @export
 set_datamod_noise <- function(mod, sd) {
+  check_old_version(x = mod, nm_x = "mod")
   ## preliminaries
   measure_vars_sd <- "sd"
   check_bage_mod(x = mod, nm_x = "mod")
@@ -991,6 +992,7 @@ set_datamod_noise <- function(mod, sd) {
 #' mod
 #' @export
 set_datamod_overcount <- function(mod, rate) {
+  check_old_version(x = mod, nm_x = "mod")
   ##  preliminaries
   measure_vars_rate <- c("mean", "disp")
   check_bage_mod(x = mod, nm_x = "mod")
@@ -1172,6 +1174,7 @@ set_datamod_overcount <- function(mod, rate) {
 #' mod
 #' @export
 set_datamod_undercount <- function(mod, prob) {
+  check_old_version(x = mod, nm_x = "mod")
   ##  preliminaries
   measure_vars_prob <- c("mean", "disp")
   check_bage_mod(x = mod, nm_x = "mod")

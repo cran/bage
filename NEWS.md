@@ -1,4 +1,84 @@
 
+# bage 0.10.8
+
+## Interface
+
+* Added prior `SVD_Lin()`, in which SVD coefficients evolve according
+  to a `Lin()` prior.
+* Changed rule for default for `n_comp` argument of
+  SVD priors. Previously `n_comp` was half the number of components of
+  the `ssvd` argument (rounded up), giving a value of `3` for the SSVD
+  objects implemented in `bage`. It is now simply `3`, with no link
+  to the `ssvd` argument.
+
+# bage 0.10.7
+
+## Interface
+
+* Added `rows` argument to `augment()` and `forecast()` allowing users
+  to request results for a subset of `data`. (#106)
+* Removed warning about rules for aggregation changing. The warning
+  was introduced in version 0.9.9.
+* Removed the default for the `s_seas` argument in `RW_Seas()` and
+  `RW2_Seas()` priors, which was previous `0`. In practice, the
+  default of `0` was not intuivitely obvious, but neither was any
+  other value (eg `1`), so it is safest to force the user to specify
+  explicitly.
+
+
+# bage 0.10.6
+
+## Interface
+
+* Model construction functions `mod_pois()`, `mod_binom()`, and
+  `mod_norm()` no longer insist that the outcome variable is
+  included in `data`. Specifying models where the outcome model is not
+  included in `data` is useful when carrying out simulations or
+  when drawing from the prior distribution but not the posterior
+  distribution. The outcome variable in `data` is now checked when
+  function `fit()` is called. (#109)
+* In function `mod_pois()`, the expression `exposure = NULL` is now
+  equivalent to `exposure = 1`, and `weights = NULL`, or the
+  omission of the `weights` arugment, is equivalent to `weights = 1`.
+* Using a formula to specify exposure now throws an error, not a
+  warning, and the possibility of specifying a formula has been
+  removed from help.
+
+## Documentation
+
+* Added ROADMAP.md document.
+  
+
+# bage 0.10.5
+
+## Added 'damped random walk' priors
+
+* Added priors `DRW()`, `DRW2()` implementing damped versions of
+  random walks and second-order random walks. In the `DRW()` case,
+  the basic idea is `x[t] = phi * x[t-1] + error[t]`. In the
+  `DRW2()` case it is `x[t] = x[t-1] + phi * (x[t-1] - x[t-2]) +
+  error[t]`. These priors are useful for forecasting.
+* Added  priors `SVD_DRW()` and `SVD_DRW2()`. As above, but the random
+  walks are on the coefficients for SVDs.
+ 
+
+# bage 0.10.3
+
+## Bug fix
+
+* Fixed bug in "inner-outer" calculation method reported by
+  Daniel Timothy (issue #106). The calculations were doing an indirect
+  check of whether the user has specified an offset, where it would
+  have been better to have done a direct check, leading to failure in
+  some edge cases.
+
+# bage 0.10.3
+
+## Articles
+
+* Tidying of package website
+* Tidying of description of data model in Mathematical Details
+  article.
 
 # bage 0.10.2
 

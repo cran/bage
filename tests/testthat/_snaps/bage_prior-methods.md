@@ -26,6 +26,68 @@
 ---
 
     Code
+      print(DRW())
+    Output
+        DRW() 
+               s: 1
+              sd: 1
+          shape1: 5
+          shape2: 5
+             min: 0.8
+             max: 0.98
+           along: NULL
+             con: none
+
+---
+
+    Code
+      print(DRW(sd = 0))
+    Output
+        DRW(sd=0) 
+               s: 1
+              sd: 0
+          shape1: 5
+          shape2: 5
+             min: 0.8
+             max: 0.98
+           along: NULL
+             con: none
+
+---
+
+    Code
+      print(DRW2())
+    Output
+        DRW2() 
+               s: 1
+              sd: 1
+        sd_slope: 1
+          shape1: 5
+          shape2: 5
+             min: 0.8
+             max: 0.98
+           along: NULL
+             con: none
+
+---
+
+    Code
+      print(DRW2(sd = 0))
+    Output
+        DRW2(sd=0) 
+               s: 1
+              sd: 0
+        sd_slope: 1
+          shape1: 5
+          shape2: 5
+             min: 0.8
+             max: 0.98
+           along: NULL
+             con: none
+
+---
+
+    Code
       print(Known(c(0.2, -0.2)))
     Output
       Known(c(0.2,-0.2)) 
@@ -99,13 +161,13 @@
 ---
 
     Code
-      print(RW_Seas(n_seas = 2))
+      print(RW_Seas(n_seas = 2, s_seas = 0))
     Output
-        RW_Seas(n_seas=2) 
+        RW_Seas(n_seas=2,s_seas=0) 
           n_seas: 2
+          s_seas: 0
                s: 1
               sd: 1
-          s_seas: 0
          sd_seas: 1
            along: NULL
              con: none
@@ -116,10 +178,10 @@
       print(RW_Seas(n_seas = 2, s_seas = 1))
     Output
         RW_Seas(n_seas=2,s_seas=1) 
-               n: NULL
+          n_seas: 2
+          s_seas: 1
                s: 1
               sd: 1
-          s_seas: 1
          sd_seas: 1
            along: NULL
              con: none
@@ -138,13 +200,13 @@
 ---
 
     Code
-      print(RW_Seas(n_seas = 2, sd = 0))
+      print(RW_Seas(n_seas = 2, s_seas = 0, sd = 0))
     Output
-        RW_Seas(n_seas=2,sd=0) 
+        RW_Seas(n_seas=2,s_seas=0,sd=0) 
           n_seas: 2
+          s_seas: 0
                s: 1
               sd: 0
-          s_seas: 0
          sd_seas: 1
            along: NULL
              con: none
@@ -154,11 +216,11 @@
     Code
       print(RW_Seas(n_seas = 2, s_seas = 1, sd = 0))
     Output
-        RW_Seas(n_seas=2,sd=0,s_seas=1) 
+        RW_Seas(n_seas=2,s_seas=1,sd=0) 
           n_seas: 2
+          s_seas: 1
                s: 1
               sd: 0
-          s_seas: 1
          sd_seas: 1
            along: NULL
              con: none
@@ -188,14 +250,14 @@
 ---
 
     Code
-      print(RW2_Seas(n_seas = 2))
+      print(RW2_Seas(n_seas = 2, s_seas = 0))
     Output
-        RW2_Seas(n_seas=2) 
+        RW2_Seas(n_seas=2,s_seas=0) 
           n_seas: 2
+          s_seas: 0
                s: 1
               sd: 1
         sd_slope: 1
-          s_seas: 0
          sd_seas: 1
            along: NULL
              con: none
@@ -207,10 +269,10 @@
     Output
         RW2_Seas(n_seas=2,s_seas=1) 
           n_seas: 2
+          s_seas: 1
                s: 1
               sd: 1
         sd_slope: 1
-          s_seas: 1
          sd_seas: 1
            along: NULL
              con: none
@@ -230,14 +292,14 @@
 ---
 
     Code
-      print(RW2_Seas(n_seas = 2, sd = 0))
+      print(RW2_Seas(n_seas = 2, s_seas = 0, sd = 0))
     Output
-        RW2_Seas(n_seas=2,sd=0) 
+        RW2_Seas(n_seas=2,s_seas=0,sd=0) 
           n_seas: 2
+          s_seas: NULL
                s: 1
               sd: 0
         sd_slope: 1
-          s_seas: NULL
          sd_seas: 1
            along: NULL
              con: none
@@ -247,12 +309,12 @@
     Code
       print(RW2_Seas(n_seas = 2, sd = 0, s_seas = 1))
     Output
-        RW2_Seas(n_seas=2,sd=0,s_seas=1) 
+        RW2_Seas(n_seas=2,s_seas=1,sd=0) 
           n_seas: 2
+          s_seas: 1
                s: 1
               sd: NULL
         sd_slope: 1
-          s_seas: 1
          sd_seas: 1
            along: NULL
              con: none
@@ -301,7 +363,6 @@
              min: -1
              max: 1
                s: 1
-           along: NULL
              con: none
 
 ---
@@ -317,7 +378,6 @@
              min: -1
              max: 1
                s: 1
-           along: NULL
              con: none
 
 ---
@@ -331,7 +391,6 @@
              min: 0.8
              max: 0.98
                s: 1
-           along: NULL
              con: none
 
 ---
@@ -346,7 +405,168 @@
              min: 0.8
              max: 0.98
                s: 1
-           along: NULL
+             con: none
+
+---
+
+    Code
+      print(SVD_DRW(HMD))
+    Output
+        SVD_DRW(HMD) 
+            ssvd: HMD
+          n_comp: 3
+               s: 1
+              sd: 1
+          shape1: 5
+          shape2: 5
+             min: 0.8
+             max: 0.98
+             con: none
+
+---
+
+    Code
+      print(SVD_DRW(HMD, indep = FALSE))
+    Output
+        SVD_DRW(HMD,indep=FALSE) 
+            ssvd: HMD
+          n_comp: 3
+           indep: FALSE
+               s: 1
+              sd: 1
+          shape1: 5
+          shape2: 5
+             min: 0.8
+             max: 0.98
+             con: none
+
+---
+
+    Code
+      print(SVD_DRW(HMD, sd = 0))
+    Output
+        SVD_DRW(HMD,sd=0) 
+            ssvd: HMD
+          n_comp: 3
+               s: 1
+              sd: 0
+          shape1: 5
+          shape2: 5
+             min: 0.8
+             max: 0.98
+             con: none
+
+---
+
+    Code
+      print(SVD_DRW(HMD, sd = 0, indep = FALSE))
+    Output
+        SVD_DRW(HMD,indep=FALSE,sd=0) 
+            ssvd: HMD
+          n_comp: 3
+           indep: FALSE
+               s: 1
+              sd: 0
+          shape1: 5
+          shape2: 5
+             min: 0.8
+             max: 0.98
+             con: none
+
+---
+
+    Code
+      print(SVD_DRW2(HMD))
+    Output
+        SVD_DRW2(HMD) 
+            ssvd: HMD
+          n_comp: 3
+               s: 1
+              sd: 1
+        sd_slope: 1
+          shape1: 5
+          shape2: 5
+             min: 0.8
+             max: 0.98
+             con: none
+
+---
+
+    Code
+      print(SVD_DRW2(HMD, indep = FALSE))
+    Output
+        SVD_DRW2(HMD,indep=FALSE) 
+            ssvd: HMD
+          n_comp: 3
+           indep: FALSE
+               s: 1
+              sd: 1
+        sd_slope: 1
+          shape1: 5
+          shape2: 5
+             min: 0.8
+             max: 0.98
+             con: none
+
+---
+
+    Code
+      print(SVD_DRW2(HMD, sd = 0))
+    Output
+        SVD_DRW2(HMD,sd=0) 
+            ssvd: HMD
+          n_comp: 3
+               s: 1
+              sd: 0
+        sd_slope: 1
+          shape1: 5
+          shape2: 5
+             min: 0.8
+             max: 0.98
+             con: none
+
+---
+
+    Code
+      print(SVD_DRW2(HMD, sd = 0, indep = FALSE))
+    Output
+        SVD_DRW2(HMD,indep=FALSE,sd=0) 
+            ssvd: HMD
+          n_comp: 3
+           indep: FALSE
+               s: 1
+              sd: 0
+        sd_slope: 1
+          shape1: 5
+          shape2: 5
+             min: 0.8
+             max: 0.98
+             con: none
+
+---
+
+    Code
+      print(SVD_Lin(HMD))
+    Output
+        SVD_Lin(HMD) 
+            ssvd: HMD
+          n_comp: 3
+               s: 1
+      mean_slope: 0
+        sd_slope: 1
+             con: none
+
+---
+
+    Code
+      print(SVD_Lin(HMD, s = 0))
+    Output
+        SVD_Lin(HMD,s=0) 
+            ssvd: HMD
+          n_comp: 3
+               s: 0
+      mean_slope: 0
+        sd_slope: 1
              con: none
 
 ---
@@ -359,7 +579,6 @@
           n_comp: 3
                s: 1
               sd: 1
-           along: NULL
              con: none
 
 ---
@@ -373,7 +592,6 @@
            indep: FALSE
                s: 1
               sd: 1
-           along: NULL
              con: none
 
 ---
@@ -385,7 +603,7 @@
             ssvd: HMD
           n_comp: 3
                s: 1
-           along: NULL
+              sd: 0
              con: none
 
 ---
@@ -398,7 +616,7 @@
           n_comp: 3
            indep: FALSE
                s: 1
-           along: NULL
+              sd: 0
              con: none
 
 ---
@@ -412,7 +630,6 @@
                s: 1
               sd: 1
         sd_slope: 1
-           along: NULL
              con: none
 
 ---
@@ -427,7 +644,6 @@
                s: 1
               sd: 1
         sd_slope: 1
-           along: NULL
              con: none
 
 ---
@@ -439,8 +655,8 @@
             ssvd: HMD
           n_comp: 3
                s: 1
+              sd: 0
         sd_slope: 1
-           along: NULL
              con: none
 
 ---
@@ -453,7 +669,7 @@
           n_comp: 3
            indep: FALSE
                s: 1
+              sd: 0
         sd_slope: 1
-           along: NULL
              con: none
 

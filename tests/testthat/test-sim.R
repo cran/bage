@@ -319,6 +319,20 @@ test_that("'draw_vals_coef' works with n = 10", {
 })
 
 
+## 'draw_vals_coef_drw' -------------------------------------------------------
+
+test_that("'draw_vals_coef_drw' works with valid inputs", {
+  set.seed(0)
+  prior <- DRW()
+  ans <- draw_vals_coef_drw(prior, n_sim = 5)
+  expect_true(all(ans > 0.8))
+  expect_true(all(ans < 0.98))
+  prior <- DRW2(min = 0, max = 1)
+  ans <- draw_vals_coef_drw(prior, n_sim = 10000)
+  expect_equal(mean(ans), 0.5, tolerance = 0.01)
+})
+
+
 ## 'draw_vals_components_unfitted' --------------------------------------------
 
 test_that("'draw_vals_components_unfitted' works", {
@@ -398,14 +412,52 @@ test_that("'draw_vals_disp' works with 'bage_mod_norm'", {
     data$deaths <- rpois(n = nrow(data), lambda = 10)
     formula <- deaths ~ age + sex + time
     mod <- mod_norm(formula = formula,
-                    data = data,
-                    weights = 1)
+                    data = data)
     ans <- draw_vals_disp(mod, n_sim = 10000)
     expect_equal(rvec::draws_median(ans), qexp(0.5), tolerance = 0.01)
 })
 
 
-## draw_vals_effect_mod ----------------------------------------------------------
+## 'draw_vals_drw' ------------------------------------------------------------
+
+test_that("'draw_vals_drw' works with bage_prior_drwrandom", {
+  prior <- DRW()
+  n_sim <- 10
+  vals_hyper <- draw_vals_hyper(prior = prior,
+                                n_sim = n_sim)
+  vals_hyperrand <- list()
+  levels_effect <- letters
+  matrix_along_by <- matrix(0:25, nr = 13, dimnames = list(letters[1:13], 1:2))
+  ans <- draw_vals_drw(sd = vals_hyper$sd,
+                       sd_init = prior$specific$sd,
+                       coef = vals_hyper$coef,
+                       matrix_along_by = matrix_along_by,
+                       levels_effect = levels_effect)
+  expect_identical(dimnames(ans), list(letters, NULL))
+})
+
+
+## 'draw_vals_drw2' ------------------------------------------------------------
+
+test_that("'draw_vals_drw2' works with bage_prior_drw2random", {
+  prior <- DRW2()
+  n_sim <- 10
+  vals_hyper <- draw_vals_hyper(prior = prior,
+                                n_sim = n_sim)
+  vals_hyperrand <- list()
+  levels_effect <- letters
+  matrix_along_by <- matrix(0:25, nr = 13, dimnames = list(letters[1:13], 1:2))
+  ans <- draw_vals_drw2(sd = vals_hyper$sd,
+                        sd_init = prior$specific$sd,
+                        sd_slope = prior$specific$sd_slope,
+                        coef = vals_hyper$coef,
+                        matrix_along_by = matrix_along_by,
+                        levels_effect = levels_effect)
+  expect_identical(dimnames(ans), list(letters, NULL))
+})
+
+
+## draw_vals_effect_mod -------------------------------------------------------
 
 test_that("'draw_vals_effect_mod' works with bage_mod_pois", {
   set.seed(0)
@@ -438,6 +490,39 @@ test_that("'draw_vals_effect_mod' works with bage_mod_pois", {
   expect_true(all(sapply(ans, ncol) == n_sim))
   expect_identical(sapply(ans, nrow),
                    sapply(make_matrices_effect_outcome(mod$data, mod$dimnames_terms), ncol))
+})
+
+
+## 'draw_vals_dffect_svd_dynamic' ---------------------------------------------
+
+test_that("'draw_vals_effect_svd_dynamic' works with bage_prior_svd_ar - age x time", {
+  prior <- SVD_AR1(HMD, n_comp = 3)
+  n_sim <- 10
+  dimnames_term <- list(time = 2000:2004,
+                        age = c(0:79, "80+"))
+  var_time <- "time"
+  var_age <- "age"
+  var_sexgender <- "sex"
+  vals_hyper <- draw_vals_hyper(prior = prior,
+                                n_sim = n_sim)
+  vals_hyperrand <- list()
+  levels_svd <- paste(paste0("comp", 1:3), rep(2000:2004, each = 3), sep = ".")
+  vals_spline <- NULL
+  vals_svd <- draw_vals_svd(prior = prior,
+                            vals_hyper = vals_hyper,
+                            dimnames_term = dimnames_term,
+                            var_time = var_time,
+                            var_age = var_age,
+                            var_sexgender = var_sexgender,
+                            levels_svd = levels_svd,
+                            n_sim = 10)
+  ans <- draw_vals_effect_svd_dynamic(prior = prior,
+                                      vals_svd = vals_svd,
+                                      dimnames_term = dimnames_term,
+                                      var_time = var_time,
+                                      var_age = var_age,
+                                      var_sexgender = var_sexgender)
+  expect_identical(dim(ans), c(5L * 81L, 10L))
 })
 
 
@@ -892,7 +977,6 @@ test_that("'draw_vals_slope' works - no 'by' variables", {
   set.seed(0)
   ans_expected <- matrix(rnorm(n = 1000, 0.1, 0.5),
                          nr = 1)
-  rownames(ans_expected) <- "slope"
   expect_identical(ans_obtained, ans_expected)
 })
 
@@ -1679,6 +1763,7 @@ test_that("'vals_hyperrand_to_dataframe_one' works with 'bage_prior_ar'", {
                                                   dimnames_term = list(time = 2001:2010),
                                                   var_age = "age",
                                                   var_time = "time",
+                                                  var_sexgender = "sex",
                                                   n_sim = 10)
   ans_expected <- tibble::tibble(term = character(),
                                  component = character(),
@@ -1695,6 +1780,7 @@ test_that("'vals_hyperrand_to_dataframe_one' works with bage_prior_lin", {
                         region = c("a", "b", "c"))
   var_age <- "age"
   var_time <- "time"
+  var_sexgender <- "sex"
   vals_hyper <- list(sd = runif(n_sim))
   vals_hyperrand <- draw_vals_hyperrand(prior = prior,
                                         vals_hyper = vals_hyper,

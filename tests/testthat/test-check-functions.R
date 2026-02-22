@@ -503,6 +503,8 @@ test_that("'check_formula_vnames_in_data' returns TRUE with valid inputs", {
                                              data.frame(x = 1, y = 2, z = 3)))
     expect_true(check_formula_vnames_in_data(y ~ 1,
                                              data.frame(x = 1, y = 2, z = 3)))
+    expect_true(check_formula_vnames_in_data(not_in_data ~ 1,
+                                             data.frame(x = 1, y = 2, z = 3)))
 })
 
 test_that("'check_formula_vnames_in_data' returns correct error with invalid inputs", {
@@ -807,7 +809,7 @@ test_that("'check_mod_has_obs' returns correct error with no valid rows - no exp
     formula <- deaths ~ age + sex + time
     mod <- mod_pois(formula = formula,
                     data = data,
-                    exposure = 1)
+                    exposure = NULL)
     expect_error(check_mod_has_obs(mod),
                  "No data for fitting model.")
 })
@@ -902,6 +904,22 @@ test_that("'check_n_along_ge' throws correct error with length less than min", {
                                 nm = "age:sex",
                                 prior = Lin()),
                "`Lin\\(\\)` prior cannot be used for `age:sex` term.")                
+})
+
+
+## 'check_n_comp_svd' ---------------------------------------------------------------
+
+test_that("'n_comp_svd' works when valid 'n' supplied", {
+  expect_true(check_n_comp_svd(n_comp = 3, ssvd = HMD))
+})
+
+test_that("'n_comp_svd' throws correct error when n is too high", {
+  expect_error(check_n_comp_svd(n_comp = 11, ssvd = HMD),
+               "`n_comp` larger than number of components of `ssvd`.")
+})
+
+test_that("'n_comp_svd' throws error when no 'n' supplied", {
+  expect_error(check_n_comp_svd(n_comp = NULL, ssvd = HMD))
 })
 
 
@@ -1025,7 +1043,7 @@ test_that("'check_number' throws correct error with Inf", {
 })
 
 
-## 'check_numeric' ------------------------------------------------------------------
+## 'check_numeric' ------------------------------------------------------------
 
 test_that("'check_numeric' returns TRUE with valid inputs", {
     expect_true(check_numeric(x = 1:4, nm_x = "x"))
@@ -1058,25 +1076,12 @@ test_that("'check_numeric' throws correct error with Inf", {
 test_that("'check_offset_formula_not_used' returns TRUE with valid offset", {
   expect_true(check_offset_formula_not_used(nm_offset_data = "popn"))
   rlang::local_options(lifecycle_verbosity = "warning")
-  expect_warning(check_offset_formula_not_used(nm_offset_data = "~popn + deaths"),
-                 "Using a formula to specify")
+  expect_error(check_offset_formula_not_used(nm_offset_data = "~popn + deaths"),
+               "Using a formula to specify")
 })
 
 
 ## 'check_offset_in_data' -----------------------------------------------------
-
-test_that("'check_offset_in_data' returns TRUE with valid formula", {
-    expect_true(check_offset_in_data(nm_offset_data = "~popn + deaths",
-                                     nm_offset_mod = "exposure",
-                                     data = data.frame(deaths = 1, popn = 2)))
-})
-
-test_that("'check_offset_in_data' throws correct error with invalid formula", {
-  expect_error(check_offset_in_data(nm_offset_data = "~popn + wrong",
-                                    nm_offset_mod = "exposure",
-                                    data = data.frame(deaths = 1, popn = 2)),
-               "Problem with formula used for `exposure`.")
-})
 
 test_that("'check_offset_in_data' returns TRUE with valid name", {
     expect_true(check_offset_in_data(nm_offset_data = "popn",
@@ -1100,15 +1105,7 @@ test_that("'check_offset_in_data' returns correct error with invalid name - size
 
 ## 'check_offset_nonneg' ----------------------------------------------------
 
-test_that("'check_offset_nonneg' returns TRUE with valid inputs - formula", {
-    expect_true(check_offset_nonneg(nm_offset_data = "~popn - deaths",
-                                    nm_offset_mod = "exposure",
-                                    data = data.frame(sex = 1:2,
-                                                      popn = c(0, 1.1),
-                                                      deaths = 0:1)))
-})
-
-test_that("'check_offset_nonneg' returns TRUE with valid inputs - name", {
+test_that("'check_offset_nonneg' returns TRUE with valid inputs", {
     expect_true(check_offset_nonneg(nm_offset_data = "popn",
                                     nm_offset_mod = "exposure",
                                     data = data.frame(sex = 1:2,
@@ -1116,16 +1113,7 @@ test_that("'check_offset_nonneg' returns TRUE with valid inputs - name", {
                                                       deaths = 0:1)))
 })
 
-test_that("'check_offset_nonneg' returns correct error with invalid inputs - formula", {
-  expect_error(check_offset_nonneg(nm_offset_data = "~popn - 1",
-                                   nm_offset_mod = "exposure",
-                                   data = data.frame(sex = 1:2,
-                                                     popn = c(-1, 1),
-                                                     deaths = 0:1)),
-               "`exposure` has negative value.")
-})
-
-test_that("'check_offset_nonneg' returns correct error with invalid inputs - name", {
+test_that("'check_offset_nonneg' returns correct error with invalid inputs", {
     expect_error(check_offset_nonneg(nm_offset_data = "popn",
                                     nm_offset_mod = "exposure",
                                     data = data.frame(sex = 1:3,
@@ -1186,6 +1174,10 @@ test_that("'check_old_version' raises error with invalid version", {
                "`object` appears to have been created with an old version of bage.")
   mod_has_stored <- mod
   mod_has_stored$seed_stored_draws <- 1
+  expect_error(check_old_version(mod_has_stored, nm_x = "object"),
+               "`object` appears to have been created with an old version of bage.")
+  mod_formula_offset <- mod
+  mod$nm_offset_data <- "~popn + 1"
   expect_error(check_old_version(mod_has_stored, nm_x = "object"),
                "`object` appears to have been created with an old version of bage.")
 })
@@ -1260,17 +1252,7 @@ test_that("'check_positive' throws correct error with valid inputs", {
 
 ## 'check_resp_le_offset' -----------------------------------------------------
 
-test_that("'check_resp_le_offset' returns TRUE with valid inputs - formula", {
-  data <- data.frame(deaths = c(0, 1, NA, 0,  NA),
-                     sex = rep("F", 5),
-                     popn =   c(0, 1, 2,  NA, NA))
-  expect_true(check_resp_le_offset(formula = deaths ~ sex,
-                                   nm_offset_data = "~  popn",
-                                   nm_offset_mod = "size",
-                                   data = data))
-})
-
-test_that("'check_resp_le_offset' returns TRUE with valid inputs - name", {
+test_that("'check_resp_le_offset' returns TRUE with valid inputs", {
   data <- data.frame(deaths = c(0, 1, NA, 0,  NA),
                      sex = rep("F", 5),
                      popn =   c(0, 1, 2,  NA, NA))
@@ -1280,18 +1262,7 @@ test_that("'check_resp_le_offset' returns TRUE with valid inputs - name", {
                                    data = data))
 })
 
-test_that("'check_resp_le_offset' raises correct error with invalid inputs - formula", {
-    data <- data.frame(deaths = c(0, 1, NA, 0,  2),
-                       sex = rep("F", 5),
-                       popn =   c(0, 1, 2,  NA, 1))
-    expect_error(check_resp_le_offset(formula = deaths ~ sex,
-                                      nm_offset_data = "~popn - 0.1",
-                                      nm_offset_mod = "size",
-                                      data = data),
-                 "Response greater than `size`.")
-})
-
-test_that("'check_resp_le_offset' raises correct error with invalid inputs - formula", {
+test_that("'check_resp_le_offset' raises correct error with invalid inputs", {
     data <- data.frame(deaths = c(0, 1, NA, 0,  2),
                        sex = rep("F", 5),
                        popn =   c(0, 1, 2,  NA, 1))
@@ -1305,17 +1276,7 @@ test_that("'check_resp_le_offset' raises correct error with invalid inputs - for
 
 ## 'check_resp_zero_if_offset_zero' -------------------------------------------
 
-test_that("'check_resp_zero_if_offset_zero' returns TRUE with valid inputs - formula", {
-    data <- data.frame(deaths = c(0, 1, NA, 0,  NA),
-                       sex = rep("F", 5),
-                       popn =   c(0, 1, 2,  NA, NA))
-    expect_true(check_resp_zero_if_offset_zero(formula = deaths ~ sex,
-                                               nm_offset_data = "~popn^2",
-                                               nm_offset_mod = "exposure",
-                                               data = data))
-})
-
-test_that("'check_resp_zero_if_offset_zero' returns TRUE with valid inputs - name", {
+test_that("'check_resp_zero_if_offset_zero' returns TRUE with valid inputs", {
     data <- data.frame(deaths = c(0, 1, NA, 0,  NA),
                        sex = rep("F", 5),
                        popn =   c(0, 1, 2,  NA, NA))
@@ -1325,18 +1286,7 @@ test_that("'check_resp_zero_if_offset_zero' returns TRUE with valid inputs - nam
                                                data = data))
 })
 
-test_that("'check_resp_zero_if_offset_zero' raises correct error with invalid inputs - formula", {
-  data <- data.frame(deaths = c(0, 1, NA, 0,  1),
-                     sex = rep("F", 5),
-                     popn =   c(0, 1, 2,  NA, 0))
-  expect_error(check_resp_zero_if_offset_zero(formula = deaths ~ sex,
-                                              nm_offset_data = "~popn^2",
-                                              nm_offset_mod = "exposure",
-                                              data = data),
-               "Response is non-zero but `exposure` is zero.")
-})
-
-test_that("'check_resp_zero_if_offset_zero' raises correct error with invalid inputs - name", {
+test_that("'check_resp_zero_if_offset_zero' raises correct error with invalid inputs", {
   data <- data.frame(deaths = c(0, 1, NA, 0,  1),
                      sex = rep("F", 5),
                      popn =   c(0, 1, 2,  NA, 0))
@@ -1377,6 +1327,27 @@ test_that("'check_response_not_call' returns TRUE with valid inputs", {
 test_that("'check_response_not_call' returns correct error with invalid inputs", {
   expect_error(check_response_not_call(log(deaths) ~ sex),
                "Response includes function call.")
+})
+
+
+## 'check_rows_forecast' ------------------------------------------------------
+
+test_that("'check_rows_forecast' returns TRUE with valid inputs", {
+  expect_true(check_rows_forecast(rows = rlang::quo(age > 5),
+                                  output = "augment",
+                                  include_estimates = FALSE))
+})
+
+test_that("'check_rows_forecast' throws correct error with components", {
+  expect_error(check_rows_forecast(rows = rlang::quo(age > 5),
+                                   output = "components",
+                                   include_estimates = FALSE))
+})
+
+test_that("'check_rows_forecast' throws correct error with include_estimates", {
+  expect_error(check_rows_forecast(rows = rlang::quo(age > 5),
+                                   output = "augment",
+                                   include_estimates = NA))
 })
 
 

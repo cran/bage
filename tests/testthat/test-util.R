@@ -321,7 +321,7 @@ test_that("'draw_true_given_obs_pois_skellam_approx' works near boundary (mu_pos
 })
 
 test_that("'draw_true_given_obs_pois_skellam_approx' empirical mean tracks Gaussian posterior mean (moderate case)", {
-  skip_on_cran()  # Monte Carlo
+  testthat::skip_on_cran()  # Monte Carlo
   set.seed(5)
   y_obs <- 120
   lambda <- 100
@@ -525,7 +525,7 @@ test_that("'draw_true_given_obs_pois_skellam_exact' - no NA/NaN/Inf returned for
 }
 
 test_that("approx vs exact agree: moderate counts, near mean", {
-  skip_on_cran()
+  testthat::skip_on_cran()
   set.seed(101)
   y_obs  <- 28L
   lambda <- 30
@@ -550,7 +550,7 @@ test_that("approx vs exact agree: moderate counts, near mean", {
 })
 
 test_that("approx vs exact agree: large counts", {
-  skip_on_cran()
+  testthat::skip_on_cran()
   set.seed(202)
   y_obs  <- 110L
   lambda <- 100
@@ -571,7 +571,7 @@ test_that("approx vs exact agree: large counts", {
 })
 
 test_that("approx vs exact agree: boundary-ish (small mu_post, nontrivial mass at 0)", {
-  skip_on_cran()
+  testthat::skip_on_cran()
   set.seed(303)
   y_obs  <- 2L
   lambda <- 8
@@ -600,7 +600,7 @@ test_that("approx vs exact agree: boundary-ish (small mu_post, nontrivial mass a
 })
 
 test_that("approx vs exact agree: symmetric case around zero (uses windowing path)", {
-  skip_on_cran()
+  testthat::skip_on_cran()
   set.seed(404)
   # Symmetric Skellam with y near lambda gives mu_post near lambda
   y_obs  <- 15L
@@ -661,6 +661,19 @@ test_that("'insert_after' works with tibbles", {
   ans_expected <- tibble(x = 1:3, y = 3:1, new = 11:13)
   expect_identical(ans_obtained, ans_expected)
 })
+
+test_that("'insert_after' puts variable last if nm_after not found", {
+  df <- tibble::tibble(x = 1:3, y = 3:1)
+  x <- 11:13
+  nm_x = "new"
+  ans_obtained <- insert_after(df = df,
+                               nm_after = "not-included",
+                               x = x,
+                               nm_x = nm_x)
+  ans_expected <- tibble(x = 1:3, y = 3:1, new = 11:13)
+  expect_identical(ans_obtained, ans_expected)
+})
+
 
 
 ## 'insert_before' -------------------------------------------------------
@@ -961,6 +974,7 @@ test_that("rmvn_from_sparse_CH: LDL fallback triggers when LL path fails (mocked
 })
 
 test_that("rmvn_from_sparse_CH: dense fallback triggers when LL and LDL both fail (mocked)", {
+  skip_if(utils::packageVersion("Matrix") < "1.6.0")
   set.seed(4)
   n  <- 4L
   Q  <- Matrix::Diagonal(n, 2)
@@ -990,6 +1004,74 @@ test_that("rmvn_from_sparse_CH throws error with invalid CH", {
   n_draw <- 200L
   expect_error(rmvn_from_sparse_CH(CH = "wrong", mu = mu, n_draw = n_draw, prec = Q),
                "Internal error")
+})
+
+
+## 'rmvnorm_chol' -------------------------------------------------------------
+
+test_that("rmvnorm_chol returns correct dimensions and preserves mean recycling", {
+  n <- 7L
+  mean <- c(1.2, -0.3, 4.0)
+  n_val <- length(mean)
+  Q <- diag(n_val)  # precision
+  CH <- Matrix::Cholesky(Matrix::Matrix(Q, sparse = TRUE))
+  X <- rmvnorm_chol(n = n, mean = mean, CH = CH)
+  expect_identical(dim(X), c(n_val, n))
+})
+
+test_that("rmvnorm_chol gives identity covariance when precision is identity", {
+  set.seed(1)
+  n <- 40000L
+  mean <- c(0, 0, 0)
+  n_val <- length(mean)
+  Q <- diag(n_val)  # Sigma = I
+  CH <- Matrix::Cholesky(Matrix::Matrix(Q, sparse = TRUE))
+  X <- rmvnorm_chol(n = n, mean = mean, CH = CH)
+  # sample mean close to mean
+  expect_equal(rowMeans(as.matrix(X)), mean, tolerance = 0.02)
+  # sample covariance close to I
+  S <- stats::cov(t(as.matrix(X)))
+  expect_equal(diag(S), rep(1, n_val), tolerance = 0.03)
+  expect_equal(S[lower.tri(S)], rep(0, n_val * (n_val - 1) / 2), tolerance = 0.03)
+})
+
+test_that("rmvnorm_chol matches target covariance for a nontrivial precision matrix", {
+  set.seed(2)
+  n <- 80000L
+  mean <- c(0.5, -1.0, 2.0)
+  n_val <- length(mean)
+  # Construct SPD precision Q
+  A <- matrix(c(2, 0.3, -0.2,
+                0.3, 1.5, 0.4,
+                -0.2, 0.4, 1.8), n_val, n_val, byrow = TRUE)
+  Q <- crossprod(A)  # SPD
+  Sigma <- solve(Q)
+  CH <- Matrix::Cholesky(Matrix::Matrix(Q, sparse = TRUE), perm = FALSE)
+  X <- rmvnorm_chol(n = n, mean = mean, CH = CH)
+  expect_equal(rowMeans(as.matrix(X)), mean, tolerance = 0.02)
+  S <- stats::cov(t(as.matrix(X)))
+  expect_equal(S, Sigma, tolerance = 0.03)
+})
+
+test_that("rmvnorm_chol is reproducible under set.seed()", {
+  n <- 5L
+  mean <- c(1, 2)
+  Q <- diag(2)
+  CH <- Matrix::Cholesky(Matrix::Matrix(Q, sparse = TRUE))
+  set.seed(123)
+  X1 <- rmvnorm_chol(n = n, mean = mean, CH = CH)
+  set.seed(123)
+  X2 <- rmvnorm_chol(n = n, mean = mean, CH = CH)
+  expect_identical(X1, X2)
+})
+
+test_that("rmvnorm_chol errors on nonconformable mean/precision", {
+  skip_if_not_installed("Matrix")
+  n <- 3L
+  mean <- c(0, 0, 0)
+  Q_bad <- diag(2)  # wrong dimension
+  CH_bad <- Matrix::Cholesky(Matrix::Matrix(Q_bad, sparse = TRUE))
+  expect_error(rmvnorm_chol(n = n, mean = mean, CH = CH_bad))
 })
 
 
@@ -1257,7 +1339,7 @@ test_that("extreme pi values behave sensibly", {
 })
 
 test_that("recovers distribution", {
-  skip_on_cran()
+  testthat::skip_on_cran()
   set.seed(0)
   n <- 1000
   mu <- 0.4
@@ -1411,59 +1493,21 @@ test_that("'symmetry_grade' function handles non-Matrix inputs by coercing", {
 })
 
 
-## 'warn_not_aggregating' -----------------------------------------------------
+## 'to_factor' ----------------------------------------------------------------
 
-test_that("warn_not_aggregating returns TRUE with no duplicates", {
-  formula <- deaths ~ age + sex
-  data <- expand.grid(age = 0:2, sex = c("f", "m"))
-  data$deaths <- 1
-  expect_true(warn_not_aggregating(formula = formula,
-                                   data = data,
-                                   formula_covariates = NULL,
-                                   always = TRUE))
+test_that("'to_factor' leaves existing factor unchanged", {
+  x <- factor(letters)
+  expect_identical(to_factor(x), x)
 })
 
-test_that("warn_not_aggregating returns TRUE with duplicates, but always is FALSE", {
-  formula <- deaths ~ age
-  data <- expand.grid(age = 0:2, sex = c("f", "m"))
-  data$deaths <- 1
-  expect_true(warn_not_aggregating(formula = formula,
-                                   data = data,
-                                   formula_covariates = NULL,
-                                   always = FALSE))
+test_that("'to_factor' orders numeric x by values", {
+  x <- c(3, 1, 0.2, 1)
+  expect_identical(to_factor(x), factor(x, levels = c(0.2, 1, 3)))
 })
 
-test_that("warn_not_aggregating raises warning with duplicates, but only first time", {
-  skip_if_not(interactive())
-  dir_cache <- tools::R_user_dir(package = "bage", which = "cache")
-  dir.create(dir_cache, showWarnings = FALSE, recursive = TRUE)
-  path <- file.path(dir_cache, "aggregation.txt")
-  unlink(path)
-  formula <- deaths ~ age + sex
-  data <- expand.grid(age = 0:2, sex = c("f", "m"))
-  data <- rbind(data, data)
-  data$deaths <- 1
-  expect_warning(warn_not_aggregating(formula = formula,
-                                      data = data,
-                                      formula_covariates = NULL,
-                                      always = TRUE),
-                 "`data` has multiple rows with the same values for the predictors \\(`age` and `sex`\\).")
-  expect_true(warn_not_aggregating(formula = formula,
-                                   data = data,
-                                   formula_covariates = NULL,
-                                   always = TRUE))
+
+test_that("'to_factor' orders non-numeric non-factor by order of appearance", {
+  x <- c("b", "a", 1, "a")
+  expect_identical(to_factor(x), factor(x, levels = c("b", "a", 1)))
 })
 
-test_that("warn_not_aggregating uses covariages", {
-  formula <- deaths ~ age
-  data <- expand.grid(age = 0:2, sex = c("f", "m"))
-  data$deaths <- 1
-  formula_covariates <- ~ sex
-  expect_true(warn_not_aggregating(formula = formula,
-                                   data = data,
-                                   formula_covariates = formula_covariates,
-                                   always = TRUE))
-})
-
-              
-  

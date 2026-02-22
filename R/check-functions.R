@@ -379,7 +379,8 @@ check_formula_has_variable <- function(name, formula) {
 
 
 ## HAS_TESTS
-#' Check variables used in 'formula' occur in 'data'
+#' Check variables used in 'formula'
+#' (apart from response) occur in 'data'
 #'
 #' @param formula A formula.
 #' @param data A data frame.
@@ -388,12 +389,14 @@ check_formula_has_variable <- function(name, formula) {
 #'
 #' @noRd
 check_formula_vnames_in_data <- function(formula, data) {
-  nms_formula <- all.vars(formula)
+  terms <- terms(formula)
+  terms_no_resp <- stats::delete.response(terms)
+  nms_formula_no_resp <- all.vars(terms_no_resp)
   nms_data <- names(data)
-  is_in_data <- nms_formula %in% nms_data
+  is_in_data <- nms_formula_no_resp %in% nms_data
   i_not_in_data <- match(FALSE, is_in_data, nomatch = 0L)
   if (i_not_in_data > 0L) {
-    nm_var <- nms_formula[[i_not_in_data]]
+    nm_var <- nms_formula_no_resp[[i_not_in_data]]
     cli::cli_abort(c("Variable {.var {nm_var}} from {.arg formula} not found in {.arg data}.",
                      i = "{.arg formula}: {.code {deparse(formula)}}."))
   }
@@ -704,8 +707,8 @@ check_mod_has_obs <- function(mod) {
     if (n_na_effects > 0L)
       msg <- c(msg, i = "Number of rows where predictor is {.val {NA}}: {.val {n_na_effects}}.")
     nm_offset_data <- get_nm_offset_data(mod)
-    has_varying_offset <- has_varying_offset(mod)
-    if (has_varying_offset) {
+    user_specified_offset <- user_specified_offset(mod)
+    if (user_specified_offset) {
       nm_offset_mod <- get_nm_offset_mod(mod)
       n_na_offset <- sum(!is_in_lik_offset)
       if (n_na_offset > 0L)
@@ -771,6 +774,30 @@ check_n_along_ge <- function(n_along, min, nm, prior) {
                      i = paste("{.var {str_call_prior(prior)}} prior can only be",
                                "used with interactions where the 'along' dimension has at least {min} element{?s}."),
                      i = "The 'along' dimension of {.var {nm}} has {n_along} element{?s}."))
+  invisible(TRUE)
+}
+
+
+## HAS_TESTS
+#' Check 'n_comp' Argument for SVD Prior
+#'
+#' @param n_comp Value provided by user
+#' @param ssvd Object of class "bage_ssvd"
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd
+check_n_comp_svd <- function(n_comp, ssvd) {
+  n_comp_ssvd <- get_n_comp(ssvd)
+  poputils::check_n(n = n_comp,
+                    nm_n = "n_comp",
+                    min = 1L,
+                    max = NULL,
+                    divisible_by = NULL)
+  if (n_comp > n_comp_ssvd)
+    cli::cli_abort(c("{.arg n_comp} larger than number of components of {.arg ssvd}.",
+                     i = "{.arg n_comp}: {.val {n_comp}}.",
+                     i = "Number of components: {.val {n_comp_ssvd}}."))
   invisible(TRUE)
 }
 
@@ -909,9 +936,8 @@ check_numeric <- function(x, nm_x) {
 check_offset_formula_not_used <- function(nm_offset_data) {
   is_formula <- !is.null(nm_offset_data) && startsWith(nm_offset_data, "~")
   if (is_formula)
-    lifecycle::deprecate_warn(when = "0.9.5",
-                              what = I("Using a formula to specify exposure, size, or weights"),
-                              with = I("the name of a variable in `data`, or `1`,"))
+    lifecycle::deprecate_stop(when = "0.9.5",
+                              what = I("Using a formula to specify exposure, size, or weights"))
   invisible(TRUE)
 }
 
@@ -919,7 +945,7 @@ check_offset_formula_not_used <- function(nm_offset_data) {
 #' Check offset occurs in 'data'
 #'
 #' @param nm_offset_data The name of the variable being
-#' used as an offset, or a formula
+#' used as an offset
 #' @param nm_offset_mod The name used to refer to the
 #' offset in user-visible functions
 #' @param data A data frame
@@ -928,31 +954,19 @@ check_offset_formula_not_used <- function(nm_offset_data) {
 #'
 #' @noRd
 check_offset_in_data <- function(nm_offset_data, nm_offset_mod, data) {
-  is_formula <- startsWith(nm_offset_data, "~")
-  if (is_formula) {
-    ans <- tryCatch(eval_offset_formula(nm_offset_data = nm_offset_data, data = data),
-                    error = function(e) e)
-    if (inherits(ans, "error"))
-      cli::cli_abort(c("Problem with formula used for {.arg {nm_offset_mod}}.",
-                       i = "Formula: {.val {nm_offset_data}}.",
-                       i = ans$message))
-  }
-  else {
-    nms_data <- names(data)
-    if (!(nm_offset_data %in% nms_data)) {
-      cli::cli_abort(c("{.arg {nm_offset_mod}} not found in {.arg data}.",
-                       i = "{.arg {nm_offset_mod}}: {.val {nm_offset_data}}."))
-    }
+  nms_data <- names(data)
+  if (!(nm_offset_data %in% nms_data)) {
+    cli::cli_abort(c("{.arg {nm_offset_mod}} not found in {.arg data}.",
+                     i = "{.arg {nm_offset_mod}}: {.val {nm_offset_data}}."))
   }
   invisible(TRUE)
 }
-
 
 ## HAS_TESTS
 #' Check that Offset Has No Negative Values
 #'
 #' @param nm_offset_data The name of the variable being
-#' used as an offset, or a formula
+#' used as an offset
 #' @param nm_offset_mod The name used to refer to the
 #' offset in user-visible functions
 #' @param data A data frame
@@ -961,20 +975,13 @@ check_offset_in_data <- function(nm_offset_data, nm_offset_mod, data) {
 #'
 #' @noRd
 check_offset_nonneg <- function(nm_offset_data, nm_offset_mod, data) {
-  is_formula <- startsWith(nm_offset_data, "~")
-  if (is_formula) {
-    offset <- eval_offset_formula(nm_offset_data = nm_offset_data, data = data)
-  }
-  else {
-    offset <- data[[nm_offset_data]]
-  }
+  offset <- data[[nm_offset_data]]
   n_neg <- sum(offset < 0, na.rm = TRUE)
   if (n_neg > 0L)
     cli::cli_abort(c("{.arg {nm_offset_mod}} has negative {cli::qty(n_neg)} value{?s}.",
                      i = "{nm_offset_mod}: {.val {nm_offset_data}}."))
   invisible(TRUE)
 }
-
 
 ## HAS_TESTS
 #' Raise Error if Model Object Created Using Old Version of 'bage'
@@ -989,9 +996,12 @@ check_old_version <- function(x, nm_x) {
   is_norm <- inherits(x, "bage_mod_norm")
   has_covariates <- has_covariates(x)
   nms <- names(x)
+  nm_offset_data <- get_nm_offset_data(x)
+  is_formula_offset <- !is.null(nm_offset_data) && startsWith(nm_offset_data, "~")
   is_old_version <- (!("draws_hyperrandfree" %in% nms)
     || ("seed_stored_draws" %in% nms)
-    || (is_norm && !("offset_mean" %in% nms)))
+    || (is_norm && !("offset_mean" %in% nms))
+    || is_formula_offset)
   if (is_old_version) {
     cli::cli_abort(c("{.arg {nm_x}} appears to have been created with an old version of {.pkg bage}.",
                      i = "Please recreate the object using the current version."))
@@ -1127,7 +1137,7 @@ check_positive <- function(x, nm_x, nm_df) {
 #'
 #' @param formula A formula
 #' @param nm_offset_data The name of the variable being
-#' used as an offset, or a formula
+#' used as an offset
 #' @param nm_offset_mod The name used to refer to the
 #' offset in user-visible functions
 #' @param data A data frame
@@ -1141,11 +1151,7 @@ check_resp_le_offset <- function(formula,
                                  data) {
   nm_response <- deparse1(formula[[2L]])
   response <- data[[nm_response]]
-  is_offset_formula <- startsWith(nm_offset_data, "~")
-  if (is_offset_formula)
-    offset <- eval_offset_formula(nm_offset_data = nm_offset_data, data = data)
-  else
-    offset <- data[[nm_offset_data]]
+  offset <- data[[nm_offset_data]]
   is_gt_offset <- !is.na(response) & !is.na(offset) & (response > offset)
   i_gt_offset <- match(TRUE, is_gt_offset, nomatch = 0L)
   if (i_gt_offset > 0L) {
@@ -1179,11 +1185,7 @@ check_resp_zero_if_offset_zero <- function(formula,
                                            data) {
   nm_response <- deparse1(formula[[2L]])
   response <- data[[nm_response]]
-  is_offset_formula <- startsWith(nm_offset_data, "~")
-  if (is_offset_formula)
-    offset <- eval_offset_formula(nm_offset_data = nm_offset_data, data = data)
-  else
-    offset <- data[[nm_offset_data]]
+  offset <- data[[nm_offset_data]]
   response_pos <- response > 0
   offset_pos <- offset > 0
   is_pos_nonpos <- !is.na(response) & !is.na(offset) & response_pos & !offset_pos
@@ -1242,7 +1244,38 @@ check_response_not_call <- function(formula) {
   }
   invisible(TRUE)
 }
-        
+
+## HAS_TESTS
+#' Check That 'rows' Argument to 'forecast' Consistent
+#' With Other Arguments
+#'
+#' @param rows Rows argument, as quosure
+#' @param output "augment" or "components"
+#' @param include_estimates Logical flag
+#'
+#' @returns TRUE, invisibly
+#'
+#' @noRd
+check_rows_forecast <- function(rows,
+                                output,
+                                include_estimates) {
+  is_rows_null <- rlang::quo_is_null(rows)
+  if (!is_rows_null) {
+    if (!identical(output, "augment"))
+      cli::cli_abort(c(paste("{.arg output} is {.val {output}} but value",
+                             "supplied for {.arg rows}."),
+                       i = paste("Value can only be supplied for {.arg rows}",
+                                 "if {.arg output} is {.val augment}.")))
+    if (!identical(include_estimates, FALSE))
+      cli::cli_abort(c(paste("{.arg include_estimates} is",
+                             "{.val {include_estimates}}, but value",
+                             "supplied for {.arg rows}."),
+                       i = paste("Value can only be supplied for {.arg rows}",
+                                 "if {.arg include_estimates} is",
+                                 "{.val {FALSE}}.")))
+  }
+  invisible(TRUE)
+}
     
 ## HAS_TESTS
 #' Check a scale term

@@ -187,7 +187,7 @@ test_that("'fit_default' gives same answer with and without aggregation - Poisso
   formula <- deaths ~ age + sex + time
   mod <- mod_pois(formula = formula,
                   data = data,
-                  exposure = 1)
+                  exposure = NULL)
   mod_ag <- fit_default(mod,
                         optimizer = "multi",
                         quiet = TRUE,
@@ -261,8 +261,7 @@ test_that("'fit_default' gives same answer with and without aggregation - norm, 
   data$wt <- runif(n = nrow(data), min = 1, max = 2)
   formula <- income ~ age + sex + time
   mod <- mod_norm(formula = formula,
-                  data = data,
-                  weights = 1)
+                  data = data)
   mod_ag <- fit_default(mod,
                         optimizer = "multi",
                         quiet = TRUE,
@@ -511,7 +510,82 @@ test_that("'fit_inner_outer' throws error when model has data model", {
                "\"inner-outer\" method cannot be used with models that include a data model.")
 })
 
+test_that("'mod_pois' works with constant exposure", {
+  spd <- expand.grid(age = 0:4,
+                     time = 2001:2005,
+                     sex = c("f", "m"),
+                     region = c("a", "b", "c"))
+  spd$y <- rpois(n = nrow(spd), lambda = 10)
+  mod <- mod_pois(y ~ age + time + sex + region,
+                  data = spd,
+                  exposure = NULL) |>
+    set_prior(age ~ RW(s = 1, sd = 1)) |>
+    set_prior(time ~ RW(s = 1, sd = 1)) |>
+    set_prior(sex ~ NFix(sd = 1)) |>
+    set_prior(region ~ N(s = 1)) |>
+    set_n_draw(50) |>
+    fit(method = "inner-outer",
+        vars_inner = c("age", "sex", "time"))
+  expect_true(is_fitted(mod))
+})
 
+test_that("'mod_norm' works with constant weights - all 1", {
+  spd <- expand.grid(age = 0:4,
+                     time = 2001:2005,
+                     sex = c("f", "m"),
+                     region = c("a", "b", "c"))
+  spd$log_covratio <- rnorm(n = nrow(spd))
+  mod <- mod_norm(log_covratio ~ age + time + sex + region,
+                  data = spd) |>
+    set_prior(age ~ RW(s = 1, sd = 1)) |>
+    set_prior(time ~ RW(s = 1, sd = 1)) |>
+    set_prior(sex ~ NFix(sd = 1)) |>
+    set_prior(region ~ N(s = 1)) |>
+    set_n_draw(50) |>
+    fit(method = "inner-outer",
+        vars_inner = c("age", "sex", "time"))
+  expect_true(is_fitted(mod))
+})
+
+test_that("'mod_norm' works with constant weights - all 1.01", {
+  spd <- expand.grid(age = 0:4,
+                     time = 2001:2005,
+                     sex = c("f", "m"),
+                     region = c("a", "b", "c"))
+  spd$log_covratio <- rnorm(n = nrow(spd))
+  spd$wt <- 1.01
+  mod <- mod_norm(log_covratio ~ age + time + sex + region,
+           data = spd,
+           weights = wt) |>
+    set_prior(age ~ RW(s = 1, sd = 1)) |>
+    set_prior(time ~ RW(s = 1, sd = 1)) |>
+    set_prior(sex ~ NFix(sd = 1)) |>
+    set_prior(region ~ N(s = 1)) |>
+    set_n_draw(50) |>
+    fit(method = "inner-outer",
+        vars_inner = c("age", "sex", "time"))
+  expect_true(is_fitted(mod))
+})
+
+test_that("'mod_norm' works with constant weights - varying", {
+  spd <- expand.grid(age = 0:4,
+                     time = 2001:2005,
+                     sex = c("f", "m"),
+                     region = c("a", "b", "c"))
+  spd$log_covratio <- rnorm(n = nrow(spd))
+  spd$wt <- runif(nrow(spd), 0.99, 1.01)
+  mod <- mod_norm(log_covratio ~ age + time + sex + region,
+           data = spd,
+           weights = wt) |>
+    set_prior(age ~ RW(s = 1, sd = 1)) |>
+    set_prior(time ~ RW(s = 1, sd = 1)) |>
+    set_prior(sex ~ NFix(sd = 1)) |>
+    set_prior(region ~ N(s = 1)) |>
+    set_n_draw(50) |>
+    fit(method = "inner-outer",
+        vars_inner = c("age", "sex", "time"))
+  expect_true(is_fitted(mod))
+})
 
 
 ## 'make_f_new' ---------------------------------------------------------------
@@ -914,7 +988,6 @@ test_that("'make_fit_random' works when hyper, hyperrand, covariates, data model
 })
 
 
-
 ## 'make_fit_times' -----------------------------------------------------------
 
 test_that("'make_fit_times' works", {
@@ -930,6 +1003,25 @@ test_that("'make_fit_times' works", {
                        time_max = 25,
                        time_draw = 10)
   expect_identical(ans_obtained, ans_expected)
+})
+
+
+## 'make_n_terms' -------------------------------------------------------------
+
+test_that("'make_n_terms' works with all terms", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age + sex*time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_prior(mod, sex:time ~ Lin())
+  expect_identical(make_n_terms(make_terms_effectfree(mod)), 5L)
+  expect_identical(make_n_terms(make_terms_hyperrandfree(mod)), 5L)
+  expect_identical(make_n_terms(make_terms_const(mod)), 5L)
+  expect_identical(make_n_terms(make_terms_hyper(mod)), 5L)
 })
 
 

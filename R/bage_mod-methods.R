@@ -17,6 +17,12 @@ generics::augment
 #' The return value consists of the original
 #' data and one or more columns of modeled values.
 #'
+#' The `rows` argument can be used to
+#' obtain results for a subset within `data`.
+#' This is faster, and uses less memory, than
+#' generating results for the whole dataset
+#' and then subsetting.
+#'
 #' @section Fitted vs unfitted models:
 #'
 #' `augment()` is typically called on a [fitted][fit()]
@@ -49,6 +55,10 @@ generics::augment
 #' @param x Object of class `"bage_mod"`, typically
 #' created with [mod_pois()], [mod_binom()],
 #' or [mod_norm()].
+#' @param rows Results are returned only for
+#' these rows of `data`. A logical vector,
+#' an index vector, or a logical expression
+#' evaluated within `data`. Optional
 #' @param quiet Whether to suppress messages.
 #' Default is `FALSE`.
 #' @param ... Unused. Included for generic consistency only.
@@ -102,11 +112,15 @@ generics::augment
 #' mod |>
 #'   augment()
 #'
+#' ## results for females only
+#' mod |>
+#'   augment(rows = sex == "Female")
+#'
 #' ## insert a missing value into outcome variable
 #' divorces_missing <- nzl_divorces
 #' divorces_missing$divorces[1] <- NA
 #'
-#' ## fitting model and calling 'augument'
+#' ## fitting model and calling 'augument'A
 #' ## creates a new variable called '.divorces'
 #' ## holding observed and imputed values
 #' mod_pois(divorces ~ age + sex + time,
@@ -126,18 +140,26 @@ generics::augment
 #'   augment()
 #' @export
 augment.bage_mod <- function(x,
+                             rows = NULL,
                              quiet = FALSE,
                              ...) {
   check_old_version(x = x, nm_x = "x")
   is_fitted <- is_fitted(x)
+  rows <- rlang::enquo(rows)
+  data <- x$data
+  rows <- make_rows(rows = rows, data = data)
   check_flag(x = quiet, nm_x = "quiet")
   check_has_no_dots(...)
   if (is_fitted)
-    ans <- draw_vals_augment_fitted(mod = x, quiet = quiet)
+    ans <- draw_vals_augment_fitted(mod = x,
+                                    rows = rows,
+                                    quiet = quiet)
   else {
     if (!quiet)
       cli::cli_alert_info("Model not fitted, so drawing values straight from prior distribution.")
-    ans <- draw_vals_augment_unfitted(mod = x, quiet = quiet)
+    ans <- draw_vals_augment_unfitted(mod = x,
+                                      rows = rows,
+                                      quiet = quiet)
   }
   ans
 }
@@ -314,14 +336,16 @@ components.bage_mod <- function(object,
                               "{.fun components} are on a transformed scale.",
                               "See the documentation for {.fun mod_norm} and",
                               "{.fun components} for details."))
-  if (is_fitted)
+  if (is_fitted) {
     ans <- draw_vals_components_fitted(object)
+  }
   else {
     if (!quiet)
       cli::cli_alert_info("Model not fitted, so values drawn straight from prior distribution.")
     n_draw <- object$n_draw
     ans <- draw_vals_components_unfitted(mod = object, n_sim = n_draw)
   }
+  ans <- append_implied_comp(components = ans, mod = object)
   if (is_norm && original_scale)
     ans <- rescale_components(components = ans, mod = object)
   ans <- sort_components(components = ans, mod = object)
@@ -601,18 +625,19 @@ draw_fitted_given_outcome.bage_mod_binom <- function(mod,
 #' Draw '.fitted' and Possibly '.expected' from Fitted Model
 #'
 #' @param mod A fitted object of class 'bage_mod'
+#' @param rows Index vector for rows of 'data', or NULL
 #' @param quiet Whether to suppress messages.
 #'
 #' @returns A tibble
 #'
 #' @noRd
-draw_vals_augment_fitted <- function(mod, quiet) {
+draw_vals_augment_fitted <- function(mod, rows, quiet) {
   UseMethod("draw_vals_augment_fitted")
 }
 
 ## HAS_TESTS
 #' @export
-draw_vals_augment_fitted.bage_mod <- function(mod, quiet) {
+draw_vals_augment_fitted.bage_mod <- function(mod, rows, quiet) {
   ## extract values
   data <- mod$data
   dimnames_terms <- mod$dimnames_terms
@@ -631,28 +656,35 @@ draw_vals_augment_fitted.bage_mod <- function(mod, quiet) {
   set.seed(seed_augment) ## set pre-determined seed
   ## prepare inputs
   components <- components(mod)
+  has_missing_outcome <- anyNA(outcome)
+  if (!is.null(rows)) {
+    outcome <- outcome[rows]
+    offset <- offset[rows]
+  }
   linpred <- make_linpred_from_components(mod = mod,
                                           components = components,
                                           data = data,
-                                          dimnames_terms = dimnames_terms)
+                                          dimnames_terms = dimnames_terms,
+                                          rows = rows)
   expected <- inv_transform(linpred)
   has_confidential <- has_confidential(mod)
   has_datamod <- has_datamod(mod)
   has_datamod_outcome <- has_datamod_outcome(mod)
   has_datamod_offset <- has_datamod && !has_datamod_outcome
-  has_missing_outcome <- anyNA(outcome)
   has_disp <- has_disp(mod)
-  has_varying_offset <- has_varying_offset(mod)
-  ## create return object, possibly includin '.observed'
+  user_specified_offset <- user_specified_offset(mod)
+  ## create return object, possibly including '.observed'
   ans <- mod$data
-  if (has_varying_offset)
+  if (!is.null(rows))
+    ans <- ans[rows, , drop = FALSE]
+  if (user_specified_offset)
     ans$.observed <- outcome / offset
   ## draw values for outcome and offset, where necessary
   if (has_confidential) {
     expected_obs <- make_expected_obs(mod = mod,
                                       components = components,
                                       expected = expected)
-    disp_obs <- make_disp_obs(mod) ## vector or NULL
+    disp_obs <- make_disp_obs(mod = mod, outcome = outcome) ## vector or NULL
     sd_obs <- make_sd_obs(mod) ## vector or NULL
     outcome <- draw_outcome_obs_given_conf(confidential = confidential,
                                            nm_distn = nm_distn,
@@ -730,7 +762,7 @@ draw_vals_augment_fitted.bage_mod <- function(mod, quiet) {
 ## HAS_TESTS
 ## Assume no confidentialization, and no data model for offset
 #' @export
-draw_vals_augment_fitted.bage_mod_norm <- function(mod, quiet) {
+draw_vals_augment_fitted.bage_mod_norm <- function(mod, rows, quiet) {
   ## extract values
   data <- mod$data
   outcome <- mod$outcome
@@ -743,12 +775,16 @@ draw_vals_augment_fitted.bage_mod_norm <- function(mod, quiet) {
   seed_restore <- make_seed() ## create randomly-generated seed
   set.seed(seed_augment) ## set pre-determined seed
   ## prepare inputs
+  has_missing_outcome <- anyNA(outcome)
+  if (!is.null(rows)) {
+    outcome <- outcome[rows]
+    offset <- offset[rows]
+  }
   linpred <- make_linpred_from_stored_draws(mod = mod,
                                             point = FALSE,
-                                            rows = NULL)
+                                            rows = rows)
   disp <- get_disp(mod)
   has_datamod_outcome <- has_datamod(mod)
-  has_missing_outcome <- anyNA(outcome)
   fun_orig_scale_linpred <- get_fun_orig_scale_linpred(mod)
   fun_orig_scale_offset <- get_fun_orig_scale_offset(mod)
   fun_orig_scale_disp <- get_fun_orig_scale_disp(mod)
@@ -758,6 +794,8 @@ draw_vals_augment_fitted.bage_mod_norm <- function(mod, quiet) {
   disp_orig_scale <- fun_orig_scale_disp(disp)
   ## create return object
   ans <- mod$data
+  if (!is.null(rows))
+    ans <- ans[rows, , drop = FALSE]
   ## draw values for outcome, where necessary
   if (has_datamod_outcome)
     outcome_orig_scale <- draw_outcome_true_given_obs(
@@ -805,18 +843,19 @@ draw_vals_augment_fitted.bage_mod_norm <- function(mod, quiet) {
 #' Draw '.fitted' and Possibly '.expected' from Unfitted Model
 #'
 #' @param mod Object of class 'bage_mod'
+#' @param rows Index vector for rows of 'data', or NULL
 #' @param quiet Whether to suppress messages.
 #'
 #' @returns A tibble
 #'
 #' @noRd
-draw_vals_augment_unfitted <- function(mod, quiet) {
+draw_vals_augment_unfitted <- function(mod, rows, quiet) {
   UseMethod("draw_vals_augment_unfitted")
 }
 
 ## HAS_TESTS
 #' @export
-draw_vals_augment_unfitted.bage_mod <- function(mod, quiet) {
+draw_vals_augment_unfitted.bage_mod <- function(mod, rows, quiet) {
   ## extract values
   data <- mod$data
   offset <- mod$offset
@@ -830,6 +869,7 @@ draw_vals_augment_unfitted.bage_mod <- function(mod, quiet) {
   inv_transform <- get_fun_inv_transform(mod)
   nm_outcome_data <- get_nm_outcome_data(mod)
   nm_offset_data <- get_nm_offset_data(mod)
+  is_outcome_in_data <- is_outcome_in_data(mod)
   ## prepare seeds
   seed_restore <- make_seed() ## create randomly-generated seed
   set.seed(seed_augment) ## set pre-determined seed
@@ -840,6 +880,10 @@ draw_vals_augment_unfitted.bage_mod <- function(mod, quiet) {
   has_datamod_offset <- has_datamod && !has_datamod_outcome
   has_disp <- has_disp(mod)
   ans <- mod$data
+  if (!is.null(rows)) {
+    offset <- offset[rows]
+    ans <- ans[rows, , drop = FALSE]
+  }
   ## draw values for components
   components <- draw_vals_components_unfitted(mod = mod,
                                               n_sim = n_draw)
@@ -847,7 +891,8 @@ draw_vals_augment_unfitted.bage_mod <- function(mod, quiet) {
   linpred <- make_linpred_from_components(mod = mod,
                                           components = components,
                                           data = data,
-                                          dimnames_terms = dimnames_terms)
+                                          dimnames_terms = dimnames_terms,
+                                          rows = rows)
   expected <- inv_transform(linpred)
   ## obtain values for 'fitted', and, in models with dispersion, 'disp'
   if (has_disp) {
@@ -879,7 +924,7 @@ draw_vals_augment_unfitted.bage_mod <- function(mod, quiet) {
     if (has_confidential)
       outcome <- draw_outcome_confidential(confidential = confidential,
                                            outcome_obs = outcome)
-    if (!quiet)
+    if (!quiet && is_outcome_in_data)
       cli::cli_alert_info(paste("Overwriting existing values for",
                                 "{.var {nm_outcome_data}}."))
     ans[[nm_outcome_data]] <- outcome
@@ -894,7 +939,7 @@ draw_vals_augment_unfitted.bage_mod <- function(mod, quiet) {
                         nm_x = nm_outcome_data_true)
   }
   else {
-    if (!quiet)
+    if (!quiet && is_outcome_in_data)
       cli::cli_alert_info(paste("Overwriting existing values for",
                                 "{.var {nm_outcome_data}}."))
     ans[[nm_outcome_data]] <- outcome
@@ -924,8 +969,8 @@ draw_vals_augment_unfitted.bage_mod <- function(mod, quiet) {
   set.seed(seed_restore) ## set randomly-generated seed, to restore randomness
   ## add '.observed', '.fitted', and, in models
   ## with dispersion, '.expected', and return
-  has_varying_offset <- has_varying_offset(mod)
-  if (has_varying_offset)
+  user_specified_offset <- user_specified_offset(mod)
+  if (user_specified_offset)
     ans$.observed <- ans[[nm_outcome_data]] / ans[[nm_offset_data]]
   ans$.fitted <- fitted
   if (has_disp)
@@ -938,7 +983,7 @@ draw_vals_augment_unfitted.bage_mod <- function(mod, quiet) {
 ## Assumes that no confidentialization procedures,
 ## and no data models for offsets exist for Normal models
 #' @export
-draw_vals_augment_unfitted.bage_mod_norm <- function(mod, quiet) {
+draw_vals_augment_unfitted.bage_mod_norm <- function(mod, rows, quiet) {
   ## extract values
   data <- mod$data
   offset <- mod$offset
@@ -951,12 +996,17 @@ draw_vals_augment_unfitted.bage_mod_norm <- function(mod, quiet) {
   fun_orig_scale_offset <- get_fun_orig_scale_offset(mod)
   fun_orig_scale_disp <- get_fun_orig_scale_disp(mod)
   nm_outcome_data <- get_nm_outcome_data(mod)
+  is_outcome_in_data <- is_outcome_in_data(mod)
   ## prepare seeds
   seed_restore <- make_seed() ## create randomly-generated seed
   set.seed(seed_augment) ## set pre-determined seed
   ## prepare inputs
   has_datamod <- has_datamod(mod)
   ans <- mod$data
+  if (!is.null(rows)) {
+    offset <- offset[rows]
+    ans <- ans[rows, , drop = FALSE]
+  }
   ## draw values for components
   components <- draw_vals_components_unfitted(mod = mod,
                                               n_sim = n_draw)
@@ -964,7 +1014,8 @@ draw_vals_augment_unfitted.bage_mod_norm <- function(mod, quiet) {
   linpred <- make_linpred_from_components(mod = mod,
                                           components = components,
                                           data = data,
-                                          dimnames_terms = dimnames_terms)
+                                          dimnames_terms = dimnames_terms,
+                                          rows = rows)
   ## obtain values for 'fitted', 'disp',
   ## and 'offset' on original scale
   is_disp <- components$component == "disp"
@@ -988,7 +1039,7 @@ draw_vals_augment_unfitted.bage_mod_norm <- function(mod, quiet) {
       offset = offset_orig_scale,
       fitted = fitted_orig_scale
     )
-    if (!quiet)
+    if (!quiet && is_outcome_in_data)
       cli::cli_alert_info(paste("Overwriting existing values for",
                                 "{.var {nm_outcome_data}}."))
     ans[[nm_outcome_data]] <- outcome_obs_orig_scale
@@ -1003,7 +1054,7 @@ draw_vals_augment_unfitted.bage_mod_norm <- function(mod, quiet) {
                         nm_x = nm_outcome_data_true)
   }
   else {
-    if (!quiet)
+    if (!quiet && is_outcome_in_data)
       cli::cli_alert_info(paste("Overwriting existing values for",
                                 "{.var {nm_outcome_data}}."))
     ans[[nm_outcome_data]] <- outcome_true_orig_scale
@@ -1179,6 +1230,14 @@ fit.bage_mod <- function(object,
                          start_oldpar = FALSE,
                          ...) {
   check_old_version(x = object, nm_x = "object")
+  if (!is_outcome_in_data(object)) {
+    formula <- object$formula
+    nm_outcome_data <- get_nm_outcome_data(object)
+    cli::cli_abort(c("Model cannot be fitted if outcome variable not in {.arg data}.",
+                     i = "Formula: {.code {deparse(formula)}}.",
+                     i = "Outcome variable: {.var {nm_outcome_data}}.",
+                     i = "Variables in {.arg data}: {.var {names(data)}}."))
+  }
   check_mod_has_obs(object)
   method <- match.arg(method)
   optimizer <- match.arg(optimizer)
@@ -1190,15 +1249,6 @@ fit.bage_mod <- function(object,
   check_has_no_dots(...)
   if (method == "standard") {
     aggregate <- can_aggregate(object)
-    if (!aggregate) {
-      formula <- object$formula
-      data <- object$data
-      formula_covariates <- object$formula_covariates
-      warn_not_aggregating(formula = formula,
-                           data = data,
-                           formula_covariates = formula_covariates,
-                           always = FALSE)
-    }
     fit_default(object,
                 optimizer = optimizer,
                 quiet = quiet,
@@ -1313,10 +1363,17 @@ generics::forecast
 #' @param newdata Data frame with data for
 #' future periods.
 #' @param labels Labels for future values.
-#' @param output Type of output returned
+#' @param output Type of output returned.
+#' `"augment"` (the default) or `"components"`.
 #' @param include_estimates Whether to
 #' include historical estimates along
 #' with the forecasts. Default is `FALSE`.
+#' @param rows  A logical vector,
+#' an index vector, or a logical expression
+#' specifying which rows to return
+#' from an `"augment"` forecast.
+#' Can only be used if `include_estimates`
+#' is `FALSE`.
 #' @param quiet Whether to suppress messages.
 #' Default is `FALSE`.
 #' @param ... Not currently used.
@@ -1353,6 +1410,11 @@ generics::forecast
 #'   forecast(labels = 2019:2024,
 #'            include_estimates = TRUE)
 #'
+#' ## only selected rows
+#' mod |>
+#'   forecast(labels = 2019:2024,
+#'            rows = age == "40-44")
+#'
 #' ## hyper-parameters
 #' mod |>
 #'   forecast(labels = 2019:2024,
@@ -1385,6 +1447,7 @@ forecast.bage_mod <- function(object,
                               labels = NULL,
                               output = c("augment", "components"),
                               include_estimates = FALSE,
+                              rows = NULL,
                               quiet = FALSE,
                               ...) {
   ## Note that time variable cannot be a covariate,
@@ -1392,11 +1455,8 @@ forecast.bage_mod <- function(object,
   ## and hence must be included in 'formula',
   ## and hence cannot be included in 'formula_covariates'.
   check_old_version(x = object, nm_x = "object")
-  nm_offset_data <- object$nm_offset_data
+  nm_offset_data <- get_nm_offset_data(object)
   nm_offset_mod <- get_nm_offset_mod(object)
-  error_offset_formula_used(nm_offset_data = nm_offset_data,
-                            nm_offset_mod = nm_offset_mod,
-                            nm_fun = "forecast")
   data_est <- object$data
   priors <- object$priors
   dn_terms_est <- object$dimnames_terms
@@ -1406,6 +1466,10 @@ forecast.bage_mod <- function(object,
   output <- match.arg(output)
   check_flag(x = quiet, nm_x = "quiet")
   check_flag(x = include_estimates, nm_x = "include_estimates")
+  rows <- rlang::enquo(rows)
+  check_rows_forecast(rows = rows,
+                      output = output,
+                      include_estimates = include_estimates)
   if (is.null(var_time))
     cli::cli_abort(c("Can't forecast when time variable not identified.",
                      i = "Use {.fun set_var_time} to identify time variable?"))
@@ -1459,10 +1523,14 @@ forecast.bage_mod <- function(object,
     comp_comb <- vctrs::vec_rbind(comp_est, comp_forecast)
     if (is_not_testing_or_snapshot())
       cli::cli_progress_message("{.fun augment} for future values...") # nocov
+    rows <- make_rows(rows = rows, data = data_forecast)
     linpred_forecast <- make_linpred_from_components(mod = object,
                                                      components = comp_comb,
                                                      data = data_forecast,
-                                                     dimnames_terms = dn_terms_forecast)
+                                                     dimnames_terms = dn_terms_forecast,
+                                                     rows = rows)
+    if (!is.null(rows))
+      data_forecast <- data_forecast[rows, , drop = FALSE]
     seed_forecast_augment <- object$seed_forecast_augment
     seed_restore <- make_seed() ## create randomly-generated seed
     set.seed(seed_forecast_augment) ## set pre-determined seed
@@ -1470,7 +1538,7 @@ forecast.bage_mod <- function(object,
                             data_forecast = data_forecast,
                             components_forecast = comp_forecast,
                             linpred_forecast = linpred_forecast,
-                            has_offset_forecast,
+                            has_offset_forecast = has_offset_forecast,
                             has_newdata = has_newdata)
     set.seed(seed_restore) ## set randomly-generated seed, to restore randomness
     if (include_estimates) {
@@ -1485,11 +1553,11 @@ forecast.bage_mod <- function(object,
                                                            var_time = var_time,
                                                            labels_forecast = labels,
                                                            time_only = TRUE)
-    ans <- infer_trend_cyc_seas_err_forecast(components = comp_forecast,
-                                             priors = priors,
-                                             dimnames_terms = dn_terms_forecast_time,
-                                             var_time = var_time,
-                                             var_age = var_age)
+    ans <- infer_trend_seas_err_forecast(components = comp_forecast,
+                                         priors = priors,
+                                         dimnames_terms = dn_terms_forecast_time,
+                                         var_time = var_time,
+                                         var_age = var_age)
     if (include_estimates) {
       ans <- vctrs::vec_rbind(comp_est, ans)
       ans <- sort_components(components = ans, mod = object)
@@ -1548,7 +1616,7 @@ forecast_augment.bage_mod <- function(mod,
   nm_outcome_data_true <- paste0(".", nm_outcome_data)
   nm_offset_data <- get_nm_offset_data(mod)
   nm_offset_data_true <- paste0(".", nm_offset_data)
-  has_offset_est <- has_varying_offset(mod)
+  has_offset_est <- user_specified_offset(mod)
   has_disp <- has_disp(mod)
   inv_transform <- get_fun_inv_transform(mod)
   var_time <- mod$var_time
@@ -1589,7 +1657,7 @@ forecast_augment.bage_mod <- function(mod,
           forecast_outcome_obs_given_true(datamod = datamod,
                                           data_forecast = data_forecast,
                                           components_forecast = components_forecast,
-                                          fitted <- fitted,
+                                          fitted = fitted,
                                           outcome_true = outcome_true,
                                           offset = offset_forecast,
                                           has_newdata = has_newdata)
@@ -1653,7 +1721,6 @@ forecast_augment.bage_mod_norm <- function(mod,
   nm_outcome_data <- get_nm_outcome_data(mod)
   nm_outcome_data_true <- paste0(".", nm_outcome_data)
   nm_offset_data <- get_nm_offset_data(mod)
-  has_offset_est <- has_varying_offset(mod)
   fun_orig_scale_linpred <- get_fun_orig_scale_linpred(mod)
   fun_orig_scale_disp <- get_fun_orig_scale_disp(mod)
   var_time <- mod$var_time
@@ -1737,8 +1804,8 @@ get_fun_ag_offset <- function(mod) {
 ## HAS_TESTS
 #' @export
 get_fun_ag_offset.bage_mod_pois <- function(mod) {
-  has_varying_offset <- has_varying_offset(mod)
-  if (has_varying_offset)
+  user_specified_offset <- user_specified_offset(mod)
+  if (user_specified_offset)
     return(sum)
   else
     return(function(x) 1)
@@ -2096,56 +2163,6 @@ has_disp.bage_mod <- function(mod) {
 }
 
 
-
-## 'has_varying_offset' ---------------------------------------------------------------
-
-#' Test Whether a Model Includes an Offset
-#'
-#' @param x A model object.
-#'
-#' @returns `TRUE` or `FALSE`
-#'
-#' @noRd
-has_varying_offset <- function(mod) {
-    UseMethod("has_varying_offset")
-}
-
-## HAS_TESTS
-#' @export
-has_varying_offset.bage_mod <- function(mod) {
-  offset <- mod$offset
-  nm_offset_data <- mod$nm_offset_data
-  if (is.null(offset))
-    cli::cli_abort("Internal error: offset is NULL")
-  if (all(is.na(offset)))
-    cli::cli_abort("Internal error: offset all NA")
-  is_all_ones <- all(abs(offset - 1) < 1e-6, na.rm = TRUE)
-  has_nm_offset_data <- !is.null(nm_offset_data)
-  if (is_all_ones && !has_nm_offset_data)
-    FALSE
-  else if (!is_all_ones && !has_nm_offset_data)
-    cli::cli_abort("Internal error: offset not all ones, but no nm_offset_data")
-  else if (is_all_ones && has_nm_offset_data)
-    cli::cli_abort("Internal error: offset all ones, but has nm_offset_data")
-  else
-    TRUE
-}
-
-## HAS_TESTS
-#' @export
-has_varying_offset.bage_mod_binom <- function(mod) {
-  offset <- mod$offset
-  nm_offset_data <- mod$nm_offset_data
-  if (is.null(offset))
-    cli::cli_abort("Internal error: offset is NULL")
-  if (all(is.na(offset)))
-    cli::cli_abort("Internal error: offset all NA")
-  if (is.null(nm_offset_data))
-    cli::cli_abort("Internal error: nm_offset_data is NULL")
-  TRUE
-}
-
-
 ## 'is_fitted' ----------------------------------------------------------------
 
 #' Test Whether a Model has Been Fitted
@@ -2179,6 +2196,32 @@ is_fitted.bage_mod <- function(x)
   !is.null(x$draws_effectfree)
 
 
+## 'is_outcome_in_data' -------------------------------------------------------
+
+#' Test Whether Outcome Variable Included Original Data
+#'
+#' Test whether 'data' has response from 'formula'.
+#' Test by seeing of 'outcome' part of model
+#' object non-NULL. Note that the outcome does not
+#' need to be speficied if the model is never
+#' going to be fitted (ie if draws are only obtained
+#' from the prior distribution).
+#'
+#' @param mod An object of class `"bage_mod"`.
+#'
+#' @returns `TRUE` or `FALSE`
+#'
+#' @noRd
+is_outcome_in_data <- function(mod) {
+  UseMethod("is_outcome_in_data")
+}
+
+## HAS_TESTS
+#' @export
+is_outcome_in_data.bage_mod <- function(mod)
+  !is.null(mod$outcome)
+
+
 ## 'make_disp_obs' ------------------------------------------------------------
 
 #' Make Dispersion Used in Model for Observed Outcome
@@ -2188,25 +2231,24 @@ is_fitted.bage_mod <- function(x)
 #' account of measurement errors
 #'
 #' @param mod Object of class 'bage_mod'
-#' @param components Tibble with estimates of parameters
+#' @param outcome Vector
 #'
 #' @returns An rvec
 #'
 #' @noRd
-make_disp_obs <- function(mod, components) {
+make_disp_obs <- function(mod, outcome) {
   UseMethod("make_disp_obs")
 }
 
 ## HAS_TESTS
 #' @export
-make_disp_obs.bage_mod_pois <- function(mod, components) {
+make_disp_obs.bage_mod_pois <- function(mod, outcome) {
   datamod <- mod$datamod
   if (inherits(datamod, "bage_datamod_exposure")) {
     disp <- get_datamod_disp(datamod)
     ans <- disp / (3 * disp + 1)
   }
   else {
-    outcome <- mod$outcome
     n_outcome <- length(outcome)
     has_disp <- has_disp(mod)
     if (has_disp) {
@@ -2221,11 +2263,10 @@ make_disp_obs.bage_mod_pois <- function(mod, components) {
 
 ## HAS_TESTS
 #' @export
-make_disp_obs.bage_mod_binom <- function(mod, components) {
+make_disp_obs.bage_mod_binom <- function(mod, outcome) {
   has_disp <- has_disp(mod)
   if (has_disp) {
     disp <- get_disp(mod)
-    outcome <- mod$outcome
     n_outcome <- length(outcome)
     ans <- rep.int(disp, times = n_outcome)
   }
@@ -2534,7 +2575,6 @@ make_mod_outer.bage_mod_pois <- function(mod, mod_inner, use_term) {
   ans <- reduce_model_terms(mod = mod, use_term = use_term)
   ans$offset <- ans$offset * mu_inner
   ans$mean_disp <- 0
-  ans$nm_offset_data <- "offset_inner_outer"
   ans
 }
 
@@ -2544,7 +2584,6 @@ make_mod_outer.bage_mod_binom <- function(mod, mod_inner, use_term) {
   point_est_inner <- make_point_est_effects(mod_inner)
   ans <- set_priors_known(mod = mod, prior_values = point_est_inner)
   ans$mean_disp <- 0
-  ans$nm_offset_data <- "offset_inner_outer"
   ans
 }
 
@@ -2557,7 +2596,6 @@ make_mod_outer.bage_mod_norm <- function(mod, mod_inner, use_term) {
   use_term <- !use_term
   ans <- reduce_model_terms(mod = mod, use_term = use_term)
   ans$outcome <- ans$outcome - linpred_inner
-  ans$nm_offset_data <- "offset_inner_outer"
   ans
 }
 
@@ -2782,8 +2820,8 @@ print.bage_mod <- function(x, ...) {
                           width = 65L,
                           indent = 3L,
                           exdent = nchar_response + 7L)
-  has_varying_offset <- has_varying_offset(x)
-  if (has_varying_offset) {
+  user_specified_offset <- user_specified_offset(x)
+  if (user_specified_offset) {
     nm_offset_mod <- get_nm_offset_mod(x)
     nm_offset_data <- get_nm_offset_data(x)
     str_offset <- sprintf("% *s: %s",
@@ -2844,7 +2882,7 @@ print.bage_mod <- function(x, ...) {
   cat("\n\n")
   cat(paste(formula_text, collapse = "\n"))
   cat("\n\n")
-  if (has_varying_offset) {
+  if (user_specified_offset) {
     cat(str_offset)
     cat("\n")
   }

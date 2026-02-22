@@ -6,9 +6,9 @@
 \usage{
 RW_Seas(
   n_seas,
+  s_seas,
   s = 1,
   sd = 1,
-  s_seas = 0,
   sd_seas = 1,
   along = NULL,
   con = c("none", "by")
@@ -17,15 +17,17 @@ RW_Seas(
 \arguments{
 \item{n_seas}{Number of seasons}
 
+\item{s_seas}{Scale for innovations
+in seasonal effects. Can be \code{0}. When
+greater than 0, seasonal effects vary
+from year to year.}
+
 \item{s}{Scale for prior for innovations in
 random walk. Default is \code{1}.}
 
 \item{sd}{Standard deviation
 of initial value. Default is \code{1}.
 Can be \code{0}.}
-
-\item{s_seas}{Scale for innovations
-in seasonal effects. Default is \code{0}.}
 
 \item{sd_seas}{Standard deviation for
 initial values of seasonal effects.
@@ -35,7 +37,8 @@ Default is \code{1}.}
 as the 'along' variable. Only used with
 interactions.}
 
-\item{con}{Constraints on parameters.
+\item{con}{\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
+Constraints on parameters.
 Current choices are \code{"none"} and \code{"by"}.
 Default is \code{"none"}. See below for details.}
 }
@@ -69,9 +72,10 @@ Argument \code{n_seas} controls the number of seasons.
 When using quarterly data, for instance,
 \code{n_seas} should be \code{4}.
 
-By default, the magnitude of seasonal effects
-is fixed. However, setting \code{s_seas} to a value
-greater than zero produces seasonal effects
+Setting \code{s_seas} to \code{0} produces
+seasonal effects that are the same
+each year. Setting \code{s_seas} to a value
+greater than \code{0} produces seasonal effects
 that evolve over time.
 }
 \section{Mathematical details}{
@@ -117,6 +121,9 @@ Parameter \eqn{\tau} has a half-normal prior
 \section{Constraints}{
 
 
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}} The specification of
+constraints is likely to change in future versions of \pkg{bage}.
+
 With some combinations of terms and priors, the values of
 the intercept, main effects, and interactions are
 are only weakly identified.
@@ -141,9 +148,14 @@ to sum to 0.
 }
 
 \examples{
-RW_Seas(n_seas = 4)               ## seasonal effects fixed
-RW_Seas(n_seas = 4, s_seas = 0.5) ## seasonal effects evolve
-RW_Seas(n_seas = 4, sd = 0)       ## first term in random walk fixed at 0
+## seasonal effects fixed
+RW_Seas(n_seas = 4, s_seas = 0)
+
+## seasonal effects evolve
+RW_Seas(n_seas = 4, s_seas = 1)
+
+## first term in random walk fixed at 0
+RW_Seas(n_seas = 4, s_seas = 1, sd = 0)       
 }
 \seealso{
 \itemize{

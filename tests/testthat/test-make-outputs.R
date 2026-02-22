@@ -1,4 +1,55 @@
 
+## 'append_implied_comp' ------------------------------------------------------
+
+test_that("'append_implied_comp' works with no terms with implied", {
+  set.seed(0)
+  data <- expand.grid(age = 0:4,
+                      sex = c("F", "M"),
+                      region = c("a", "b"),
+                      time = 2001:2005)
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex  + region * time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  comp <- tibble::tibble(term = "bla",
+                         component = "bla",
+                         level = "bla",
+                         .fitted = rvec::rnorm_rvec(n = 1, n_draw = 10))
+  ans_obtained <- append_implied_comp(components = comp, mod = mod)
+  ans_expected <- comp
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'append_implied_comp' works with term with implied", {
+  set.seed(0)
+  data <- expand.grid(age = 0:4,
+                      sex = c("F", "M"),
+                      region = c("a", "b"),
+                      time = 2001:2005)
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age * sex  + region * time
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn) |>
+    set_prior(region:time ~ Lin(s = 0))
+  comp <- tibble::tibble(term = "region:time",
+                         component = "effect",
+                         level = paste(c("a", "b"), rep(2001:2005, each = 2), sep = "."),
+                         .fitted = rvec::rnorm_rvec(n = 10, n_draw = 10))
+  ans_obtained <- append_implied_comp(components = comp, mod = mod)
+  ans_expected <- vctrs::vec_rbind(comp,
+                                   make_implied_comp(prior = mod$priors[["region:time"]],
+                                                     components = comp,
+                                                     dimnames_term = mod$dimnames_terms[["region:time"]],
+                                                     var_time = "time",
+                                                     var_age = "age",
+                                                     var_sexgender = "sex"))
+  expect_identical(ans_obtained, ans_expected)
+})
+  
 ## 'combine_stored_draws_point_inner_outer' -----------------------------------
 
 test_that("'combine_stored_draws_point_inner_outer' works with valid inputs", {
@@ -363,7 +414,7 @@ test_that("'get_datamod_prob' works", {
   )
   ans_obtained <- get_datamod_prob(datamod = datamod,
                                    components = components)
-  ans_expected <- as.matrix(prob_matrix_outcome) %*% components$.fitted[-1]
+  ans_expected <- rvec::rvec(as.matrix(prob_matrix_outcome) %*% as.matrix(components$.fitted[-1]))
   expect_identical(ans_obtained, ans_expected)
 })
 
@@ -392,7 +443,7 @@ test_that("'get_datamod_rate' works", {
   )
   ans_obtained <- get_datamod_rate(datamod = datamod,
                                    components = components)
-  ans_expected <- as.matrix(rate_matrix_outcome) %*% components$.fitted[-1]
+  ans_expected <- rvec::rvec(as.matrix(rate_matrix_outcome) %*% as.matrix(components$.fitted[-1]))
   expect_identical(ans_obtained, ans_expected)
 })
 
@@ -591,21 +642,6 @@ test_that("'impute_outcome_true' works with norm, offset complete", {
   expect_equal(ans_obtained, ans_expected)
 })
 
-test_that("'impute_outcome_true' raises error when nothing to impute", {
-  set.seed(0)
-  offset <- 1:20
-  outcome <- rnorm(n = 20, mean = 100, sd = 5)
-  expected <- rvec::rnorm_rvec(n = 20, mean = 100, sd = 5, n_draw = 50)
-  disp <- rvec::runif_rvec(n = 1, n_draw = 50)
-  set.seed(1)
-  expect_error(impute_outcome_true(nm_distn = "norm",
-                                   outcome = outcome,
-                                   offset = offset,
-                                   expected = expected,
-                                   disp = disp),
-               "Internal error: `impute_outcome_true\\(\\)` called")
-})
-
 test_that("'impute_outcome_true' raises error with invalid nm_distn", {
   set.seed(0)
   offset <- 1:20
@@ -623,10 +659,9 @@ test_that("'impute_outcome_true' raises error with invalid nm_distn", {
 })
 
 
+## 'infer_trend_seas_err_forecast' ----------------------------------------
 
-## 'infer_trend_cyc_seas_err_forecast' ----------------------------------------
-
-test_that("'infer_trend_cyc_seas_err_forecast' works", {
+test_that("'infer_trend_seas_err_forecast' works", {
   set.seed(0)
   data <- expand.grid(age = 0:4, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -646,7 +681,7 @@ test_that("'infer_trend_cyc_seas_err_forecast' works", {
                                                           var_time = mod$var_time,
                                                           labels_forecast = 2006:2007,
                                                           time_only = TRUE)
-  ans_obtained <- infer_trend_cyc_seas_err_forecast(components = comp_forecast,
+  ans_obtained <- infer_trend_seas_err_forecast(components = comp_forecast,
                                                     priors = mod$priors,
                                                     dimnames_terms = dimnames_terms_forecast,
                                                     var_time = mod$var_time,
@@ -655,9 +690,9 @@ test_that("'infer_trend_cyc_seas_err_forecast' works", {
 })
 
 
-## 'infer_trend_cyc_seas_err_seasfix_forecast' --------------------------------
+## 'infer_trend_seas_err_seasfix_forecast' --------------------------------
 
-test_that("'infer_trend_cyc_seas_err_seasfix_forecast' works", {
+test_that("'infer_trend_seas_err_seasfix_forecast' works", {
   set.seed(0)
   data <- expand.grid(age = 0:4, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -666,11 +701,11 @@ test_that("'infer_trend_cyc_seas_err_seasfix_forecast' works", {
   mod <- mod_pois(formula = formula,
                   data = data,
                   exposure = popn) |>
-                  set_prior(sex:time ~ RW_Seas(n = 3)) |>
+                  set_prior(sex:time ~ RW_Seas(n = 3,s_seas = 0)) |>
                   set_n_draw(n = 10) |>
                   fit()
   components <- components(mod)
-  ans <- infer_trend_cyc_seas_err_seasfix_forecast(prior = mod$priors[["sex:time"]],
+  ans <- infer_trend_seas_err_seasfix_forecast(prior = mod$priors[["sex:time"]],
                                                    dimnames_term = mod$dimnames_terms[["sex:time"]],
                                                    var_time = mod$var_time,
                                                    var_age = mod$var_age,
@@ -682,9 +717,9 @@ test_that("'infer_trend_cyc_seas_err_seasfix_forecast' works", {
 })
 
 
-## 'infer_trend_cyc_seas_err_seasvary_forecast' -------------------------------
+## 'infer_trend_seas_err_seasvary_forecast' -------------------------------
 
-test_that("'infer_trend_cyc_seas_err_seasvary_forecast' works", {
+test_that("'infer_trend_seas_err_seasvary_forecast' works", {
   set.seed(0)
   data <- expand.grid(age = 0:4, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -693,11 +728,11 @@ test_that("'infer_trend_cyc_seas_err_seasvary_forecast' works", {
   mod <- mod_pois(formula = formula,
                   data = data,
                   exposure = popn) |>
-                  set_prior(sex:time ~ RW_Seas(n = 3, s = 1)) |>
+                  set_prior(sex:time ~ RW_Seas(n = 3, s_seas = 0, s = 1)) |>
                   set_n_draw(n = 10) |>
                   fit()
   components <- components(mod)
-  ans <- infer_trend_cyc_seas_err_seasvary_forecast(prior = mod$priors[["sex:time"]],
+  ans <- infer_trend_seas_err_seasvary_forecast(prior = mod$priors[["sex:time"]],
                                                     dimnames_term = mod$dimnames_terms[["sex:time"]],
                                                     var_time = mod$var_time,
                                                     var_age = mod$var_age,
@@ -1094,6 +1129,7 @@ test_that("'make_draws_post' works with valid inputs - has R_prec", {
 })
 
 test_that("'make_draws_post' works with dense matrix", {
+  skip_if(utils::packageVersion("Matrix") < "1.6.0")
   library(Matrix)
   set.seed(0)
   est <- list(effectfree = c("(Intercept)" = -3,
@@ -1114,7 +1150,7 @@ test_that("'make_draws_post' works with dense matrix", {
   rmvn_from_sparse_CH <- function(...) stop("Sparse branch executed")
   # Fake rmvnorm_chol to confirm call
   rmvnorm_chol_called <- FALSE
-  fake_rmvnorm_chol <- function(n, mean, R_prec) {
+  fake_rmvnorm_chol <- function(n, mean, CH) {
     rmvnorm_chol_called <<- TRUE
     matrix(rep(mean, times = n), nrow = length(mean), ncol = n)
   }
@@ -1134,6 +1170,7 @@ test_that("'make_draws_post' works with dense matrix", {
 })
 
 test_that("make_draws_post uses sparse path when precision is sparse", {
+  skip_if(utils::packageVersion("Matrix") < "1.6.0")
   library(Matrix)
   set.seed(1)
   # Build sparse SPD precision: Q = S'S + tau*I
@@ -1155,6 +1192,7 @@ test_that("make_draws_post uses sparse path when precision is sparse", {
 })
 
 test_that("make_draws_post uses dense path when precision is dense", {
+  skip_if(utils::packageVersion("Matrix") < "1.6.0")
   library(Matrix)
   set.seed(2)
   A  <- matrix(rnorm(100), 10, 10)
@@ -1193,7 +1231,10 @@ test_that("'make_effects' works with valid inputs - draws", {
                        age = effectfree[2:11,],
                        sex = effectfree[12:13,],
                        time = effectfree[14:19,])
-  expect_identical(ans_obtained, ans_expected)
+  expect_identical(lapply(ans_obtained,
+                          function(x) unname(as.matrix(x))),
+                   lapply(ans_expected,
+                          function(x) unname(as.matrix(x))))
 })
 
 test_that("'make_effects' works with valid inputs - point", {
@@ -1216,7 +1257,10 @@ test_that("'make_effects' works with valid inputs - point", {
                        age = matrix(effectfree[2:11]),
                        sex = matrix(effectfree[12:13]),
                        time = matrix(effectfree[14:19]))
-  expect_identical(ans_obtained, ans_expected)
+  expect_identical(lapply(ans_obtained,
+                          function(x) unname(as.matrix(x))),
+                   lapply(ans_expected,
+                          function(x) unname(as.matrix(x))))
 })
 
 
@@ -1407,7 +1451,7 @@ test_that("'make_hyperrand_lin' works with interaction, con is 'by'", {
 ## 'make_hyperrand_randomseasfix' -----------------------------------------------
 
 test_that("'make_hyperrand_randomseasfix' works with main effect", {
-  prior <- RW_Seas(n = 4)
+  prior <- RW_Seas(n = 4, s_seas = 0)
   hyperrandfree <- rvec::rnorm_rvec(n = 3, n_draw = 10)
   effectfree <- rvec::rnorm_rvec(n = 10, n_draw = 10)
   dimnames_term <- list(time = 2001:2010)
@@ -1432,7 +1476,7 @@ test_that("'make_hyperrand_randomseasfix' works with main effect", {
 
 test_that("'make_hyperrand_randomseasfix' works with interaction, random_sum is FALSE", {
   set.seed(0)
-  prior <- RW2_Seas(n = 4)
+  prior <- RW2_Seas(n = 4, s_seas = 0)
   hyperrandfree <- rvec::rnorm_rvec(n = 6, n_draw = 10)
   effectfree <- rvec::rnorm_rvec(n = 20, n_draw = 10)
   dimnames_term <- list(time = 2001:2010, sex = c("f", "m"))
@@ -1461,7 +1505,7 @@ test_that("'make_hyperrand_randomseasfix' works with interaction, random_sum is 
 })
 
 test_that("'make_hyperrand_randomseasfix' works with interaction, con is 'by'", {
-  prior <- RW_Seas(n = 4, con = "by")
+  prior <- RW_Seas(n = 4, s_seas = 0, con = "by")
   hyperrandfree <- rvec::rnorm_rvec(n = 3, n_draw = 10)
   effectfree <- rvec::rnorm_rvec(n = 10)
   dimnames_term <- list(time = 2001:2010, sex = c("f", "m"))
@@ -1577,7 +1621,7 @@ test_that("'make_hyperrand_randomseasvary' works with interaction, con is 'by'",
 ## 'make_hyperrand_zeroseasfix' -----------------------------------------------
 
 test_that("'make_hyperrand_zeroseasfix' works with main effect", {
-  prior <- RW_Seas(n = 4, sd = 0)
+  prior <- RW_Seas(n = 4, s_seas = 0, sd = 0)
   hyperrandfree <- rvec::rnorm_rvec(n = 2, n_draw = 10)
   effectfree <- rvec::rnorm_rvec(n = 10, n_draw = 10)
   dimnames_term <- list(time = 2001:2010)
@@ -1602,7 +1646,7 @@ test_that("'make_hyperrand_zeroseasfix' works with main effect", {
 
 test_that("'make_hyperrand_zeroseasfix' works with interaction, con is 'none'", {
   set.seed(0)
-  prior <- RW2_Seas(n = 4, sd = 0)
+  prior <- RW2_Seas(n = 4, s_seas = 0, sd = 0)
   hyperrandfree <- rvec::rnorm_rvec(n = 4, n_draw = 10)
   effectfree <- rvec::rnorm_rvec(n = 20, n_draw = 10)
   dimnames_term <- list(time = 2001:2010, sex = c("f", "m"))
@@ -1631,7 +1675,7 @@ test_that("'make_hyperrand_zeroseasfix' works with interaction, con is 'none'", 
 })
 
 test_that("'make_hyperrand_zeroseasfix' works with interaction, con is 'by'", {
-  prior <- RW_Seas(n = 4, sd = 0, con = "by")
+  prior <- RW_Seas(n = 4, s_seas = 0, sd = 0, con = "by")
   hyperrandfree <- rvec::rnorm_rvec(n = 2, n_draw = 10)
   effectfree <- rvec::rnorm_rvec(n = 10)
   dimnames_term <- list(time = 2001:2010, sex = c("f", "m"))
@@ -1896,7 +1940,7 @@ test_that("'make_levels_svd' works - unlist is FALSE", {
   mod <- set_n_draw(mod, n = 5)
   mod <- set_prior(mod, age ~ SVD(HMD))
   mod <- set_prior(mod, age:sex ~ SVD(HMD))
-  mod <- set_prior(mod, age:time ~ SVD_RW(HMD))
+  mod <- set_prior(mod, age:time ~ SVD_RW(HMD, n_comp = 3))
   set.seed(0)
   ans_obtained <- make_levels_svd(mod, unlist = FALSE)
   ans_expected <- list("(Intercept)" = NULL,
@@ -1928,6 +1972,85 @@ test_that("'make_levels_svd' works - unlist is TRUE", {
   ans_expected <- c(paste0("comp", 1:5),
                     paste0(rep(c("F", "M"), each = 5), ".comp", 1:5),
                     paste0("comp", 1:5, ".", rep(2000:2005, each = 5)))
+  expect_identical(ans_obtained, ans_expected)
+})
+
+
+## 'make_levels_svd_by' -------------------------------------------------------
+
+test_that("'make_levels_svd_term' works - con = 'none', time:age:sex", {
+  prior <- SVD_Lin(HMD, n_comp = 3)
+  dimnames_term <- list(time = 2001:2005,
+                        age = c(0:59, "60+"),
+                        sex = c("M", "F"))
+  var_age <- "age"
+  var_sexgender <- "sex"
+  var_time <- "time"
+  ans_obtained <- make_levels_svd_by(prior = prior,
+                                     dimnames_term = dimnames_term,
+                                     var_time = var_time,
+                                     var_age = var_age,
+                                     var_sexgender = var_sexgender)
+  ans_expected <- paste(rep(c("M", "F"), each = 3),
+                        paste0("comp", 1:3),
+                        sep = ".")
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'make_levels_svd_term' works - con = 'none', time:age:reg", {
+  prior <- SVD_Lin(HMD, n_comp = 3)
+  dimnames_term <- list(time = 2001:2005,
+                        age = c(0:59, "60+"),
+                        reg = c("a", "b"))
+  var_age <- "age"
+  var_sexgender <- "sex"
+  var_time <- "time"
+  ans_obtained <- make_levels_svd_by(prior = prior,
+                                     dimnames_term = dimnames_term,
+                                     var_time = var_time,
+                                     var_age = var_age,
+                                     var_sexgender = var_sexgender)
+  ans_expected <- paste(paste0("comp", 1:3),
+                        rep(c("a", "b"), each = 3),
+                        sep = ".")
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'make_levels_svd_term' works - con = 'by', time:age:sex", {
+  prior <- SVD_Lin(HMD, n_comp = 3, con = "by")
+  dimnames_term <- list(time = 2001:2005,
+                        age = c(0:59, "60+"),
+                        sex = c("M", "F"))
+  var_age <- "age"
+  var_sexgender <- "sex"
+  var_time <- "time"
+  ans_obtained <- make_levels_svd_by(prior = prior,
+                                     dimnames_term = dimnames_term,
+                                     var_time = var_time,
+                                     var_age = var_age,
+                                     var_sexgender = var_sexgender)
+  ans_expected <- paste(rep(c("M", "F"), each = 3),
+                        paste0("comp", 1:3),
+                        sep = ".")
+  expect_identical(ans_obtained, ans_expected)
+})
+
+test_that("'make_levels_svd_term' works - con = 'by', time:age:reg", {
+  prior <- SVD_Lin(HMD, n_comp = 3, con = "by")
+  dimnames_term <- list(time = 2001:2005,
+                        age = c(0:59, "60+"),
+                        reg = c("a", "b", "c"))
+  var_age <- "age"
+  var_sexgender <- "sex"
+  var_time <- "time"
+  ans_obtained <- make_levels_svd_by(prior = prior,
+                                     dimnames_term = dimnames_term,
+                                     var_time = var_time,
+                                     var_age = var_age,
+                                     var_sexgender = var_sexgender)
+  ans_expected <- paste(paste0("comp", 1:3),
+                        rep(c("reg1", "reg2"), each = 3),
+                        sep = ".")
   expect_identical(ans_obtained, ans_expected)
 })
 
@@ -2336,7 +2459,7 @@ test_that("'make_levels_replicate' works", {
 
 ## 'make_linpred_from_components' ---------------------------------------------
 
-test_that("'make_linpred_from_components' works with valid inputs - no covariates", {
+test_that("'make_linpred_from_components' works with valid inputs - no covariates, rows is NULL", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -2350,11 +2473,36 @@ test_that("'make_linpred_from_components' works with valid inputs - no covariate
   ans <- make_linpred_from_components(mod = mod,
                                       components = comp,
                                       data = mod$data,
-                                      dimnames_terms = mod$dimnames_terms)
+                                      dimnames_terms = mod$dimnames_terms,
+                                      rows = NULL)
   expect_identical(length(ans), length(mod$outcome))
 })
 
-test_that("'make_linpred_from_components' works with valid inputs - with covariates", {
+test_that("'make_linpred_from_components' works with valid inputs - no covariates, rows non-NULL", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  formula <- deaths ~ age + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_n_draw(mod, n_draw = 10L)
+  comp <- components(mod, quiet = TRUE)
+  ans_obtained <- make_linpred_from_components(mod = mod,
+                                      components = comp,
+                                      data = mod$data,
+                                      dimnames_terms = mod$dimnames_terms,
+                                      rows = 3:5)
+  ans_expected <- make_linpred_from_components(mod = mod,
+                                      components = comp,
+                                      data = mod$data,
+                                      dimnames_terms = mod$dimnames_terms,
+                                      rows = NULL)[3:5]
+  expect_identical(ans_obtained, ans_expected)  
+})
+
+test_that("'make_linpred_from_components' works with valid inputs - with covariates, rows is NULL", {
   set.seed(0)
   data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
   data$popn <- rpois(n = nrow(data), lambda = 100)
@@ -2370,11 +2518,38 @@ test_that("'make_linpred_from_components' works with valid inputs - with covaria
   ans_obtained <- make_linpred_from_components(mod = mod,
                                                components = comp,
                                                data = mod$data,
-                                               dimnames_terms = mod$dimnames_terms)
+                                               dimnames_terms = mod$dimnames_terms,
+                                               rows = NULL)
   ans_expected <- comp$.fitted[comp$term == "(Intercept)"] +
     rep(comp$.fitted[comp$term == "age" & comp$component == "effect"], times = 12) +
     rep(comp$.fitted[comp$term == "sex" & comp$component == "effect"], each = 60) +
     comp$.fitted[comp$term == "covariates" & comp$component == "coef"] * as.numeric(scale(data$income))
+  expect_equal(ans_obtained, ans_expected)
+})
+
+test_that("'make_linpred_from_components' works with valid inputs - with covariates, rows is non-NULL", {
+  set.seed(0)
+  data <- expand.grid(age = 0:9, time = 2000:2005, sex = c("F", "M"))
+  data$popn <- rpois(n = nrow(data), lambda = 100)
+  data$deaths <- rpois(n = nrow(data), lambda = 10)
+  data$income <- rnorm(n = nrow(data))
+  formula <- deaths ~ age + sex
+  mod <- mod_pois(formula = formula,
+                  data = data,
+                  exposure = popn)
+  mod <- set_covariates(mod, ~ income)
+  mod <- set_n_draw(mod, n_draw = 10L)
+  comp <- components(mod, quiet = TRUE)
+  ans_obtained <- make_linpred_from_components(mod = mod,
+                                               components = comp,
+                                               data = mod$data,
+                                               dimnames_terms = mod$dimnames_terms,
+                                               rows = 10:20)
+  ans_expected <- make_linpred_from_components(mod = mod,
+                                               components = comp,
+                                               data = mod$data,
+                                               dimnames_terms = mod$dimnames_terms,
+                                               rows = NULL)[10:20]
   expect_equal(ans_obtained, ans_expected)
 })
 
@@ -2399,8 +2574,10 @@ test_that("'make_linpred_from_stored_draws' works with valid inputs - point is F
   ans_expected <- make_linpred_from_components(mod = mod,
                                                components = comp,
                                                data = mod$data,
-                                               dimnames_terms = mod$dimnames_terms)
-  expect_equal(ans_obtained, ans_expected)
+                                               dimnames_terms = mod$dimnames_terms,
+                                               rows = NULL)
+  expect_equal(unname(as.matrix(ans_obtained)),
+               unname(as.matrix(ans_expected)))
 })
 
 test_that("'make_linpred_from_stored_draws' works with valid inputs - point is TRUE", {
@@ -2453,7 +2630,7 @@ test_that("'make_linpred_from_stored_draws' works with valid inputs - has covari
   m1 <- Reduce(Matrix::cbind2, matrices_effect_outcome)
   matrices <- make_matrices_effectfree_effect(mod)
   m2 <- Matrix::.bdiag(matrices)
-  mc <- make_matrix_covariates(~income, data)
+  mc <- make_matrix_covariates(~income, data, rows = NULL)
   ans_expected <- as.double(m1 %*% m2 %*% mod$point_effectfree) +
     as.double(mod$point_coef_covariates * mc)
   expect_equal(ans_obtained, ans_expected)
@@ -2483,7 +2660,7 @@ test_that("'make_linpred_from_stored_draws' works with valid inputs - has covari
   m1 <- Reduce(Matrix::cbind2, matrices_effect_outcome)
   matrices <- make_matrices_effectfree_effect(mod)
   m2 <- Matrix::.bdiag(matrices)
-  mc <- make_matrix_covariates(~income, data)[11:120,]
+  mc <- make_matrix_covariates(~income, data, rows = NULL)[11:120,]
   ans_expected <- as.double(m1 %*% m2 %*% mod$point_effectfree) +
     as.double(mod$point_coef_covariates * mc)
   expect_equal(ans_obtained, ans_expected)
@@ -2508,8 +2685,8 @@ test_that("'make_linpred_from_stored_draws_covariates' works with valid inputs -
   ans_obtained <- make_linpred_from_stored_draws_covariates(mod,
                                                             point = FALSE,
                                                             rows = NULL)
-  ans_expected <- scale(data$income) %*% mod$draws_coef_covariates
-  expect_equal(as.matrix(ans_obtained), as.matrix(ans_expected))
+  ans_expected <- rvec::rvec(scale(data$income) %*% mod$draws_coef_covariates)
+  expect_equal(ans_obtained, ans_expected)
 })
 
 test_that("'make_linpred_from_stored_draws_covariates' works with valid inputs - point is TRUE", {
@@ -2549,7 +2726,7 @@ test_that("'make_linpred_from_stored_draws_covariates' works with valid inputs -
                                                             point = TRUE,
                                                             rows = 1:80)
   ans_expected <- (scale(data$income) %*% mod$point_coef_covariates)[1:80]
-  expect_equal(as.numeric(ans_obtained), as.numeric(ans_expected))
+  expect_equal(ans_obtained, ans_expected)
 })
 
 
@@ -2573,9 +2750,10 @@ test_that("'make_linpred_from_stored_draws_effects' works with valid inputs - po
   ans_expected <- make_linpred_from_components(mod = mod,
                                                components = comp,
                                                data = mod$data,
-                                               dimnames_terms = mod$dimnames_terms)
-  ans_expected <- ans_expected
-  expect_equal(as.matrix(ans_obtained), as.matrix(ans_expected))
+                                               dimnames_terms = mod$dimnames_terms,
+                                               rows = NULL)
+  expect_equal(unname(as.matrix(ans_obtained)),
+               unname(as.matrix(ans_expected)))
 })
 
 test_that("'make_linpred_from_stored_draws_effects' works with valid inputs - point is TRUE", {
@@ -2629,7 +2807,6 @@ test_that("'make_linpred_from_stored_draws_effects' works with valid inputs - po
   ans_expected <- as.double(m1 %*% m2 %*% mod$point_effectfree)
   expect_equal(as.numeric(ans_obtained), as.numeric(ans_expected))
 })
-
 
 
 ## 'make_point_est_effects' ---------------------------------------------------
@@ -3001,7 +3178,7 @@ test_that("'make_term_svd' works - has svd", {
                   exposure = popn)
   mod <- set_n_draw(mod, n = 5)
   mod <- set_prior(mod, age ~ SVD(HMD))
-  mod <- set_prior(mod, age:time ~ SVD_RW(HMD))
+  mod <- set_prior(mod, age:time ~ SVD_RW(HMD, n_comp = 3))
   ans_obtained <- make_term_svd(mod)
   ans_expected <- factor(c(rep("age", times = 3),
                            rep("age:time", times = 3 * 6)))
@@ -3073,7 +3250,7 @@ test_that("'rescale_components' works", {
                   data = data,
                   weights = wt) |>
     set_prior(time ~ Lin_AR1()) |>
-    set_prior(region:time ~ RW_Seas(n = 2)) |>
+    set_prior(region:time ~ RW_Seas(n = 2, s_seas = 0)) |>
     set_n_draw(n = 4) |>
     fit()
   components <- components(mod, quiet = TRUE)
@@ -3189,4 +3366,17 @@ test_that("'transform_hyper_ar' works with 'bage_prior_svd_ar - AR'", {
   expect_equal(l[[1]](0.35), shifted_invlogit(0.35))
   expect_equal(l[[2]](0.35), shifted_invlogit(0.35))
   expect_equal(l[[3]](0.35), exp(0.35))
+})
+
+
+## 'transform_hyper_drw' ------------------------------------------------------
+
+test_that("'transform_hyper_drw' works", {
+  shifted_invlogit <- function(x) {
+    ans <- exp(x) / (1 + exp(x))
+    0.18 * ans + 0.8
+  }
+  l <- transform_hyper_drw(prior = DRW())
+  expect_equal(l[[1]](0.35), exp(0.35))
+  expect_equal(l[[2]](0.35), shifted_invlogit(0.35))
 })

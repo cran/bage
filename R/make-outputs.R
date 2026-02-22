@@ -1,4 +1,35 @@
 
+#' Construct Elements of 'components' that are Implied
+#' by Existing Elements
+#'
+#' Needed for priors such as 'bage_prior_linex' that
+#' have non-standard stuctures
+#'
+#' @param components Tibble with estimates of hyper-parameters
+#' @param mod Object of class 'bage_mod'
+#'
+#' @returns Modified version of 'components'
+#'
+#' @noRd
+append_implied_comp <- function(components, mod) {
+  priors <- mod$priors
+  dimnames_terms <- mod$dimnames_terms
+  var_time <- mod$var_time
+  var_age <- mod$var_age
+  var_sexgender <- mod$var_sexgender
+  implied <- .mapply(make_implied_comp,
+                     dots = list(prior = priors,
+                                 dimnames_term = dimnames_terms),
+                     MoreArgs = list(components = components,
+                                     var_time = var_time,
+                                     var_age = var_age,
+                                     var_sexgender = var_sexgender))
+  implied <- vctrs::vec_rbind(!!!implied)
+  vctrs::vec_rbind(components, implied)
+}
+                     
+  
+
 ## HAS_TESTS
 #' Combined Stored Draws and Point Estimates
 #' from Inner and Outer Models
@@ -115,7 +146,6 @@ con_by_fitted <- function(prior,
   dim <- lengths(dimnames_term)
   m <- make_matrix_con_by(i_along = i_along,
                           dim = dim)
-  m <- as.matrix(m)
   fitted <- m %*% fitted
 }
 
@@ -493,7 +523,6 @@ get_datamod_disp <- function(datamod) {
 #' @noRd
 get_datamod_prob <- function(datamod, components) {
   prob_matrix_outcome <- datamod$prob_matrix_outcome
-  prob_matrix_outcome <- as.matrix(prob_matrix_outcome) ## remove after updating rvec
   is_prob <- (components$term == "datamod"
     & components$component == "prob")
   prob <- components$.fitted[is_prob]
@@ -513,7 +542,6 @@ get_datamod_prob <- function(datamod, components) {
 #' @noRd
 get_datamod_rate <- function(datamod, components) {
   rate_matrix_outcome <- datamod$rate_matrix_outcome
-  rate_matrix_outcome <- as.matrix(rate_matrix_outcome) ## remove after updating rvec
   is_rate <- (components$term == "datamod"
     & components$component == "rate")
   rate <- components$.fitted[is_rate]
@@ -588,7 +616,7 @@ get_term_from_est <- function(est, index_term) {
 }
 
 
-
+## HAS_TESTS
 #' Impute Missing Values for True Outcome
 #'
 #' Should only be called when 'outcome'
@@ -636,8 +664,6 @@ impute_outcome_true <- function(nm_distn,
     disp <- as.numeric(disp)
     disp <- rep(disp, each = n_val)
   }
-  if (!anyNA(outcome))
-    cli::cli_abort("Internal error: {.fun impute_outcome_true} called, but no missing values.")
   is_impute <- is.na(outcome) & !is.na(offset)
   n_impute <- sum(is_impute)
   ans <- outcome
@@ -699,7 +725,7 @@ impute_outcome_true <- function(nm_distn,
 #' @returns A modified version of 'components'
 #'
 #' @noRd
-infer_trend_cyc_seas_err_forecast <- function(components,
+infer_trend_seas_err_forecast <- function(components,
                                               priors,
                                               dimnames_terms,
                                               var_time,
@@ -708,7 +734,7 @@ infer_trend_cyc_seas_err_forecast <- function(components,
   for (nm in nms) {
     prior <- priors[[nm]]
     dimnames_term <- dimnames_terms[[nm]]
-    components <- infer_trend_cyc_seas_err_forecast_one(prior = prior,
+    components <- infer_trend_seas_err_forecast_one(prior = prior,
                                                         dimnames_term = dimnames_term,
                                                         var_time = var_time,
                                                         var_age = var_age,
@@ -733,7 +759,7 @@ infer_trend_cyc_seas_err_forecast <- function(components,
 #' @returns A modifed version of 'components'
 #'
 #' @noRd
-infer_trend_cyc_seas_err_seasfix_forecast <- function(prior,
+infer_trend_seas_err_seasfix_forecast <- function(prior,
                                                       dimnames_term,
                                                       var_time,
                                                       var_age,
@@ -764,7 +790,7 @@ infer_trend_cyc_seas_err_seasfix_forecast <- function(prior,
 #' @returns A modifed version of 'components'
 #'
 #' @noRd
-infer_trend_cyc_seas_err_seasvary_forecast <- function(prior,
+infer_trend_seas_err_seasvary_forecast <- function(prior,
                                                        dimnames_term,
                                                        var_time,
                                                        var_age,
@@ -906,11 +932,13 @@ make_comp_hyperrand <- function(mod) {
   dimnames_terms <- mod$dimnames_terms
   var_time <- mod$var_time
   var_age <- mod$var_age
+  var_sexgender <- mod$var_sexgender
   ans <- .mapply(comp_hyperrand,
                  dots = list(prior = priors,
                              dimnames_term = dimnames_terms),
                  MoreArgs = list(var_time = var_time,
-                                 var_age = var_age))
+                                 var_age = var_age,
+                                 var_sexgender = var_sexgender))
   ans <- unlist(ans)
   ans
 }
@@ -1169,10 +1197,9 @@ make_draws_post <- function(est, prec, map, n_draw, max_jitter) {
                                           prec = prec)
   }
   else {
-    R_prec <- Matrix::expand1(CH, which = "L")
     draws_nonfixed <- rmvnorm_chol(n = n_draw,
                                    mean = mu,
-                                   R_prec = R_prec)
+                                   CH = CH)
   }
   ans <- matrix(NA_real_, nrow = length(is_fixed), ncol = n_draw)
   ans[!is_fixed, ] <- draws_nonfixed
@@ -1290,21 +1317,76 @@ make_hyperrand_lin <- function(prior,
   n_by <- ncol(matrix_along_by_effectfree)
   v <- seq_len(n_along) - 0.5 * (n_along + 1)
   n_draw <- rvec::n_draw(hyperrandfree)
-  trend <- rvec::new_rvec(length = n_along * n_by, n_draw = n_draw)
+  trend <- rvec::new_rvec_dbl(length = n_along * n_by, n_draw = n_draw)
   for (i_by in seq_len(n_by)) {
     i_along <- matrix_along_by_effectfree[, i_by] + 1L
     trend[i_along] <- hyperrandfree[[i_by]] * v
   }
   error <- effectfree - trend
-  trend <- as.matrix(trend) ## to cope with sparse matrix
-  error <- as.matrix(error) ## to cope with sparse matrix
   trend <- matrix_effectfree_effect %*% trend
   error <- matrix_effectfree_effect %*% error
-  trend <- rvec::rvec_dbl(as.matrix(trend))
-  error <- rvec::rvec_dbl(as.matrix(error))
   ## calculate slope on constrained space
   n_by_constr <- ncol(matrix_along_by_effect)
-  slope <- rvec::new_rvec(length = n_by_constr, n_draw = n_draw)
+  slope <- rvec::new_rvec_dbl(length = n_by_constr, n_draw = n_draw)
+  for (i_by in seq_len(n_by_constr)) {
+    i_1 <- matrix_along_by_effect[1L, i_by] + 1L
+    i_2 <- matrix_along_by_effect[2L, i_by] + 1L
+    slope[[i_by]] <- trend[[i_2]] - trend[[i_1]]
+  }
+  vctrs::vec_c(slope, trend, error)
+}
+
+
+## HAS_TESTS
+#' Derive Values for Hyper-Paramers Involving Lines and SVD
+#'
+#' @param prior Object of class 'bage_prior'.
+#' @param hyperrandfree Values for hyper-parameters. An rvec.
+#' @param vals_svd Values for unconstrained effect. An rvec.
+#' @param dimnames_term Dimnames for array representation of term
+#' @param var_time Name of time variable
+#' @param var_age Name of age variable
+#' @param var_sexgender Name of sex/gender variable
+#'
+#' @returns An rvec
+#'
+#' @noRd
+make_hyperrand_lin <- function(prior,
+                               hyperrandfree,
+                               effectfree,
+                               dimnames_term,
+                               var_time,
+                               var_age,
+                               var_sexgender) {
+  matrix_along_by_effectfree <- make_matrix_along_by_effectfree(prior = prior,
+                                                                dimnames_term = dimnames_term,
+                                                                var_time = var_time,
+                                                                var_age = var_age,
+                                                                var_sexgender = var_sexgender)
+  matrix_effectfree_effect <- make_matrix_effectfree_effect(prior = prior,
+                                                            dimnames_term = dimnames_term,
+                                                            var_time = var_time,
+                                                            var_age = var_age,
+                                                            var_sexgender = var_sexgender)
+  matrix_along_by_effect <- make_matrix_along_by_effect(prior = prior,
+                                                        dimnames_term = dimnames_term,
+                                                        var_time = var_time,
+                                                        var_age = var_age)
+  n_along <- nrow(matrix_along_by_effectfree)
+  n_by <- ncol(matrix_along_by_effectfree)
+  v <- seq_len(n_along) - 0.5 * (n_along + 1)
+  n_draw <- rvec::n_draw(hyperrandfree)
+  trend <- rvec::new_rvec_dbl(length = n_along * n_by, n_draw = n_draw)
+  for (i_by in seq_len(n_by)) {
+    i_along <- matrix_along_by_effectfree[, i_by] + 1L
+    trend[i_along] <- hyperrandfree[[i_by]] * v
+  }
+  error <- effectfree - trend
+  trend <- matrix_effectfree_effect %*% trend
+  error <- matrix_effectfree_effect %*% error
+  ## calculate slope on constrained space
+  n_by_constr <- ncol(matrix_along_by_effect)
+  slope <- rvec::new_rvec_dbl(length = n_by_constr, n_draw = n_draw)
   for (i_by in seq_len(n_by_constr)) {
     i_1 <- matrix_along_by_effect[1L, i_by] + 1L
     i_2 <- matrix_along_by_effect[2L, i_by] + 1L
@@ -1351,7 +1433,7 @@ make_hyperrand_randomseasfix <- function(prior,
   n_along <- nrow(matrix_along_by_effectfree)
   n_by <- ncol(matrix_along_by_effectfree)
   n_draw <- rvec::n_draw(hyperrandfree)
-  season <- rvec::new_rvec(length = n_along * n_by, n_draw = n_draw)
+  season <- rvec::new_rvec_dbl(length = n_along * n_by, n_draw = n_draw)
   for (i_by in seq_len(n_by)) {
     sum_seas <- 0
     for (i_along in seq_len(n_along)) {
@@ -1370,12 +1452,8 @@ make_hyperrand_randomseasfix <- function(prior,
     }
   }
   trend <- effectfree - season
-  trend <- as.matrix(trend) ## to cope with sparse matrix
-  season <- as.matrix(season) ## to cope with sparse matrix
   trend <- matrix_effectfree_effect %*% trend
   season <- matrix_effectfree_effect %*% season
-  trend <- rvec::rvec_dbl(as.matrix(trend))
-  season <- rvec::rvec_dbl(as.matrix(season))
   vctrs::vec_c(trend, season)
 }
 
@@ -1417,7 +1495,7 @@ make_hyperrand_randomseasvary <- function(prior,
   n_by <- ncol(matrix_along_by_effectfree)
   n_along_hyper <- length(hyperrandfree) %/% n_by
   n_draw <- rvec::n_draw(hyperrandfree)
-  season <- rvec::new_rvec(length = n_along * n_by, n_draw = n_draw)
+  season <- rvec::new_rvec_dbl(length = n_along * n_by, n_draw = n_draw)
   for (i_by in seq_len(n_by)) {
     i_along_hyper <- 1L
     sum_seas <- 0
@@ -1438,12 +1516,8 @@ make_hyperrand_randomseasvary <- function(prior,
     }
   }
   trend <- effectfree - season
-  trend <- as.matrix(trend) ## to cope with sparse matrix
-  season <- as.matrix(season) ## to cope with sparse matrix
   trend <- matrix_effectfree_effect %*% trend
   season <- matrix_effectfree_effect %*% season
-  trend <- rvec::rvec_dbl(as.matrix(trend))
-  season <- rvec::rvec_dbl(as.matrix(season))
   vctrs::vec_c(trend, season)
 }
 
@@ -1487,7 +1561,7 @@ make_hyperrand_zeroseasfix <- function(prior,
   n_along <- nrow(matrix_along_by_effectfree)
   n_by <- ncol(matrix_along_by_effectfree)
   n_draw <- rvec::n_draw(hyperrandfree)
-  season <- rvec::new_rvec(length = n_along * n_by, n_draw = n_draw)
+  season <- rvec::new_rvec_dbl(length = n_along * n_by, n_draw = n_draw)
   for (i_by in seq_len(n_by)) {
     sum_seas <- 0
     for (i_along in seq_len(n_along)) {
@@ -1511,12 +1585,8 @@ make_hyperrand_zeroseasfix <- function(prior,
     }
   }
   trend <- effectfree - season
-  trend <- as.matrix(trend) ## to cope with sparse matrix
-  season <- as.matrix(season) ## to cope with sparse matrix
   trend <- matrix_effectfree_effect %*% trend
   season <- matrix_effectfree_effect %*% season
-  trend <- rvec::rvec_dbl(as.matrix(trend))
-  season <- rvec::rvec_dbl(as.matrix(season))
   vctrs::vec_c(trend, season)
 }
 
@@ -1558,7 +1628,7 @@ make_hyperrand_zeroseasvary <- function(prior,
   n_by <- ncol(matrix_along_by_effectfree)
   n_along_hyper <- length(hyperrandfree) %/% n_by
   n_draw <- rvec::n_draw(hyperrandfree)
-  season <- rvec::new_rvec(length = n_along * n_by, n_draw = n_draw)
+  season <- rvec::new_rvec_dbl(length = n_along * n_by, n_draw = n_draw)
   for (i_by in seq_len(n_by)) {
     i_effectfree_first <- matrix_along_by_effectfree[1L, i_by] + 1L
     effectfree_first <- effectfree[[i_effectfree_first]]
@@ -1584,12 +1654,8 @@ make_hyperrand_zeroseasvary <- function(prior,
     }
   }
   trend <- effectfree - season
-  trend <- as.matrix(trend) ## to cope with sparse matrix
-  season <- as.matrix(season) ## to cope with sparse matrix
   trend <- matrix_effectfree_effect %*% trend
   season <- matrix_effectfree_effect %*% season
-  trend <- rvec::rvec_dbl(as.matrix(trend))
-  season <- rvec::rvec_dbl(as.matrix(season))
   vctrs::vec_c(trend, season)
 }
 
@@ -1719,11 +1785,13 @@ make_levels_hyperrand <- function(mod, unlist) {
   dimnames_terms <- mod$dimnames_terms
   var_time <- mod$var_time
   var_age <- mod$var_age
+  var_sexgender <- mod$var_sexgender
   ans <- .mapply(levels_hyperrand,
                  dots = list(prior = priors,
                              dimnames_term = dimnames_terms),
                  MoreArgs = list(var_time = var_time,
-                                 var_age = var_age))
+                                 var_age = var_age,
+                                 var_sexgender = var_sexgender))
   if (unlist)
     ans <- unlist(ans)
   ans
@@ -1850,6 +1918,49 @@ make_levels_svd <- function(mod, unlist) {
   ans
 }
 
+#' Make Labels for 'By' Variables in SVD 'effectfree'
+#'
+#' Can only be used with priors with 'along' dimension.
+#' Allows for possibility of con = 'by'
+#'
+#' @param prior Object of class 'bage_prior'
+#' @param dimnames_term Dimnames for array representation of term
+#' @param var_time Name of time variable
+#' @param var_age Name of age variable
+#' @param var_sexgender Name of sex/gender variable
+#'
+#' @returns A character vector
+#' 
+#' @noRd
+make_levels_svd_by <- function(prior,
+                               dimnames_term,
+                               var_time,
+                               var_age,
+                               var_sexgender) {
+  if (!uses_along(prior))
+    cli::cli_abort("Internal error: Prior does not have 'along' dimension.")
+  con <- prior$specific$con
+  labels_svd <- get_labels_svd(prior = prior,
+                               dimnames_term = dimnames_term,
+                               var_sexgender = var_sexgender)
+  i_agesex <- match(c(var_age, var_sexgender),
+                    names(dimnames_term),
+                    nomatch = 0L)
+  dimnames_noagesex <- dimnames_term[-i_agesex]
+  if (con == "by") {
+    i_along <- match(var_time, names(dimnames_noagesex))
+    dimnames_noagesextime <- make_unconstr_dimnames_by(i_along = i_along,
+                                                   dimnames_term = dimnames_noagesex)
+  }
+  else {
+    i_time <- match(var_time, names(dimnames_noagesex))
+    dimnames_noagesextime <- dimnames_noagesex[-i_time]
+  }
+  dimnames_by <- c(list(.svd = labels_svd), dimnames_noagesextime)
+  dimnames_to_levels(dimnames_by)
+}
+
+
 
 ## HAS_TESTS
 #' Make Levels for 'svd' Coefficients for a Single Term
@@ -1922,18 +2033,20 @@ make_lin_trend <- function(slope,
 #' @param components Data frame with estimates for hyper-parameters
 #' @param data Data frame with raw data
 #' @param dimnames_terms Dimnames for array representation of terms
+#' @param rows Indices of rows from 'data', used for subsetting
 #'
 #' @returns An rvec
 #'
 #' @noRd
-make_linpred_from_components <- function(mod, components, data, dimnames_terms) {
+make_linpred_from_components <- function(mod, components, data, dimnames_terms, rows) {
   key_comp <- with(components, paste(term, component, level))
   fitted <- components$.fitted
   data_has_intercept <- "(Intercept)" %in% names(data)
   if (!data_has_intercept)
     data[["(Intercept)"]] <- "(Intercept)"
   n_draw <- rvec::n_draw(fitted)
-  ans <- matrix(0, nrow = nrow(data), ncol = n_draw)
+  n_row <- if (is.null(rows)) nrow(data) else length(rows)
+  ans <- rvec::new_rvec_dbl(length = n_row, n_draw = n_draw)
   for (i_term in seq_along(dimnames_terms)) {
     dimnames_term <- dimnames_terms[[i_term]]
     nm_split <- dimnames_to_nm_split(dimnames_term)
@@ -1942,10 +2055,12 @@ make_linpred_from_components <- function(mod, components, data, dimnames_terms) 
     key_term <- paste(nm, "effect", levels_term)
     indices_comp <- match(key_term, key_comp)
     val_term <- fitted[indices_comp]
-    levels_data <- Reduce(paste_dot, data[nm_split])
+    data_term <- data[nm_split]
+    if (!is.null(rows))
+      data_term <- data_term[rows, , drop = FALSE]
+    levels_data <- Reduce(paste_dot, data_term)
     indices_term <- match(levels_data, levels_term)
     val_term_linpred <- val_term[indices_term]
-    vals_term_linpred <- as.matrix(val_term_linpred)
     ans <- ans + val_term_linpred
   }
   if (has_covariates(mod)) {
@@ -1955,13 +2070,11 @@ make_linpred_from_components <- function(mod, components, data, dimnames_terms) 
     indices_covariates <- match(key_covariates, key_comp)
     coef_covariates <- fitted[indices_covariates]
     matrix_covariates <- make_matrix_covariates(formula = formula_covariates,
-                                                data = data)
-    coef_covariates <- as.matrix(coef_covariates) ## coerce from rvec
+                                                data = data,
+                                                rows = rows)
     val_covariates_linpred <- matrix_covariates %*% coef_covariates
-    val_covariates_linpred <- Matrix::as.matrix(val_covariates_linpred)
     ans <- ans + val_covariates_linpred
   }
-  ans <- rvec::rvec_dbl(ans)
   ans
 }
 
@@ -1991,10 +2104,8 @@ make_linpred_from_stored_draws <- function(mod, point, rows) {
   }
   if (point)
     ans <- as.double(ans)
-  else {
-    ans <- Matrix::as.matrix(ans)
+  else
     ans <- rvec::rvec(ans)
-  }
   ans
 }
 
@@ -2017,14 +2128,14 @@ make_linpred_from_stored_draws_covariates <- function(mod, point, rows) {
     coef_covariates <- mod$point_coef_covariates
   else
     coef_covariates <- mod$draws_coef_covariates
-  ## can't subset 'data', because might miss some
-  ## combinations of values expected by 'formula_covariates'
   matrix_covariates <- make_matrix_covariates(formula = formula_covariates,
-                                              data = data)
-  if (!is.null(rows))
-    matrix_covariates <- matrix_covariates[rows, , drop = FALSE]
+                                              data = data,
+                                              rows = rows)
   ans <- matrix_covariates %*% coef_covariates
-  ans <- Matrix::as.matrix(ans)
+  if (point)
+    ans <- as.double(ans)
+  else
+    ans <- rvec::rvec_dbl(ans)
   ans
 }
 
@@ -2060,7 +2171,7 @@ make_linpred_from_stored_draws_effects <- function(mod, point, rows) {
       ans <- ans + matrices[[i_effect]] %*% effects[[i_effect]]
     }
   }
-  ans <- Matrix::as.matrix(ans)
+  ans <- rvec::rvec(ans)
   ans
 }
 
@@ -2565,4 +2676,25 @@ transform_hyper_ar <- function(prior) {
   }
   rep(list(coef = shifted_inv_logit, sd = exp),
       times = c(n_coef, 1L))
+}
+
+## HAS_TESTS
+#' Create Functions Needed to Transform Hyper-Parameters
+#' from Damped Random Walk Prior
+#'
+#' @param prior Object of class 'bage_prior'
+#'
+#' @returns A named list
+#'
+#' @noRd
+transform_hyper_drw <- function(prior) {
+  specific <- prior$specific
+  min <- specific$min
+  max <- specific$max
+  shifted_inv_logit <- function(x) {
+    ans_raw <- exp(x) / (1 + exp(x))
+    ans <- (max - min) * ans_raw + min
+    ans
+  }
+  list(exp, shifted_inv_logit)
 }
