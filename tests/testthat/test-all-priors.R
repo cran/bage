@@ -366,7 +366,7 @@ testthat::test_that("'rwrandom interaction", {
 testthat::test_that("'rwrandomseasfix main effect", {
   set.seed(0)
   mod <- make_small_mod_pois(use_exposure = TRUE) |>
-    set_prior(time ~ RW_Seas(n_seas = 2, s_seas = 1)) |>
+    set_prior(time ~ RW_Seas(n_seas = 3, s_seas = 1)) |>
     fit()
   expect_s3_class(mod, "bage_mod_pois")
   comp <- components(mod)
@@ -380,7 +380,7 @@ testthat::test_that("'rwrandomseasfix main effect", {
 testthat::test_that("'rwrandomseasfix interaction", {
   set.seed(0)
   mod <- make_small_mod_pois(use_exposure = TRUE, use_interaction = TRUE) |>
-    set_prior(age:time ~ RW_Seas(n_seas = 2, s_seas = 1)) |>
+    set_prior(age:time ~ RW_Seas(n_seas = 3, s_seas = 1)) |>
     fit()
   expect_s3_class(mod, "bage_mod_pois")
   comp <- components(mod)
@@ -394,7 +394,7 @@ testthat::test_that("'rwrandomseasfix interaction", {
 testthat::test_that("'rwrandomseasvary main effect", {
   set.seed(0)
   mod <- make_small_mod_pois(use_exposure = TRUE) |>
-    set_prior(time ~ RW_Seas(n_seas = 2, s_seas = 1)) |>
+    set_prior(time ~ RW_Seas(n_seas = 3, s_seas = 1)) |>
     fit()
   expect_s3_class(mod, "bage_mod_pois")
   comp <- components(mod)
@@ -408,7 +408,7 @@ testthat::test_that("'rwrandomseasvary main effect", {
 testthat::test_that("'rwrandomseasvary interaction", {
   set.seed(0)
   mod <- make_small_mod_pois(use_exposure = TRUE, use_interaction = TRUE) |>
-    set_prior(age:time ~ RW_Seas(n_seas = 2, s_seas = 1)) |>
+    set_prior(age:time ~ RW_Seas(n_seas = 3, s_seas = 1)) |>
     fit()
   expect_s3_class(mod, "bage_mod_pois")
   comp <- components(mod)
@@ -450,7 +450,7 @@ testthat::test_that("'rwzero interaction", {
 testthat::test_that("'rwzeroseasfix main effect", {
   set.seed(0)
   mod <- make_small_mod_pois(use_exposure = TRUE) |>
-    set_prior(time ~ RW_Seas(sd = 0, n_seas = 2, s_seas = 0)) |>
+    set_prior(time ~ RW_Seas(sd = 0, n_seas = 3, s_seas = 0)) |>
     fit()
   expect_s3_class(mod, "bage_mod_pois")
   comp <- components(mod)
@@ -464,7 +464,7 @@ testthat::test_that("'rwzeroseasfix main effect", {
 testthat::test_that("'rwzeroseasfix interaction", {
   set.seed(0)
   mod <- make_small_mod_pois(use_exposure = TRUE, use_interaction = TRUE) |>
-    set_prior(age:time ~ RW_Seas(sd = 0, n_seas = 2, s_seas = 0)) |>
+    set_prior(age:time ~ RW_Seas(sd = 0, n_seas = 3, s_seas = 0)) |>
     fit()
   expect_s3_class(mod, "bage_mod_pois")
   comp <- components(mod)
@@ -478,7 +478,7 @@ testthat::test_that("'rwzeroseasfix interaction", {
 testthat::test_that("'rwzeroseasvary main effect", {
   set.seed(0)
   mod <- make_small_mod_pois(use_exposure = TRUE) |>
-    set_prior(time ~ RW_Seas(sd = 0, n_seas = 2, s_seas = 1)) |>
+    set_prior(time ~ RW_Seas(sd = 0, n_seas = 3, s_seas = 1)) |>
     fit()
   expect_s3_class(mod, "bage_mod_pois")
   comp <- components(mod)
@@ -492,7 +492,7 @@ testthat::test_that("'rwzeroseasvary main effect", {
 testthat::test_that("'rwzeroseasvary interaction", {
   set.seed(0)
   mod <- make_small_mod_pois(use_exposure = TRUE, use_interaction = TRUE) |>
-    set_prior(age:time ~ RW_Seas(sd = 0, n_seas = 2, s_seas = 1)) |>
+    set_prior(age:time ~ RW_Seas(sd = 0, n_seas = 3, s_seas = 1)) |>
     fit()
   expect_s3_class(mod, "bage_mod_pois")
   comp <- components(mod)
@@ -557,10 +557,38 @@ testthat::test_that("'rw2random interaction", {
   expect_s3_class(rep, "tbl_df")
 })
 
+testthat::test_that("'rw2randomar main effect", {
+  set.seed(0)
+  mod <- make_small_mod_pois(use_exposure = TRUE) |>
+    set_prior(time ~ RW2_AR1()) |>
+    fit()
+  expect_s3_class(mod, "bage_mod_pois")
+  comp <- components(mod)
+  expect_s3_class(comp, "tbl_df")
+  fc <- forecast(mod, labels = 2026:2027)
+  expect_s3_class(fc, "tbl_df")
+  rep <- replicate_data(mod, n = 2)
+  expect_s3_class(rep, "tbl_df")
+})
+
+testthat::test_that("'rw2randomar interaction", {
+  set.seed(0)
+  mod <- make_small_mod_pois(use_exposure = TRUE, use_interaction = TRUE) |>
+    set_prior(age:time ~ RW2_AR()) |>
+    fit()
+  expect_s3_class(mod, "bage_mod_pois")
+  comp <- components(mod)
+  expect_s3_class(comp, "tbl_df")
+  fc <- forecast(mod, labels = 2026:2027)
+  expect_s3_class(fc, "tbl_df")
+  rep <- replicate_data(mod, n = 2)
+  expect_s3_class(rep, "tbl_df")
+})
+
 testthat::test_that("'rw2randomseasfix main effect", {
   set.seed(0)
   mod <- make_small_mod_pois(use_exposure = TRUE) |>
-    set_prior(time ~ RW2_Seas(n_seas = 2, s_seas = 0)) |>
+    set_prior(time ~ RW2_Seas(n_seas = 3, s_seas = 0)) |>
     fit()
   expect_s3_class(mod, "bage_mod_pois")
   comp <- components(mod)
@@ -574,7 +602,7 @@ testthat::test_that("'rw2randomseasfix main effect", {
 testthat::test_that("'rw2randomseasfix interaction", {
   set.seed(0)
   mod <- make_small_mod_pois(use_exposure = TRUE, use_interaction = TRUE) |>
-    set_prior(age:time ~ RW2_Seas(n_seas = 2, s_seas = 0)) |>
+    set_prior(age:time ~ RW2_Seas(n_seas = 3, s_seas = 0)) |>
     fit()
   expect_s3_class(mod, "bage_mod_pois")
   comp <- components(mod)
@@ -588,7 +616,7 @@ testthat::test_that("'rw2randomseasfix interaction", {
 testthat::test_that("'rw2randomseasvary main effect", {
   set.seed(0)
   mod <- make_small_mod_pois(use_exposure = TRUE) |>
-    set_prior(time ~ RW2_Seas(n_seas = 2, s_seas = 1)) |>
+    set_prior(time ~ RW2_Seas(n_seas = 3, s_seas = 1)) |>
     fit()
   expect_s3_class(mod, "bage_mod_pois")
   comp <- components(mod)
@@ -602,7 +630,7 @@ testthat::test_that("'rw2randomseasvary main effect", {
 testthat::test_that("'rw2randomseasvary interaction", {
   set.seed(0)
   mod <- make_small_mod_pois(use_exposure = TRUE, use_interaction = TRUE) |>
-    set_prior(age:time ~ RW2_Seas(n_seas = 2, s_seas = 1)) |>
+    set_prior(age:time ~ RW2_Seas(n_seas = 3, s_seas = 1)) |>
     fit()
   expect_s3_class(mod, "bage_mod_pois")
   comp <- components(mod)
@@ -641,10 +669,38 @@ testthat::test_that("'rw2zero interaction", {
   expect_s3_class(rep, "tbl_df")
 })
 
+testthat::test_that("'rw2zeroar main effect", {
+  set.seed(0)
+  mod <- make_small_mod_pois(use_exposure = TRUE) |>
+    set_prior(time ~ RW2_AR1(sd = 0)) |>
+    fit()
+  expect_s3_class(mod, "bage_mod_pois")
+  comp <- components(mod)
+  expect_s3_class(comp, "tbl_df")
+  fc <- forecast(mod, labels = 2026:2027)
+  expect_s3_class(fc, "tbl_df")
+  rep <- replicate_data(mod, n = 2)
+  expect_s3_class(rep, "tbl_df")
+})
+
+testthat::test_that("'rw2zeroar interaction", {
+  set.seed(0)
+  mod <- make_small_mod_pois(use_exposure = TRUE, use_interaction = TRUE) |>
+    set_prior(age:time ~ RW2_AR(sd = 0)) |>
+    fit()
+  expect_s3_class(mod, "bage_mod_pois")
+  comp <- components(mod)
+  expect_s3_class(comp, "tbl_df")
+  fc <- forecast(mod, labels = 2026:2027)
+  expect_s3_class(fc, "tbl_df")
+  rep <- replicate_data(mod, n = 2)
+  expect_s3_class(rep, "tbl_df")
+})
+
 testthat::test_that("'rw2zeroseasfix main effect", {
   set.seed(0)
   mod <- make_small_mod_pois(use_exposure = TRUE) |>
-    set_prior(time ~ RW2_Seas(n_seas = 2, s_seas = 0)) |>
+    set_prior(time ~ RW2_Seas(n_seas = 3, s_seas = 0, sd = 0)) |>
     fit()
   expect_s3_class(mod, "bage_mod_pois")
   comp <- components(mod)
@@ -658,7 +714,7 @@ testthat::test_that("'rw2zeroseasfix main effect", {
 testthat::test_that("'rw2zeroseasfix interaction", {
   set.seed(0)
   mod <- make_small_mod_pois(use_exposure = TRUE, use_interaction = TRUE) |>
-    set_prior(age:time ~ RW2_Seas(n_seas = 2, s_seas = 0)) |>
+    set_prior(age:time ~ RW2_Seas(n_seas = 3, s_seas = 0, sd = 0)) |>
     fit()
   expect_s3_class(mod, "bage_mod_pois")
   comp <- components(mod)
@@ -672,7 +728,7 @@ testthat::test_that("'rw2zeroseasfix interaction", {
 testthat::test_that("'rw2zeroseasvary main effect", {
   set.seed(0)
   mod <- make_small_mod_pois(use_exposure = TRUE) |>
-    set_prior(time ~ RW2_Seas(n_seas = 2, s_seas = 1)) |>
+    set_prior(time ~ RW2_Seas(n_seas = 3, s_seas = 1, sd = 0)) |>
     fit()
   expect_s3_class(mod, "bage_mod_pois")
   comp <- components(mod)
@@ -686,7 +742,7 @@ testthat::test_that("'rw2zeroseasvary main effect", {
 testthat::test_that("'rw2randomseasvary interaction", {
   set.seed(0)
   mod <- make_small_mod_pois(use_exposure = TRUE, use_interaction = TRUE) |>
-    set_prior(age:time ~ RW2_Seas(n_seas = 2, s_seas = 1)) |>
+    set_prior(age:time ~ RW2_Seas(n_seas = 3, s_seas = 1, sd = 0)) |>
     fit()
   expect_s3_class(mod, "bage_mod_pois")
   comp <- components(mod)

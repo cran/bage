@@ -374,20 +374,23 @@ Type log_dpois_rr3(Type x, Type rate) {
   return ans;
 }
 
-
-
 template<class Type>
-Type log_dskellam_exact(Type x, Type mu1, Type mu2) {
-  Type nu = fabs(x);
-  Type v = Type(2.0) * sqrt(mu1 * mu2);
-  return -(mu1 + mu2)
-    + Type(0.5) * x * (log(mu1) - log(mu2))
-    + log(besselI(v, nu));
+Type log_dskellam_saddlepoint(Type y, Type mu1, Type mu2) {
+  Type eps = Type(1e-12);
+  mu1 += eps;
+  mu2 += eps;
+  Type disc = sqrt(y * y + Type(4) * mu1 * mu2);
+  Type exp_t = (y + disc) / (Type(2) * mu1);
+  Type t = log(exp_t);
+  Type exp_minus_t = Type(1) / exp_t;
+  Type K = mu1 * (exp_t - Type(1)) + mu2 * (exp_minus_t - Type(1));
+  Type K2 = mu1 * exp_t + mu2 * exp_minus_t;
+  return K - t * y - Type(0.5) * log(Type(2) * M_PI * K2);
 }
 
 // uses saddle point approximation
 template<class Type>
-Type log_dskellam_approx(Type x, Type mu1, Type mu2) {
+Type log_dskellam_normal(Type x, Type mu1, Type mu2) {
   Type s = (x + sqrt(x * x + 4.0 * mu1 * mu2)) / (2.0 * mu1); // positive solution to K'(s) = x, s = e^t
   Type t = log(s);
   Type s_inv = Type(1.0) / s;
@@ -425,9 +428,9 @@ Type log_dskellam(Type x, Type mu1, Type mu2) {
   bool x_small = std::abs(xd) < thresh_small_x;
   bool use_exact = mu_small && x_small;
   if (use_exact)
-    return log_dskellam_exact(x, mu1, mu2);
+    return log_dskellam_saddlepoint(x, mu1, mu2);
   else
-    return log_dskellam_approx(x, mu1, mu2);
+    return log_dskellam_normal(x, mu1, mu2);
 }
 
 template <class Type>
@@ -914,23 +917,6 @@ Type logpost_rwzeroseasfix(const vector<Type>& effectfree,
   return ans;
 }
 
-
-// template <class Type>
-// Type logpost_rwzeroseasfix(const vector<Type>& effectfree,
-// 			   const vector<Type>& hyper,
-// 			   const vector<Type>& hyperrandfree, // seasonal effect
-// 			   const vector<Type>& consts,
-// 			   const matrix<int>& matrix_along_by_effectfree) {
-//   vector<Type> consts_seas = consts.head(2); // n_seas, sd_seas
-//   vector<Type> consts_rw(2);
-//   consts_rw[0] = consts[2]; // scale
-//   consts_rw[1] = consts[1]; // sd_seas 
-//   Type ans = Type(0);
-//   //ans += logpost_seasfix(hyperrandfree, consts_seas);
-//   // ans += logpost_rwrandom(effectfree, hyper, consts_rw, matrix_along_by_effectfree);
-//   return ans;
-// }
-
 template <class Type>
 Type logpost_rwzeroseasvary(const vector<Type>& effectfree,
 			    const vector<Type>& hyper,
@@ -1017,6 +1003,30 @@ Type logpost_rw2random(const vector<Type>& rw,
 }
 
 template <class Type>
+Type logpost_rw2randomar(const vector<Type>& effectfree,
+			 const vector<Type>& hyper,
+			 const vector<Type>& hyperrandfree, // ar
+			 const vector<Type>& consts,
+			 const matrix<int>& matrix_along_by_effectfree) {
+  int n_hyper = hyper.size();
+  vector<Type> consts_rw = consts.head(3); // scale, sd, sd_slope
+  vector<Type> consts_ar = consts.tail(5);
+  vector<Type> hyper_rw = hyper.head(1);
+  vector<Type> hyper_ar = hyper.tail(n_hyper - 1);
+  vector<Type> rw = effectfree - hyperrandfree;
+  Type ans = Type(0);
+  ans += logpost_rw2random(rw,
+			   hyper_rw,
+			   consts_rw,
+			   matrix_along_by_effectfree);
+  ans += logpost_ar_inner(hyperrandfree,
+			  hyper_ar,
+			  consts_ar,
+			  matrix_along_by_effectfree);
+  return ans;
+}
+
+template <class Type>
 Type logpost_rw2randomseasfix(const vector<Type>& effectfree,
 			      const vector<Type>& hyper,
 			      const vector<Type>& hyperrandfree, // seasonal effect
@@ -1083,6 +1093,67 @@ Type logpost_rw2zero(const vector<Type>& rw,
   }
   return ans;
 }
+
+template <class Type>
+Type logpost_rw2zeroar(const vector<Type>& effectfree,
+		       const vector<Type>& hyper,
+		       const vector<Type>& hyperrandfree, // ar except first el
+		       const vector<Type>& consts,
+		       const matrix<int>& matrix_along_by_effectfree) {
+  int n_along = matrix_along_by_effectfree.rows();
+  int n_by = matrix_along_by_effectfree.cols();
+  Type ans = Type(0);
+  // AR part
+  vector<Type> ar(n_along * n_by);
+  int i_hyperrand = 0;
+  for (int i_by = 0; i_by < n_by; i_by++) {
+    for (int i_along = 0; i_along < n_along; i_along++) {
+      int i_ar = matrix_along_by_effectfree(i_along, i_by);
+      if (i_along == 0)
+	ar[i_ar] = effectfree[i_ar];
+      else {
+	ar[i_ar] = hyperrandfree[i_hyperrand];
+	i_hyperrand++;
+      }
+    }
+  }
+  int n_hyper = hyper.size();
+  vector<Type> hyper_ar = hyper.tail(n_hyper - 1);
+  vector<Type> consts_ar = consts.tail(5);
+  ans += logpost_ar_inner(ar,
+			  hyper_ar,
+			  consts_ar,
+			  matrix_along_by_effectfree);
+  // RW2 part
+  Type scale_innov = consts[0];
+  Type sd_slope = consts[1];
+  Type log_sd_innov = hyper[0];
+  Type sd_innov = exp(log_sd_innov);
+  ans += dnorm(sd_innov, Type(0), scale_innov, true) + log_sd_innov;
+  // note RW2 part is 0 when i_along = 0
+  for (int i_by = 0; i_by < n_by; i_by++) {
+    int i_1 = matrix_along_by_effectfree(1, i_by);
+    int i_2 = matrix_along_by_effectfree(2, i_by);
+    Type rw_1 = effectfree[i_1] - ar[i_1];
+    Type rw_2 = effectfree[i_2] - ar[i_2];
+    ans += dnorm(rw_1, Type(0), sd_innov, true);
+    Type diff = rw_2 - rw_1;
+    ans += dnorm(diff, Type(0), sd_slope, true);
+    for (int i_along = 3; i_along < n_along; i_along++) {
+      int i_2 = matrix_along_by_effectfree(i_along, i_by);
+      int i_1 = matrix_along_by_effectfree(i_along - 1, i_by);
+      int i_0 = matrix_along_by_effectfree(i_along - 2, i_by);
+      Type rw_2 = effectfree[i_2] - ar[i_2];
+      Type rw_1 = effectfree[i_1] - ar[i_1];
+      Type rw_0 = effectfree[i_0] - ar[i_0];
+      Type diff = rw_2 - 2 * rw_1 + rw_0;
+      ans += dnorm(diff, Type(0), sd_innov, true);
+    }
+  }
+  // total
+  return ans;
+}
+
 
 template <class Type>
 Type logpost_rw2zeroseasfix(const vector<Type>& effectfree,
@@ -1386,7 +1457,15 @@ Type logpost_has_hyperrandfree(const vector<Type>& effectfree,
     ans = logpost_svd_lin(effectfree, hyper, hyperrandfree, consts,
 			  matrix_along_by_effectfree);
     break;
-  default:                                                                                                // # nocov
+  case 37:
+    ans = logpost_rw2randomar(effectfree, hyper, hyperrandfree, consts,
+			      matrix_along_by_effectfree);
+    break;
+  case 38:
+    ans = logpost_rw2zeroar(effectfree, hyper, hyperrandfree, consts,
+			    matrix_along_by_effectfree);
+    break;
+default:                                                                                                // # nocov
     Rf_error("Internal error: function 'logpost_has_hyperrandfree' cannot handle i_prior = %d", i_prior); // # nocov
   }
   return ans;

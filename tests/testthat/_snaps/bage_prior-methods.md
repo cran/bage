@@ -5,9 +5,9 @@
     Output
         AR() 
           n_coef: 2
-             min: -1
-             max: 1
                s: 1
+          shape1: 5
+          shape2: 5
            along: NULL
              con: none
 
@@ -17,9 +17,11 @@
       print(AR1(min = 0.2))
     Output
         AR1(min=0.2) 
+               s: 1
+          shape1: 5
+          shape2: 5
              min: 0.2
              max: 0.98
-               s: 1
            along: NULL
              con: none
 
@@ -124,10 +126,26 @@
         Lin_AR() 
           n_coef: 2
                s: 1
+          shape1: 5
+          shape2: 5
       mean_slope: 0
         sd_slope: 1
-             min: -1
-             max: 1
+           along: NULL
+             con: none
+
+---
+
+    Code
+      print(Lin_AR1())
+    Output
+        Lin_AR1() 
+               s: 1
+          shape1: 5
+          shape2: 5
+             min: 0.8
+             max: 0.98
+      mean_slope: 0
+        sd_slope: 1
            along: NULL
              con: none
 
@@ -244,6 +262,72 @@
                s: 1
               sd: 1
         sd_slope: 1
+           along: NULL
+             con: none
+
+---
+
+    Code
+      print(RW2_AR())
+    Output
+        RW2_AR() 
+            s_rw: 1
+              sd: 1
+        sd_slope: 1
+          n_coef: 2
+            s_ar: 1
+          shape1: 5
+          shape2: 5
+           along: NULL
+             con: none
+
+---
+
+    Code
+      print(RW2_AR1())
+    Output
+        RW2_AR1() 
+            s_rw: 1
+              sd: 1
+        sd_slope: 1
+            s_ar: 1
+          shape1: 5
+          shape2: 5
+             min: 0.8
+             max: 0.98
+           along: NULL
+             con: none
+
+---
+
+    Code
+      print(RW2_AR(sd = 0))
+    Output
+        RW2_AR(sd=0) 
+            s_rw: 1
+              sd: 0
+        sd_slope: 1
+          n_coef: 2
+            s_ar: 1
+          shape1: 5
+          shape2: 5
+           along: NULL
+             con: none
+
+---
+
+    Code
+      print(RW2_AR1(sd = 0))
+    Output
+        RW2_AR1(sd=0) 
+            s_rw: 1
+              sd: 0
+        sd_slope: 1
+            s_ar: 1
+          shape1: 5
+          shape2: 5
+             min: 0.8
+             max: 0.98
            along: NULL
              con: none
 
@@ -559,11 +643,39 @@
 ---
 
     Code
+      print(SVD_Lin(HMD, indep = FALSE))
+    Output
+        SVD_Lin(HMD,indep=FALSE) 
+            ssvd: HMD
+          n_comp: 3
+           indep: FALSE
+               s: 1
+      mean_slope: 0
+        sd_slope: 1
+             con: none
+
+---
+
+    Code
       print(SVD_Lin(HMD, s = 0))
     Output
         SVD_Lin(HMD,s=0) 
             ssvd: HMD
           n_comp: 3
+               s: 0
+      mean_slope: 0
+        sd_slope: 1
+             con: none
+
+---
+
+    Code
+      print(SVD_Lin(HMD, s = 0, indep = FALSE))
+    Output
+        SVD_Lin(HMD,indep=FALSE,s=0) 
+            ssvd: HMD
+          n_comp: 3
+           indep: FALSE
                s: 0
       mean_slope: 0
         sd_slope: 1

@@ -659,91 +659,6 @@ test_that("'impute_outcome_true' raises error with invalid nm_distn", {
 })
 
 
-## 'infer_trend_seas_err_forecast' ----------------------------------------
-
-test_that("'infer_trend_seas_err_forecast' works", {
-  set.seed(0)
-  data <- expand.grid(age = 0:4, time = 2000:2005, sex = c("F", "M"))
-  data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rpois(n = nrow(data), lambda = 10)
-  formula <- deaths ~ sex * time + age
-  mod <- mod_pois(formula = formula,
-                  data = data,
-                  exposure = popn) |>
-    set_prior(time ~ RW2()) |>
-    set_prior(sex:time ~ Lin()) |>
-    fit()
-  mod <- set_n_draw(mod, 5)
-  mod <- fit(mod)
-  comp_est <- components(mod)
-  comp_forecast <- forecast(mod, labels = 2006:2007, output = "components")
-  dimnames_terms_forecast <- make_dimnames_terms_forecast(dimnames_terms = mod$dimnames_terms,
-                                                          var_time = mod$var_time,
-                                                          labels_forecast = 2006:2007,
-                                                          time_only = TRUE)
-  ans_obtained <- infer_trend_seas_err_forecast(components = comp_forecast,
-                                                    priors = mod$priors,
-                                                    dimnames_terms = dimnames_terms_forecast,
-                                                    var_time = mod$var_time,
-                                                    var_age = mod$var_age)
-  expect_equal(ans_obtained[1:3], comp_forecast[1:3])
-})
-
-
-## 'infer_trend_seas_err_seasfix_forecast' --------------------------------
-
-test_that("'infer_trend_seas_err_seasfix_forecast' works", {
-  set.seed(0)
-  data <- expand.grid(age = 0:4, time = 2000:2005, sex = c("F", "M"))
-  data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rpois(n = nrow(data), lambda = 10)
-  formula <- deaths ~ sex * time + age
-  mod <- mod_pois(formula = formula,
-                  data = data,
-                  exposure = popn) |>
-                  set_prior(sex:time ~ RW_Seas(n = 3,s_seas = 0)) |>
-                  set_n_draw(n = 10) |>
-                  fit()
-  components <- components(mod)
-  ans <- infer_trend_seas_err_seasfix_forecast(prior = mod$priors[["sex:time"]],
-                                                   dimnames_term = mod$dimnames_terms[["sex:time"]],
-                                                   var_time = mod$var_time,
-                                                   var_age = mod$var_age,
-                                                   components = components)
-  season <- ans$.fitted[ans$term == "sex:time" & ans$component == "season"]
-  trend <- ans$.fitted[ans$term == "sex:time" & ans$component == "trend"]
-  effect <- ans$.fitted[ans$term == "sex:time" & ans$component == "effect"]
-  expect_equal(effect, season + trend)
-})
-
-
-## 'infer_trend_seas_err_seasvary_forecast' -------------------------------
-
-test_that("'infer_trend_seas_err_seasvary_forecast' works", {
-  set.seed(0)
-  data <- expand.grid(age = 0:4, time = 2000:2005, sex = c("F", "M"))
-  data$popn <- rpois(n = nrow(data), lambda = 100)
-  data$deaths <- rpois(n = nrow(data), lambda = 10)
-  formula <- deaths ~ sex * time + age
-  mod <- mod_pois(formula = formula,
-                  data = data,
-                  exposure = popn) |>
-                  set_prior(sex:time ~ RW_Seas(n = 3, s_seas = 0, s = 1)) |>
-                  set_n_draw(n = 10) |>
-                  fit()
-  components <- components(mod)
-  ans <- infer_trend_seas_err_seasvary_forecast(prior = mod$priors[["sex:time"]],
-                                                    dimnames_term = mod$dimnames_terms[["sex:time"]],
-                                                    var_time = mod$var_time,
-                                                    var_age = mod$var_age,
-                                                    components = components)
-  season <- ans$.fitted[ans$term == "sex:time" & ans$component == "season"]
-  trend <- ans$.fitted[ans$term == "sex:time" & ans$component == "trend"]
-  effect <- ans$.fitted[ans$term == "sex:time" & ans$component == "effect"]
-  expect_equal(effect, season + trend)
-})
-
-
 ## 'make_comp_components' -----------------------------------------------------
 
 test_that("'make_comp_components' works - no hyperrand", {
@@ -1997,7 +1912,7 @@ test_that("'make_levels_svd_term' works - con = 'none', time:age:sex", {
   expect_identical(ans_obtained, ans_expected)
 })
 
-test_that("'make_levels_svd_term' works - con = 'none', time:age:reg", {
+test_that("'make_levels_svd_by' works - con = 'none', time:age:reg", {
   prior <- SVD_Lin(HMD, n_comp = 3)
   dimnames_term <- list(time = 2001:2005,
                         age = c(0:59, "60+"),
@@ -2016,7 +1931,7 @@ test_that("'make_levels_svd_term' works - con = 'none', time:age:reg", {
   expect_identical(ans_obtained, ans_expected)
 })
 
-test_that("'make_levels_svd_term' works - con = 'by', time:age:sex", {
+test_that("'make_levels_svd_by' works - con = 'by', time:age:sex", {
   prior <- SVD_Lin(HMD, n_comp = 3, con = "by")
   dimnames_term <- list(time = 2001:2005,
                         age = c(0:59, "60+"),
@@ -2035,23 +1950,20 @@ test_that("'make_levels_svd_term' works - con = 'by', time:age:sex", {
   expect_identical(ans_obtained, ans_expected)
 })
 
-test_that("'make_levels_svd_term' works - con = 'by', time:age:reg", {
-  prior <- SVD_Lin(HMD, n_comp = 3, con = "by")
+test_that("'make_levels_svd_by' throws error when prior does not have along dimension", {
+  prior <- N()
   dimnames_term <- list(time = 2001:2005,
                         age = c(0:59, "60+"),
                         reg = c("a", "b", "c"))
   var_age <- "age"
   var_sexgender <- "sex"
   var_time <- "time"
-  ans_obtained <- make_levels_svd_by(prior = prior,
-                                     dimnames_term = dimnames_term,
+  expect_error(make_levels_svd_by(prior = prior,
+                                     dimnames_term = dimnames_by,
                                      var_time = var_time,
                                      var_age = var_age,
-                                     var_sexgender = var_sexgender)
-  ans_expected <- paste(paste0("comp", 1:3),
-                        rep(c("reg1", "reg2"), each = 3),
-                        sep = ".")
-  expect_identical(ans_obtained, ans_expected)
+                                  var_sexgender = var_sexgender),
+               "Internal error: Prior does not")
 })
 
 
@@ -3380,3 +3292,30 @@ test_that("'transform_hyper_drw' works", {
   expect_equal(l[[1]](0.35), exp(0.35))
   expect_equal(l[[2]](0.35), shifted_invlogit(0.35))
 })
+
+
+## 'transform_hyper_rw_ar' ----------------------------------------------------
+
+test_that("'transform_hyper_rw_ar' works with 'bage_prior_rw2randomar - AR1'", {
+  shifted_invlogit <- function(x) {
+    ans <- exp(x) / (1 + exp(x))
+    0.18 * ans + 0.8
+  }
+  l <- transform_hyper_rw_ar(prior = RW2_AR1())
+  expect_equal(l[[1]](0.35), exp(0.35))
+  expect_equal(l[[2]](0.35), shifted_invlogit(0.35))
+  expect_equal(l[[3]](0.35), exp(0.35))
+})
+
+test_that("'transform_hyper_ar' works with 'bage_prior_rw2zeroar - AR'", {
+  shifted_invlogit <- function(x) {
+    ans <- exp(x) / (1 + exp(x))
+    2 * ans - 1
+  }
+  l <- transform_hyper_rw_ar(prior = RW2_AR(sd=0))
+  expect_equal(l[[1]](0.35), exp(0.35))
+  expect_equal(l[[2]](0.35), shifted_invlogit(0.35))
+  expect_equal(l[[3]](0.35), shifted_invlogit(0.35))
+  expect_equal(l[[4]](0.35), exp(0.35))
+})
+

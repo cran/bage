@@ -2,13 +2,13 @@
 % Please edit documentation in R/bage-package.R
 \docType{package}
 \name{bage-package}
-\alias{bage}
 \alias{bage-package}
-\title{Package 'bage'}
+\alias{bage}
+\title{bage: Bayesian Estimation and Forecasting of Age-Specific Rates}
 \description{
-Bayesian estimation and forecasting of age-specific rates.
-Estimation uses \href{https://CRAN.R-project.org/package=TMB}{TMB},
-and is fast.
+Modeling of rates, probabilities, and other values, typically
+disaggregated by age. Estimation is done using \href{https://CRAN.R-project.org/package=TMB}{TMB},
+which makes it fast and scalable.
 }
 \section{Example workflow}{
 
@@ -84,6 +84,7 @@ Useful links:
 
 Authors:
 \itemize{
+  \item John Bryant \email{john@bayesiandemography.com}
   \item Junni Zhang \email{junnizhang@163.com}
 }
 
@@ -93,4 +94,3 @@ Other contributors:
 }
 
 }
-\keyword{internal}
